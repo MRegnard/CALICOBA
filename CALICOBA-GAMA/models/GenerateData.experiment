@@ -1,0 +1,19 @@
+experiment "Generate Data" model: "Global.gaml" type: gui {
+  parameter "Map Name" var: map_name category: "Map"; // FIXME conserve la valeur par défaut
+  parameter "# of people" var: people_nb category: "People";
+  parameter "Scenario Name" var: scenario_name category: "Scenario";
+  parameter "Generate Data" var: generate_data init: true;
+
+  float minimum_cycle_duration <- 50 #ms;
+
+  output {
+    display Map type: opengl {
+      species Building refresh: false;
+      species Road refresh: false;
+      species ObservationZone refresh: false;
+      species Person;
+
+      event [mouse_down] action: show_mouse_location;
+    }
+  }
+}
