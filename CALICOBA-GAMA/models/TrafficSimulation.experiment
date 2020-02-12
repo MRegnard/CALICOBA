@@ -1,0 +1,9 @@
+experiment traffic_simulation model: "Main.gaml" type: gui {
+  output {
+    display city_display type: opengl{
+      species Road aspect: geom refresh: false;
+      species RoadNode aspect: geom3D;
+      species Driver aspect: car3D;
+    }
+  }
+}
