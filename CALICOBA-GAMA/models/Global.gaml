@@ -67,7 +67,8 @@ global {
     }
 
     create FileWriter number: 1 returns: fw with: [
-      output_file :: "../output/" + map_name + "/" + scenario_name
+      output_folder :: "../output/" + map_name + "/",
+      output_file :: scenario_name + ".json"
     ];
     file_writer <- first(fw);
   }
