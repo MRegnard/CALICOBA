@@ -1,6 +1,3 @@
-/**
- * Based on Patrick Taillandier's Simple Traffic model.
- */
 model Global
 
 import "Person.gaml"
@@ -18,13 +15,13 @@ global {
 
   int people_nb <- 1000 min: 0 max: 10000;
 
-  string map_name <- "UT3_test" among: ["city", "UT3", "UT3_extended", "UT3_test"];
+  string map_name <- "UT3_extended" among: ["city", "UT3", "UT3_extended", "UT3_test"];
   /** Shapefile of the buildings. */
   file _building_shapefile <- file("../includes/" + map_name + "/buildings.shp");
   /** Shapefile of the roads. */
   file _road_shapefile <- file("../includes/" + map_name + "/roads.shp");
   /** File containing observation zones data. */
-  file _oz_file <- json_file("../includes/" + map_name + "/observation_zones2.json");
+  file _oz_file <- json_file("../includes/" + map_name + "/observation_zones.json");
   /** Shape of the environment. */
   geometry shape <- envelope(_road_shapefile);
   /** Graph of the road network. */
@@ -51,14 +48,17 @@ global {
 
     loop observation_zone over: map<string, list<map>>(_oz_file.contents)["observation_zones"] {
       write observation_zone["location"];
-      list<int> p <- observation_zone["location"]; // FIXME
-      point position <- point(to_GAMA_CRS({p[1], p[0]}, "WGS84"));
+      list<float> p <- observation_zone["location"];
+      point position <- convert_point(p);
       write position;
+
+      list<list<float>> vs <- observation_zone["verteces"];
+      list<point> verteces <- vs collect convert_point(each);
 
       create ObservationZone number: 1 with: [
         name :: string(observation_zone["label"]),
         location :: position,
-        fov :: polygon([position] + list<point>(observation_zone["verteces"]))
+        fov :: polygon([position] + verteces)
       ];
     }
 
@@ -70,6 +70,15 @@ global {
       output_file :: "../output/" + map_name + "/" + scenario_name
     ];
     file_writer <- first(fw);
+  }
+
+  /**
+   * Converts a point in WGS84 CRS into GAMA’s CRS.
+   * 
+   * @param p the WSG84 point to convert
+   */
+  point convert_point(list<float> p) {
+    return point(to_GAMA_CRS({p[1], p[0]}, "WGS84"));
   }
 
   /**
