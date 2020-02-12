@@ -4,15 +4,15 @@ import "Person.gaml"
 import "Observation Zone.gaml"
 
 species FileWriter {
-	string output_folder;
-  	string output_file;
+  string output_folder;
+  string output_file;
 
   map<float, map> _data;
-  
-  init {
-  	if(! file(output_folder).exists) {
-  		file f <- new_folder(output_folder);
-  	}
+
+  init { // FIXME
+//    if(!file(output_folder).exists) {
+//      file f <- new_folder(output_folder);
+//    }
   }
 
   action add_people(list<Person> people, string oz_name, float timestamp) {

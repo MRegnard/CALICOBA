@@ -15,7 +15,7 @@ global {
 
   int people_nb <- 1000 min: 0 max: 10000;
 
-  string map_name <- "UT3_extended" among: ["city", "UT3", "UT3_extended", "UT3_test"];
+  string map_name <- "UT3_test" among: ["city", "UT3", "UT3_extended", "UT3_test"];
   /** Shapefile of the buildings. */
   file _building_shapefile <- file("../includes/" + map_name + "/buildings.shp");
   /** Shapefile of the roads. */
