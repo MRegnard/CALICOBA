@@ -51,7 +51,8 @@ global {
 
     loop observation_zone over: map<string, list<map>>(_oz_file.contents)["observation_zones"] {
       write observation_zone["location"];
-      point position <- point(to_GAMA_CRS({observation_zone["location"][1], observation_zone["location"][0]}, "WGS84"));
+      list<int> p <- observation_zone["location"]; // FIXME
+      point position <- point(to_GAMA_CRS({p[1], p[0]}, "WGS84"));
       write position;
 
       create ObservationZone number: 1 with: [
