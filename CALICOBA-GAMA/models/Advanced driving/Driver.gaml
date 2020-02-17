@@ -7,10 +7,12 @@ species Driver skills: [advanced_driving] {
 
   reflex time_to_go when: final_target = nil {
     current_path <- compute_path(graph: world.road_network, target: one_of(RoadNode.population));
+    write name + " " + string(final_target) + " " + string(current_path);
   }
 
   reflex move when: final_target != nil {
     do drive();
+    write name + " " + string(location);
   }
 
   aspect car3D {
