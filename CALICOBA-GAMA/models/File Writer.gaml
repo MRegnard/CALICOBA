@@ -4,9 +4,16 @@ import "Person.gaml"
 import "Observation Zone.gaml"
 
 species FileWriter {
+  string output_directory;
   string output_file;
 
   map<float, map> _data;
+
+  init {
+    if (!folder_exists(output_directory)) {
+      file _ <- new_folder(output_directory);
+    }
+  }
 
   action add_people(list<Person> people, string oz_name, float timestamp) {
     if (!(_data contains_key timestamp)) {
@@ -34,7 +41,7 @@ species FileWriter {
       data[key] <+ ["timestamp" :: timestamp, "observation_zones" :: observation_zones];
     }
 
-    string file_name <- output_file + ".json";
+    string file_name <- output_directory + output_file + ".json";
     json_file f <- json_file(file_name, data);
     save f;
     write "Data saved to '" + file_name + "'";

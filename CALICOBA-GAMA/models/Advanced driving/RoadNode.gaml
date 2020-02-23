@@ -18,6 +18,5 @@ species RoadNode skills: [skill_road_node] {
       draw box(1, 1, 10) color: #black;
       draw sphere(5) at: {location.x, location.y, 12} color: empty(stop[0]) ? #green : #red;
     }
-    draw circle(5 °m) color: #black;
   }
 }

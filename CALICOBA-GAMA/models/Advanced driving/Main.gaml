@@ -3,8 +3,10 @@ model Main
 import "Road.gaml"
 import "RoadNode.gaml"
 import "Driver.gaml"
+import "Building.gaml"
 
 global {
+  file shape_file_buildings <- file("../../includes/UT3_directions/buildings.shp");
   file shape_file_roads <- file("../../includes/UT3_directions/roads.shp");
   file shape_file_nodes <- file("../../includes/UT3_directions/nodes.shp");
   geometry shape <- envelope(shape_file_roads);
@@ -12,6 +14,7 @@ global {
   int nb_people <- 1000;
 
   init {
+    create Building from: shape_file_buildings;
     create RoadNode from: shape_file_nodes with: [is_traffic_signal :: (string(read("type")) = "traffic_signals")];
     ask RoadNode.population where each.is_traffic_signal {
       self.stop << flip(0.5) ? self.roads_in : [];
@@ -43,7 +46,6 @@ global {
     map general_speed_map <- Road.population as_map (each :: (each.shape.perimeter / each.maxspeed));
     road_network <- as_driving_graph(Road.population, RoadNode.population) with_weights general_speed_map;
 
-    // 2 niveaux de paramètres : micro/macro
     create Driver number: nb_people {
       self.speed <- 30 °km / °h;
       self.vehicle_length <- 3 °m;

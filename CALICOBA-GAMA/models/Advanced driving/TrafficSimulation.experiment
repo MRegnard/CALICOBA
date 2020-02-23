@@ -4,6 +4,7 @@ experiment traffic_simulation model: "Main.gaml" type: gui {
       species Road aspect: geom refresh: false;
       species RoadNode aspect: geom3D;
       species Driver aspect: car3D;
+      species Building aspect: default;
     }
   }
 }
