@@ -1,5 +1,7 @@
 model RoadNode
 
+import "Main.gaml"
+
 species RoadNode skills: [skill_road_node] {
   bool is_traffic_signal;
   int time_to_change <- 100;
@@ -11,6 +13,10 @@ species RoadNode skills: [skill_road_node] {
       counter <- 0;
       stop[0] <- empty(stop[0]) ? roads_in : [];
     }
+  }
+
+  reflex count {
+    // TODO
   }
 
   aspect geom3D {

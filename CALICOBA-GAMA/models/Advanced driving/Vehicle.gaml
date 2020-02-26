@@ -2,7 +2,7 @@ model Driver
 
 import "Main.gaml"
 
-species Driver skills: [advanced_driving] {
+species Vehicle skills: [advanced_driving] {
   rgb color <- rnd_color(255);
 
   reflex time_to_go when: final_target = nil {
@@ -23,7 +23,9 @@ species Driver skills: [advanced_driving] {
 
   point compute_location {
     float val <- Road(current_road).lanes - current_lane + 0.5;
-    val <- on_linked_road ? -val : val;
+    if (on_linked_road) {
+      val <- -val;
+    }
     return location + {cos(heading + 90) * val, sin(heading + 90) * val};
   }
 }

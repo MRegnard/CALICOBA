@@ -1,0 +1,36 @@
+experiment "Generate data" model: "Main.gaml" type: gui {
+  parameter "Number of vehicles" var: vehicles_nb category: "Meta-parameters";
+
+  parameter "Proba lane change up (lower bound)" var: proba_lane_change_up_lower category: "Driving probabilities";
+  parameter "Proba lane change up (upper bound)" var: proba_lane_change_up_upper category: "Driving probabilities";
+  parameter "Proba lane change down (lower bound)" var: proba_lane_change_down_lower category: "Driving probabilities";
+  parameter "Proba lane change down (upper bound)" var: proba_lane_change_down_upper category: "Driving probabilities";
+  parameter "Proba respect priorities (lower bound)" var: proba_respect_priorities_lower category: "Driving probabilities";
+  parameter "Proba respect priorities (upper bound)" var: proba_respect_priorities_upper category: "Driving probabilities";
+  parameter "Proba respect stops (lower bound)" var: proba_respect_stops_lower category: "Driving probabilities";
+  parameter "Proba respect stops (upper bound)" var: proba_respect_stops_upper category: "Driving probabilities";
+  parameter "Proba block node (lower bound)" var: proba_block_node_lower category: "Driving probabilities";
+  parameter "Proba block node (upper bound)" var: proba_block_node_upper category: "Driving probabilities";
+  parameter "Proba use linked road (lower bound)" var: proba_use_linked_road_lower category: "Driving probabilities";
+  parameter "Proba use linked road (upper bound)" var: proba_use_linked_road_upper category: "Driving probabilities";
+
+  parameter "Security distance coeff (lower bound)" var: security_distance_coeff_lower category: "Physical driving parameters";
+  parameter "Security distance coeff (upper bound)" var: security_distance_coeff_upper category: "Physical driving parameters";
+  parameter "Max acceleration (lower bound)" var: max_acceleration_lower unit: "m/s²" category: "Physical driving parameters";
+  parameter "Max acceleration (upper bound)" var: max_acceleration_upper unit: "m/s²" category: "Physical driving parameters";
+  parameter "Speed coeff (lower bound)" var: speed_coeff_lower category: "Physical driving parameters";
+  parameter "Speed coeff (upper bound)" var: speed_coeff_upper category: "Physical driving parameters";
+
+  init {
+    world.generate_mode <- true;
+  }
+
+  output {
+    display Map type: opengl {
+      species Vehicle aspect: car3D;
+      species Road aspect: geom refresh: false;
+      species RoadNode aspect: geom3D;
+      species Building aspect: default refresh: false;
+    }
+  }
+}
