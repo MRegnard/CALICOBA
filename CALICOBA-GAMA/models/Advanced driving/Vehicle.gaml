@@ -2,15 +2,25 @@ model Driver
 
 import "Main.gaml"
 
-species Vehicle skills: [advanced_driving] {
+species Vehicle schedules: [] skills: [advanced_driving] {
   rgb color <- rnd_color(255);
+  RoadNode next_node;
 
   reflex time_to_go when: final_target = nil {
     current_path <- compute_path(graph: world.road_network, target: one_of(RoadNode.population));
+    next_node <- RoadNode(current_target);
   }
 
   reflex move when: final_target != nil {
     do drive();
+    if (next_node != current_target) {
+      if (next_node.is_traffic_counter) {
+        ask next_node {
+          do increase_count();
+        }
+      }
+      next_node <- RoadNode(current_target);
+    }
   }
 
   aspect car3D {

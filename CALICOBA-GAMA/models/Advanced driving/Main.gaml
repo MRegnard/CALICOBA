@@ -4,16 +4,24 @@ import "Road.gaml"
 import "RoadNode.gaml"
 import "Vehicle.gaml"
 import "Building.gaml"
+import "File Writer.gaml"
 
-global {
-  file shape_file_buildings <- file("../../includes/UT3_directions/buildings.shp");
-  file shape_file_roads <- file("../../includes/UT3_directions/roads.shp");
-  file shape_file_nodes <- file("../../includes/UT3_directions/nodes.shp");
+// FIXME schedules throws a NullPointerException
+global schedules: [world] + Vehicle + RoadNode + FileWriter {
+  string map_name <- "UT3_directions" among: ["UT3_directions"];
+  string scenario_name <- "test";
+
+  file shape_file_buildings <- file("../../includes/" + map_name + "/buildings.shp");
+  file shape_file_roads <- file("../../includes/" + map_name + "/roads.shp");
+  file shape_file_nodes <- file("../../includes/" + map_name + "/nodes.shp");
   geometry shape <- envelope(shape_file_roads);
   graph road_network;
 
+  bool initialized <- false;
+
   bool generate_mode;
   int vehicles_nb <- 1000 min: 1 max: 10000;
+  int save_interval <- 10 min: 1;
 
   float proba_lane_change_up_lower <- 0.0 min: 0.0 max: 1.0;
   float proba_lane_change_up_upper <- 1.0 min: 0.0 max: 1.0;
@@ -28,12 +36,14 @@ global {
   float proba_use_linked_road_lower <- 0.0 min: 0.0 max: 1.0;
   float proba_use_linked_road_upper <- 0.0 min: 0.0 max: 1.0;
 
-  float security_distance_coeff_lower <- 1.0;
-  float security_distance_coeff_upper <- 3.0;
-  float max_acceleration_lower <- 0.5;
-  float max_acceleration_upper <- 1.0;
-  float speed_coeff_lower <- 0.8;
-  float speed_coeff_upper <- 1.2;
+  float security_distance_coeff_lower <- 1.0 min: 0.0;
+  float security_distance_coeff_upper <- 3.0 min: 0.0;
+  float max_acceleration_lower <- 0.5 min: 0.0;
+  float max_acceleration_upper <- 1.0 min: 0.0;
+  float speed_coeff_lower <- 0.8 min: 0.0;
+  float speed_coeff_upper <- 1.2 min: 0.0;
+
+  FileWriter file_writer;
 
   init {
     create Building from: shape_file_buildings;
@@ -87,5 +97,48 @@ global {
       self.max_acceleration <- rnd(myself.max_acceleration_lower, myself.max_acceleration_upper) °m / (°s * °s);
       self.speed_coeff <- rnd(myself.speed_coeff_lower, myself.speed_coeff_upper);
     }
+
+    create FileWriter number: 1 returns: fw with: [
+      output_directory :: "../../output/" + map_name + "/",
+      output_file :: scenario_name + (generate_mode ? "" : "_simulated"),
+      save_interval :: save_interval
+    ];
+    file_writer <- first(fw);
+
+    write "Extracting counters…";
+    file counters_file <- json_file("../../includes/" + map_name + "/counters.json");
+
+    loop counter_location over: list<list<float>>(counters_file.contents["nodes"]) {
+      point p <- point(to_GAMA_CRS(point(counter_location), "WGS84"));
+      RoadNode n <- RoadNode(p);
+
+      n.is_traffic_counter <- true;
+      write "\t" + n.name + " set as counter.";
+    }
+    write "Done.";
+  }
+
+  reflex post_init when: not initialized {
+    if (not generate_mode) {
+      write "Extracting node data…";
+      file data_file <- json_file("../../includes/" + map_name + "/" + scenario_name + ".json");
+
+      loop entry over: list<map<string, unknown>>(data_file.contents["data"]) {
+        float timestamp <- float(entry["timestamp"]);
+
+        loop node over: list<map<string, unknown>>(entry["nodes"]) {
+          int people_nb <- int(node["people_nb"]);
+          point p <- point(to_GAMA_CRS(point(node["location"]), "WGS84"));
+          RoadNode n <- RoadNode(p);
+
+          if (n.is_traffic_counter) {
+            n.measures <+ timestamp :: people_nb;
+          }
+        }
+      }
+      write "Done.";
+    }
+
+    initialized <- true;
   }
 }

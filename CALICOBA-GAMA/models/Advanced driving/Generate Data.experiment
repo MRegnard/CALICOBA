@@ -1,18 +1,21 @@
 experiment "Generate data" model: "Main.gaml" type: gui {
+  parameter "Map name" var: map_name category: "Meta-parameters";
+  parameter "Scenario name" var: scenario_name category: "Meta-parameters";
   parameter "Number of vehicles" var: vehicles_nb category: "Meta-parameters";
+  parameter "Save interval" var: save_interval unit: "s" category: "Meta-parameters";
 
-  parameter "Proba lane change up (lower bound)" var: proba_lane_change_up_lower category: "Driving probabilities";
-  parameter "Proba lane change up (upper bound)" var: proba_lane_change_up_upper category: "Driving probabilities";
-  parameter "Proba lane change down (lower bound)" var: proba_lane_change_down_lower category: "Driving probabilities";
-  parameter "Proba lane change down (upper bound)" var: proba_lane_change_down_upper category: "Driving probabilities";
-  parameter "Proba respect priorities (lower bound)" var: proba_respect_priorities_lower category: "Driving probabilities";
-  parameter "Proba respect priorities (upper bound)" var: proba_respect_priorities_upper category: "Driving probabilities";
-  parameter "Proba respect stops (lower bound)" var: proba_respect_stops_lower category: "Driving probabilities";
-  parameter "Proba respect stops (upper bound)" var: proba_respect_stops_upper category: "Driving probabilities";
-  parameter "Proba block node (lower bound)" var: proba_block_node_lower category: "Driving probabilities";
-  parameter "Proba block node (upper bound)" var: proba_block_node_upper category: "Driving probabilities";
-  parameter "Proba use linked road (lower bound)" var: proba_use_linked_road_lower category: "Driving probabilities";
-  parameter "Proba use linked road (upper bound)" var: proba_use_linked_road_upper category: "Driving probabilities";
+  parameter "Proba lane change up (lower bound)" var: proba_lane_change_up_lower slider: false category: "Driving probabilities";
+  parameter "Proba lane change up (upper bound)" var: proba_lane_change_up_upper slider: false category: "Driving probabilities";
+  parameter "Proba lane change down (lower bound)" var: proba_lane_change_down_lower slider: false category: "Driving probabilities";
+  parameter "Proba lane change down (upper bound)" var: proba_lane_change_down_upper slider: false category: "Driving probabilities";
+  parameter "Proba respect priorities (lower bound)" var: proba_respect_priorities_lower slider: false category: "Driving probabilities";
+  parameter "Proba respect priorities (upper bound)" var: proba_respect_priorities_upper slider: false category: "Driving probabilities";
+  parameter "Proba respect stops (lower bound)" var: proba_respect_stops_lower slider: false category: "Driving probabilities";
+  parameter "Proba respect stops (upper bound)" var: proba_respect_stops_upper slider: false category: "Driving probabilities";
+  parameter "Proba block node (lower bound)" var: proba_block_node_lower slider: false category: "Driving probabilities";
+  parameter "Proba block node (upper bound)" var: proba_block_node_upper slider: false category: "Driving probabilities";
+  parameter "Proba use linked road (lower bound)" var: proba_use_linked_road_lower slider: false category: "Driving probabilities";
+  parameter "Proba use linked road (upper bound)" var: proba_use_linked_road_upper slider: false category: "Driving probabilities";
 
   parameter "Security distance coeff (lower bound)" var: security_distance_coeff_lower category: "Physical driving parameters";
   parameter "Security distance coeff (upper bound)" var: security_distance_coeff_upper category: "Physical driving parameters";

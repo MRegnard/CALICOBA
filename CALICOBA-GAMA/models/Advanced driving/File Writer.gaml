@@ -2,11 +2,15 @@ model FileWriter
 
 import "Vehicle.gaml"
 
-species FileWriter {
+species FileWriter schedules: [] {
   string output_directory;
   string output_file;
 
-  map<float, map> _data;
+  float save_interval <- 10 °s;
+  float _last_dump <- 0.0 °s;
+  float _next_dump -> { _last_dump + save_interval };
+
+  map<float, map<point, int>> _data;
 
   init {
     if (!folder_exists(output_directory)) {
@@ -14,15 +18,19 @@ species FileWriter {
     }
   }
 
-  action add_people(list<Vehicle> drivers, string node_name, float timestamp) {
-    if (!(_data contains_key timestamp)) {
-      _data[timestamp] <- [];
+  action add_people(int vehicle_count, point node_location) {
+    if (!(_data contains_key _next_dump)) {
+      _data[_next_dump] <- [];
     }
-    _data[timestamp] <+ node_name :: length(drivers);
+    if (!(_data[_next_dump] contains_key node_location)) {
+      _data[_next_dump][node_location] <- 0;
+    }
+    _data[_next_dump][node_location] <- _data[_next_dump][node_location] + vehicle_count;
   }
 
-  action dump {
+  reflex dump when: world.time >= _next_dump {
     do _dump_json();
+    _last_dump <- world.time;
   }
 
   action _dump_json {
@@ -32,12 +40,12 @@ species FileWriter {
     loop entry over: _data.pairs {
       float timestamp <- entry.key;
       map value <- entry.value;
-      list observation_zones <- [];
+      list nodes <- [];
 
       loop entry2 over: value.pairs {
-        observation_zones <+ ["label" :: entry2.key, "people" :: entry2.value];
+        nodes <+ ["location" :: string(entry2.key), "people_nb" :: entry2.value];
       }
-      data[key] <+ ["timestamp" :: timestamp, "observation_zones" :: observation_zones];
+      data[key] <+ ["timestamp" :: timestamp, "nodes" :: nodes];
     }
 
     string file_name <- output_directory + output_file + ".json";

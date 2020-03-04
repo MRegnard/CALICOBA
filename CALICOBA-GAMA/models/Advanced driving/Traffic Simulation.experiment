@@ -1,5 +1,8 @@
 experiment "Generate data" model: "Main.gaml" type: gui {
+  parameter "Map name" var: map_name category: "Meta-parameters";
+  parameter "Scenario name" var: scenario_name category: "Meta-parameters";
   parameter "Number of vehicles" var: vehicles_nb category: "Meta-parameters";
+  parameter "Save interval" var: save_interval unit: "s" category: "Meta-parameters";
 
   init {
     world.generate_mode <- false;
