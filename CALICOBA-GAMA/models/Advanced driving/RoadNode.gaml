@@ -40,7 +40,10 @@ species RoadNode schedules: [] skills: [skill_road_node] {
       draw sphere(5) at: {location.x, location.y, 12} color: empty(stop[0]) ? #green : #red;
     }
     if (is_traffic_counter) {
-      draw circle(5) color: #blue;
+      draw circle(3) color: #blue;
+    }
+    else {
+      draw circle(3) color: #black;
     }
   }
 }

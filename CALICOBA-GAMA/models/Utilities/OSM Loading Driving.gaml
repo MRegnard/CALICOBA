@@ -102,14 +102,14 @@ global {
 
     write "node agents filtered";
 
-    save Road type: shp to: "../../includes/" + directory + "/roads.shp" with: [
-      lanes :: "lanes",
-      maxspeed :: "maxspeed",
-      oneway :: "oneway"
+    save Road type: shp to: "../../includes/" + directory + "/roads.shp" attributes: [
+      "lanes" :: self.lanes,
+      "maxspeed" :: maxspeed,
+      "oneway" :: oneway
     ];
-    save Intersection type: shp to: "../../includes/" + directory + "/nodes.shp" with: [
-      type :: "type",
-      crossing :: "crossing"
+    save Intersection type: shp to: "../../includes/" + directory + "/nodes.shp" attributes: [
+      "type" :: type,
+      "crossing" :: crossing
     ];
     write "road and node shapefile saved";
   }

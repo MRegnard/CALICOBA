@@ -6,8 +6,7 @@ import "Vehicle.gaml"
 import "Building.gaml"
 import "File Writer.gaml"
 
-// FIXME schedules throws a NullPointerException
-global schedules: [world] + Vehicle + RoadNode + FileWriter {
+global {
   string map_name <- "UT3_directions" among: ["UT3_directions"];
   string scenario_name <- "test";
 
@@ -98,13 +97,6 @@ global schedules: [world] + Vehicle + RoadNode + FileWriter {
       self.speed_coeff <- rnd(myself.speed_coeff_lower, myself.speed_coeff_upper);
     }
 
-    create FileWriter number: 1 returns: fw with: [
-      output_directory :: "../../output/" + map_name + "/",
-      output_file :: scenario_name + (generate_mode ? "" : "_simulated"),
-      save_interval :: save_interval
-    ];
-    file_writer <- first(fw);
-
     write "Extracting counters…";
     file counters_file <- json_file("../../includes/" + map_name + "/counters.json");
 
@@ -119,6 +111,13 @@ global schedules: [world] + Vehicle + RoadNode + FileWriter {
   }
 
   reflex post_init when: not initialized {
+    create FileWriter number: 1 returns: fw with: [
+      output_directory :: "../../output/" + map_name + "/",
+      output_file :: scenario_name + (generate_mode ? "" : "_simulated"),
+      save_interval :: save_interval
+    ];
+    file_writer <- first(fw);
+
     if (not generate_mode) {
       write "Extracting node data…";
       file data_file <- json_file("../../includes/" + map_name + "/" + scenario_name + ".json");
@@ -142,3 +141,5 @@ global schedules: [world] + Vehicle + RoadNode + FileWriter {
     initialized <- true;
   }
 }
+
+species Scheduler schedules: Vehicle + RoadNode + FileWriter {}

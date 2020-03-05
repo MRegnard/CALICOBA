@@ -13,7 +13,7 @@ species Vehicle schedules: [] skills: [advanced_driving] {
 
   reflex move when: final_target != nil {
     do drive();
-    if (next_node != current_target) {
+    if (next_node != RoadNode(current_target)) {
       if (next_node.is_traffic_counter) {
         ask next_node {
           do increase_count();
