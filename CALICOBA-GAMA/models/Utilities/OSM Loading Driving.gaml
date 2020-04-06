@@ -25,7 +25,7 @@ global {
   ];
 
   //OSM file to load
-  file<geometry> osmfile <-  osm_file("../../includes/" + directory + "/" + osm_file_name + ".osm.pbf", filtering);
+  file<geometry> osmfile <- osm_file("../../includes/" + directory + "/" + osm_file_name + ".osm.pbf", filtering);
 
   geometry shape <- envelope(osmfile);
   graph the_graph; 
@@ -39,6 +39,7 @@ global {
       if (shape covers geom) {
         string highway_str <- string(geom get "highway");
         string bus_str <- string(geom get "bus");
+        string building_str <- string(geom get "building");
 
         if (length(geom.points) = 1) {
           if (highway_str != nil) {
@@ -73,7 +74,12 @@ global {
               self.maxspeed <- DEFAULT_MAX_SPEED;
             }
           }
-        }  
+        }
+        else if (building_str != nil) {
+          create Building with: [
+            type :: building_str
+          ];
+        }
       }
     }
     write "Road and node agents created";
@@ -111,6 +117,9 @@ global {
       "type" :: type,
       "crossing" :: crossing
     ];
+    save Building type: shp to: "../../includes/" + directory + "/buildings.shp" attributes: [
+      "type" :: type
+    ];
     write "road and node shapefile saved";
   }
 }
@@ -136,12 +145,21 @@ species Intersection {
   }
 }
 
+species Building {
+  string type;
+
+  aspect base {
+    draw shape color: rgb(200, 200, 200);
+  }
+}
+
 experiment "From OSM to shapefiles" type: gui {
   output {
     display Map type: opengl {
       graphics World {
         draw world.shape.contour;
       }
+      species Building aspect: base refresh: false;
       species Road aspect: base_ligne  refresh: false;
       species Intersection aspect: base refresh: false;
     }

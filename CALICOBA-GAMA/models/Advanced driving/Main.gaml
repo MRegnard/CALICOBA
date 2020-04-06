@@ -97,6 +97,12 @@ global {
       self.speed_coeff <- rnd(myself.speed_coeff_lower, myself.speed_coeff_upper);
     }
 
+    create FileWriter number: 1 returns: fw with: [
+      output_directory :: "../../output/" + map_name + "/",
+      save_interval :: save_interval
+    ];
+    file_writer <- first(fw);
+
     write "Extracting counters…";
     file counters_file <- json_file("../../includes/" + map_name + "/counters.json");
 
@@ -110,13 +116,12 @@ global {
     write "Done.";
   }
 
+  /**
+   * Reflex needed to use the correct value of the generate_mode variable, set in experiments.
+   * It is executed only once, right after the init function.
+   */
   reflex post_init when: not initialized {
-    create FileWriter number: 1 returns: fw with: [
-      output_directory :: "../../output/" + map_name + "/",
-      output_file :: scenario_name + (generate_mode ? "" : "_simulated"),
-      save_interval :: save_interval
-    ];
-    file_writer <- first(fw);
+    file_writer.output_file <- scenario_name + (generate_mode ? "" : "_simulated");
 
     if (not generate_mode) {
       write "Extracting node data…";
@@ -142,4 +147,6 @@ global {
   }
 }
 
+// Schedule cannot be set on global anymore.
+// World is always executed first.
 species Scheduler schedules: Vehicle + RoadNode + FileWriter {}

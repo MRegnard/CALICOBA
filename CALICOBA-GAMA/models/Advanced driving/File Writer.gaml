@@ -7,7 +7,7 @@ species FileWriter schedules: [] {
   string output_file;
 
   float save_interval <- 10 °s;
-  float _last_dump <- 0.0 °s;
+  float _last_dump <- 0 °s;
   float _next_dump -> { _last_dump + save_interval };
 
   map<float, map<point, int>> _data;
