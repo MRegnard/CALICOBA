@@ -109,7 +109,7 @@ global {
     write "node agents filtered";
 
     save Road type: shp to: "../../includes/" + directory + "/roads.shp" attributes: [
-      "lanes" :: self.lanes,
+      "lanes" :: lanes,
       "maxspeed" :: maxspeed,
       "oneway" :: oneway
     ];
