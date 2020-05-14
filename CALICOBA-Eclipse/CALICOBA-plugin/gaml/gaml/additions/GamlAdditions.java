@@ -63,8 +63,8 @@ public class GamlAdditions extends AbstractGamlAdditions {
 _symbol(S("calicoba_step"),fr.irit.smac.calicoba.gaml.StepStatement.class,2,F,F,T,F,F,F,AS,I(3,11,6),null,(String)null,(x)->new fr.irit.smac.calicoba.gaml.StepStatement(x));
 _symbol(S("calicoba_setup"),fr.irit.smac.calicoba.gaml.SetupCalicobaStatement.class,2,F,F,T,F,F,F,AS,I(3,11,6),null,(String)null,(x)->new fr.irit.smac.calicoba.gaml.SetupCalicobaStatement(x));
 }public void initializeAction() throws SecurityException, NoSuchMethodException {
-_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("getParameterAction",SC));
 _action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"model_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("init",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("getParameterAction",SC));
 _action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.ReferenceSystemSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"system_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.ReferenceSystemSkill.class.getMethod("init",SC));
 }public void initializeSkill()  {
 _skill("calicoba_target_model",fr.irit.smac.calicoba.gaml.TargetModelSkill.class,AS);
