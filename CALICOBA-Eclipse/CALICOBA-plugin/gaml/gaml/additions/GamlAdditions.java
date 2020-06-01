@@ -56,18 +56,35 @@ import static msi.gama.common.interfaces.IKeyword.*;
 
 public class GamlAdditions extends AbstractGamlAdditions {
 	public void initialize() throws SecurityException, NoSuchMethodException {
-	initializeSymbol();
+	initializeType();
+	initializeVars();
 	initializeAction();
 	initializeSkill();
-}public void initializeSymbol()  {
-_symbol(S("calicoba_step"),fr.irit.smac.calicoba.gaml.StepStatement.class,2,F,F,T,F,F,F,AS,I(3,11,6),null,(String)null,(x)->new fr.irit.smac.calicoba.gaml.StepStatement(x));
-_symbol(S("calicoba_setup"),fr.irit.smac.calicoba.gaml.SetupCalicobaStatement.class,2,F,F,T,F,F,F,AS,I(3,11,6),null,(String)null,(x)->new fr.irit.smac.calicoba.gaml.SetupCalicobaStatement(x));
+}public void initializeType()  {
+_type("parameter_context",new fr.irit.smac.calicoba.gaml.ParameterAgentContextType(),50,102,fr.irit.smac.calicoba.mas.agents.ParameterAgentContext.class);
+_type("triplet",new fr.irit.smac.calicoba.gaml.TripletType(),52,102,fr.irit.smac.util.Triplet.class);
+_type("parameter_memory_entry",new fr.irit.smac.calicoba.gaml.ParameterAgentMemoryEntryType(),51,102,fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry.class);
+}public void initializeVars()  {
+_field(fr.irit.smac.util.Triplet.class,_proto("first",(s, v)->((fr.irit.smac.util.Triplet)v).getFirst(),0,fr.irit.smac.util.Triplet.class,0,0,0));
+_field(fr.irit.smac.util.Triplet.class,_proto("second",(s, v)->((fr.irit.smac.util.Triplet)v).getSecond(),0,fr.irit.smac.util.Triplet.class,0,0,0));
+_field(fr.irit.smac.util.Triplet.class,_proto("third",(s, v)->((fr.irit.smac.util.Triplet)v).getThird(),0,fr.irit.smac.util.Triplet.class,0,0,0));
+_field(fr.irit.smac.calicoba.mas.agents.ParameterAgentContext.class,_proto("measures",(s, v)->((fr.irit.smac.calicoba.mas.agents.ParameterAgentContext)v).getMeasuresValues(),10,fr.irit.smac.calicoba.mas.agents.ParameterAgentContext.class,10,0,0));
+_field(fr.irit.smac.calicoba.mas.agents.ParameterAgentContext.class,_proto("parameters",(s, v)->((fr.irit.smac.calicoba.mas.agents.ParameterAgentContext)v).getParametersValues(),10,fr.irit.smac.calicoba.mas.agents.ParameterAgentContext.class,10,0,0));
+_field(fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry.class,_proto("action",(s, v)->((fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry)v).getAction(),2,fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry.class,2,0,0));
+_field(fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry.class,_proto("objectives_variations",(s, v)->((fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry)v).getObjectivesVariations(),10,fr.irit.smac.calicoba.mas.agents.ParameterAgentMemoryEntry.class,10,0,0));
 }public void initializeAction() throws SecurityException, NoSuchMethodException {
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(fr.irit.smac.util.Triplet.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("getParameterAction",SC));
 _action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"model_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("init",SC));
-_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("getParameterAction",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.TargetModelSkill) t).getAgentMemory(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_agent_memory",TYPE,Ti(GM),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.TargetModelSkill.class.getMethod("getAgentMemory",SC));
 _action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.ReferenceSystemSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"system_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.ReferenceSystemSkill.class.getMethod("init",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.GlobalSkill) t).getObjective(s),desc(PRIM,new Children(desc(ARG,NAME,"objective_name",TYPE,"4","optional",FALSE)),NAME,"get_objective",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.GlobalSkill.class.getMethod("getObjective",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.GlobalSkill) t).init(s);return null;},desc(PRIM,new Children(desc(ARG,NAME,"step_interval",TYPE,"1","optional",FALSE)),NAME,"calicoba_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.GlobalSkill.class.getMethod("init",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.GlobalSkill) t).getObjectives(s),desc(PRIM,new Children(),NAME,"get_objectives",TYPE,Ti(GM),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.GlobalSkill.class.getMethod("getObjectives",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.GlobalSkill) t).setup(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_setup",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.GlobalSkill.class.getMethod("setup",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.GlobalSkill) t).step(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_step",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.GlobalSkill.class.getMethod("step",SC));
 }public void initializeSkill()  {
 _skill("calicoba_target_model",fr.irit.smac.calicoba.gaml.TargetModelSkill.class,AS);
 _skill("calicoba_reference_system",fr.irit.smac.calicoba.gaml.ReferenceSystemSkill.class,AS);
+_skill("calicoba",fr.irit.smac.calicoba.gaml.GlobalSkill.class,AS);
 }
 }

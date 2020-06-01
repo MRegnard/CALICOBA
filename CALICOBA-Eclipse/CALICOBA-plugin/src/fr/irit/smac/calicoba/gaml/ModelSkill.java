@@ -1,6 +1,5 @@
 package fr.irit.smac.calicoba.gaml;
 
-import fr.irit.smac.calicoba.mas.Calicoba;
 import msi.gama.runtime.IScope;
 import msi.gama.runtime.exceptions.GamaRuntimeException;
 import msi.gaml.skills.Skill;
@@ -24,9 +23,6 @@ public abstract class ModelSkill extends Skill {
    * Initializes this skill and CALICOBA if it is not already.
    */
   public void init() {
-    if (!Calicoba.isInitialized()) {
-      Calicoba.init();
-    }
     this.initialized = true;
   }
 

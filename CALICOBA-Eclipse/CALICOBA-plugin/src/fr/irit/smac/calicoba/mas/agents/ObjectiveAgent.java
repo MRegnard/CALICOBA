@@ -96,4 +96,11 @@ public class ObjectiveAgent extends Agent {
   public double getCriticality() {
     return this.criticality;
   }
+
+  /**
+   * @return The name of this agent.
+   */
+  public String getName() {
+    return this.observationAgent.getAttributeName();
+  }
 }

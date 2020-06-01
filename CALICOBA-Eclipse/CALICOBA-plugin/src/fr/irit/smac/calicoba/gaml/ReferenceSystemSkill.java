@@ -19,7 +19,10 @@ import msi.gama.util.IMap;
  * 
  * @author Damien Vergnet
  */
-@skill(name = "calicoba_reference_system", doc = @doc("Skill for the CALICOBA reference system."))
+@skill( //
+    name = ICustomSymbols.REFERENCE_SYSTEM_SKILL, //
+    doc = @doc("Skill for the CALICOBA reference system.") //
+)
 public class ReferenceSystemSkill extends ModelSkill {
   /**
    * Initializes this skill. Gets all attributes of the current GAMA agent whose
@@ -28,7 +31,10 @@ public class ReferenceSystemSkill extends ModelSkill {
    * 
    * @param scope The current scope.
    */
-  @action(name = "system_init", doc = @doc("Initializes the <code>reference_system</code> skill."))
+  @action( //
+      name = ICustomSymbols.REFERENCE_SYSTEM_INIT, //
+      doc = @doc("Initializes the <code>" + ICustomSymbols.REFERENCE_SYSTEM_SKILL + "</code> skill.") //
+  )
   public void init(final IScope scope) {
     super.init();
 

@@ -48,11 +48,6 @@ public class ReadableAgentAttribute<T> {
    */
   @SuppressWarnings("unchecked")
   public T getValue() {
-    // DEBUG
-    System.out.println(this.getName());
-    System.out.println(this.agent.hasAttribute(this.getName()));
-    System.out.println(this.agent.getAttribute(this.getName()));
-    // FIXME returns 0 if attribute declared using "->" operator
     return (T) this.agent.getAttribute(this.getName());
   }
 

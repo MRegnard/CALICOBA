@@ -1,7 +1,17 @@
 package fr.irit.smac.calicoba.mas.agents;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+
+import msi.gama.common.interfaces.IValue;
+import msi.gama.precompiler.GamlAnnotations.doc;
+import msi.gama.precompiler.GamlAnnotations.getter;
+import msi.gama.precompiler.GamlAnnotations.variable;
+import msi.gama.precompiler.GamlAnnotations.vars;
+import msi.gama.runtime.IScope;
+import msi.gama.runtime.exceptions.GamaRuntimeException;
+import msi.gaml.types.IType;
 
 /**
  * The context of a Parameter agent is composed of all measure and parameter
@@ -9,7 +19,15 @@ import java.util.Map;
  * 
  * @author Damien Vergnet
  */
-public class ParameterAgentContext {
+@vars({
+    @variable(name = ParameterAgentContext.MEASURES, type = IType.MAP),
+    @variable(name = ParameterAgentContext.PARAMETERS, type = IType.MAP),
+})
+@doc("A context is a snapshot of the inputs/outputs of the target model at a given time.")
+public class ParameterAgentContext implements IValue {
+  public static final String MEASURES = "measures";
+  public static final String PARAMETERS = "parameters";
+
   private final Map<String, Double> measuresValues;
   private final Map<String, Double> parametersValues;
 
@@ -22,6 +40,16 @@ public class ParameterAgentContext {
   public ParameterAgentContext(final Map<String, Double> measuresValues, final Map<String, Double> parametersValues) {
     this.measuresValues = Collections.unmodifiableMap(measuresValues);
     this.parametersValues = Collections.unmodifiableMap(parametersValues);
+  }
+
+  @getter(MEASURES)
+  public Map<String, Double> getMeasuresValues() {
+    return new HashMap<>(this.measuresValues);
+  }
+
+  @getter(PARAMETERS)
+  public Map<String, Double> getParametersValues() {
+    return new HashMap<>(this.parametersValues);
   }
 
   /**
@@ -45,12 +73,12 @@ public class ParameterAgentContext {
   }
 
   /**
-   * Computes the similarity with the given context.
+   * Computes the distance te the given context.
    * 
-   * @param other The context to compute the similarity with.
-   * @return The similarity measure.
+   * @param other The context to compute the distance with.
+   * @return The distance.
    */
-  public double similarity(ParameterAgentContext other) {
+  public double distance(ParameterAgentContext other) {
     double distance = 0;
 
     distance += other.measuresValues.entrySet().stream() //
@@ -81,5 +109,21 @@ public class ParameterAgentContext {
 
     ParameterAgentContext other = (ParameterAgentContext) obj;
     return this.measuresValues.equals(other.measuresValues) && this.parametersValues.equals(other.parametersValues);
+  }
+
+  @Override
+  public String toString() {
+    return String.format("Context{measures=%s,parameters=%s}", this.measuresValues, this.parametersValues);
+  }
+
+  @Override
+  public String stringValue(final IScope scope) throws GamaRuntimeException {
+    return this.toString();
+  }
+
+  @Override
+  public IValue copy(final IScope scope) throws GamaRuntimeException {
+    // TODO Auto-generated method stub
+    return null;
   }
 }

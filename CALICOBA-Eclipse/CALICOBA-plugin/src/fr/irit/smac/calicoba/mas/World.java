@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 import fr.irit.smac.calicoba.mas.agents.Agent;
+import fr.irit.smac.util.Logger;
 
 /**
  * The world within which agents live and behave.
@@ -27,11 +28,18 @@ public class World {
   /** Agents scheduling order. */
   private List<Class<? extends Agent>> customSchedule;
 
+  /** Number of GAMA iterations between each step. */
+  private final int stepInterval;
+  /** Number of remaining steps until the next iteration. */
+  private int stepCountdown;
+
   /**
    * Creates an empty world with creation order scheduling.
+   * 
+   * @param stepInterval The number of GAMA iterations between each step.
    */
-  public World() {
-    this(null);
+  public World(int stepInterval) {
+    this(null, stepInterval);
   }
 
   /**
@@ -40,14 +48,19 @@ public class World {
    * @param customSchedule A list defining the order in which each agent type has
    *                       to be executed. Only works if first argument is equal
    *                       to {@link SchedulingType#TYPE}.
+   * @param stepInterval   The number of GAMA iterations between each step.
    */
-  protected World(List<Class<? extends Agent>> customSchedule) {
+  protected World(List<Class<? extends Agent>> customSchedule, int stepInterval) {
+    Logger.info("Creating World…");
     this.globalIds = new HashMap<>();
     this.orderedAgents = new LinkedList<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
 
     this.customSchedule = customSchedule != null ? Collections.unmodifiableList(customSchedule) : null;
+    this.stepInterval = stepInterval;
+    this.stepCountdown = 0;
+    Logger.info("World created.");
   }
 
   /**
@@ -109,21 +122,29 @@ public class World {
 
   /**
    * Runs the simulation for 1 step. If a custom schedule has been set, for each
-   * agent type, all agents of said type perceive their environment then decides
-   * and acts. Otherwise, all agents (in creation order) perceive their
-   * environment then they decide and act.
+   * agent type, all agents of said type perceive their environment then decide
+   * and act. Otherwise, all agents (in creation order) perceive their environment
+   * then they decide and act.
    */
   public void step() {
-    if (this.customSchedule == null) {
-      this.orderedAgents.forEach(Agent::perceive);
-      this.orderedAgents.forEach(Agent::decideAndAct);
+    if (this.stepCountdown == 0) {
+      Logger.info("Executing agents…");
+      if (this.customSchedule == null) {
+        this.orderedAgents.forEach(Agent::perceive);
+        this.orderedAgents.forEach(Agent::decideAndAct);
+      }
+      else {
+        this.customSchedule.forEach(type -> {
+          List<Agent> agents = this.agentsRegistry.get(type);
+          agents.forEach(Agent::perceive);
+          agents.forEach(Agent::decideAndAct);
+        });
+      }
+      this.stepCountdown = this.stepInterval;
     }
     else {
-      this.customSchedule.forEach(type -> {
-        List<Agent> agents = this.agentsRegistry.get(type);
-        agents.forEach(Agent::perceive);
-        agents.forEach(Agent::decideAndAct);
-      });
+      this.stepCountdown--;
+      Logger.info(String.format("Waiting. %d steps remaining.", this.stepCountdown));
     }
   }
 }

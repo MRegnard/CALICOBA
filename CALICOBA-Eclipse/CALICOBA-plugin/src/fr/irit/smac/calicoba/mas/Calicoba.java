@@ -11,6 +11,7 @@ import fr.irit.smac.calicoba.mas.agents.MeasureAgent;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationAgent;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
+import fr.irit.smac.util.Logger;
 
 /**
  * Main class of CALICOBA.
@@ -32,9 +33,11 @@ public class Calicoba {
 
   /**
    * Initializes CALICOBA.
+   * 
+   * @param stepInterval The number of GAMA iterations between each step.
    */
-  public static void init() {
-    instance = new Calicoba();
+  public static void init(int stepInterval) {
+    instance = new Calicoba(stepInterval);
   }
 
   /**
@@ -57,10 +60,13 @@ public class Calicoba {
 
   /**
    * Creates a new instance of CALICOBA.
+   * 
+   * @param stepInterval The number of GAMA iterations between each step.
    */
-  private Calicoba() {
+  private Calicoba(int stepInterval) {
     this.world = new World(
-        Arrays.asList(MeasureAgent.class, ObservationAgent.class, ObjectiveAgent.class, ParameterAgent.class));
+        Arrays.asList(MeasureAgent.class, ObservationAgent.class, ObjectiveAgent.class, ParameterAgent.class),
+        stepInterval);
   }
 
   /**
@@ -70,6 +76,7 @@ public class Calicoba {
    * @param isFloat   Wether the parameter is a float or an int.
    */
   public void addParameter(WritableAgentAttribute<Double> parameter, boolean isFloat) {
+    Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
     this.world.addAgent(new ParameterAgent(parameter, isFloat));
   }
 
@@ -79,6 +86,7 @@ public class Calicoba {
    * @param measure An output of the target model.
    */
   public void addMeasure(ReadableAgentAttribute<Double> measure) {
+    Logger.info(String.format("Creating measure \"%s\".", measure.getName()));
     this.world.addAgent(new MeasureAgent(measure));
   }
 
@@ -88,6 +96,7 @@ public class Calicoba {
    * @param observation An output of the reference system.
    */
   public void addObservation(ReadableAgentAttribute<Double> observation) {
+    Logger.info(String.format("Creating observation \"%s\".", observation.getName()));
     this.world.addAgent(new ObservationAgent(observation));
   }
 
@@ -96,14 +105,16 @@ public class Calicoba {
    * needed and adds them to the world.
    */
   public void setup() {
-    // DEBUG
-    System.out.println("Calicoba.setup");
+    Logger.info("Setting up CALICOBA…");
     Map<String, ObservationAgent> observationAgents = this.world.getAgentsForType(ObservationAgent.class).stream()
         .collect(Collectors.toMap(ObservationAgent::getAttributeName, Function.identity()));
 
     for (MeasureAgent measureAgent : this.world.getAgentsForType(MeasureAgent.class)) {
       ObservationAgent obsAgent = observationAgents.get(measureAgent.getAttributeName());
       ObjectiveAgent objAgent = new ObjectiveAgent(measureAgent, obsAgent);
+
+      Logger.info(String.format("Creating objective for measure \"%s\" and observation \"%s\".",
+          measureAgent.getAttributeName(), obsAgent.getAttributeName()));
 
       obsAgent.addTargetAgent(objAgent);
       measureAgent.addTargetAgent(objAgent);
@@ -114,6 +125,8 @@ public class Calicoba {
         objAgent.addParameterAgent(a);
       });
     }
+
+    Logger.info("CALICOBA set up finished.");
   }
 
   /**
