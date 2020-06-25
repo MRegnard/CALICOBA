@@ -29,8 +29,8 @@ experiment "Generate data" model: "Main.gaml" type: gui {
   }
 
   output {
-    display Map type: java2D {
-      species Vehicle aspect: car2D;
+    display Map type: opengl {
+      species Vehicle aspect: car3D;
       species Road aspect: geom refresh: false;
       species RoadNode aspect: geom3D;
       species Building aspect: default refresh: false;
