@@ -14,11 +14,6 @@ import fr.irit.smac.calicoba.mas.Message;
  * @author Damien Vergnet
  */
 public abstract class ValueReaderAgent extends AgentWithAttribute<ReadableAgentAttribute<Double>> {
-  /**
-   * The cached value of the attribute. Necessary to store the value between
-   * perceive and act phases.
-   */
-  private double cachedAttributeValue;
   /** The list of agents to send the attribute value. */
   private List<Agent> targetAgents;
 
@@ -33,21 +28,12 @@ public abstract class ValueReaderAgent extends AgentWithAttribute<ReadableAgentA
   }
 
   /**
-   * Reads the value of the associated attribute.
-   */
-  @Override
-  public void perceive() {
-    super.perceive();
-    this.cachedAttributeValue = this.getGamaAttribute().getValue();
-  }
-
-  /**
    * Sends a message containing the read attribute value to all target agents.
    */
   @Override
   public void decideAndAct() {
     super.decideAndAct();
-    Message message = new FloatValueMessage(this, this.cachedAttributeValue);
+    Message message = new FloatValueMessage(this, this.getAttributeValue());
     this.allTargetAgents().forEachRemaining(a -> a.sendMessage(message));
   }
 

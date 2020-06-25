@@ -19,5 +19,7 @@ public interface ICustomSymbols {
   String TARGET_MODEL_SKILL = "calicoba_target_model";
   String TARGET_MODEL_INIT = "model_init";
   String TARGET_MODEL_GET_PARAM_ACTION = "get_parameter_action";
-  String GET_AGENT_MEMORY = "get_agent_memory";
+  String GET_PARAMETER_MEMORY = "get_parameter_memory";
+  String GET_PARAMETER_SELECTION = "get_parameter_selection";
+  String GET_PARAMETER_ACTION_DISTANCE = "get_parameter_action_distance";
 }

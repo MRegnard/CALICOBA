@@ -56,4 +56,11 @@ species Vehicle schedules: [] skills: [advanced_driving] {
       draw triangle(0.5) depth: 1.5 at: loc rotate: heading + 90 color: color;
     }
   }
+
+  aspect car2D {
+    if (current_road != nil) {
+      point loc <- compute_location();
+      draw triangle(0.5) depth: 1.5 at: loc rotate: heading + 90 color: color;
+    }
+  }
 }

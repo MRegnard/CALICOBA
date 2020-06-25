@@ -73,22 +73,63 @@ public class ParameterAgentContext implements IValue {
   }
 
   /**
-   * Computes the distance te the given context.
+   * Computes the distance to the given context based on the given maps. These
+   * maps should contain the same keys.
    * 
-   * @param other The context to compute the distance with.
+   * @param map1 The first map.
+   * @param map2 The second map.
+   * @param mins A map containing the all-time minimum value for each measure.
+   * @param maxs A map containing the all-time maximum value for each measure.
    * @return The distance.
    */
-  public double distance(ParameterAgentContext other) {
+  private double distance(Map<String, Double> map1, Map<String, Double> map2, Map<String, Double> mins,
+      Map<String, Double> maxs) {
     double distance = 0;
 
-    distance += other.measuresValues.entrySet().stream() //
-        .mapToDouble(e -> Math.pow(e.getValue() - this.measuresValues.get(e.getKey()), 2)) //
-        .reduce(Double::sum).getAsDouble();
-    distance += other.parametersValues.entrySet().stream()
-        .mapToDouble(e -> Math.pow(e.getValue() - this.parametersValues.get(e.getKey()), 2)) //
-        .reduce(Double::sum).getAsDouble();
+    distance += map2.entrySet().stream().mapToDouble(e -> {
+      String valueName = e.getKey();
+      double min = mins.get(valueName);
+      double max = maxs.get(valueName);
+      return this.normalize(Math.pow(e.getValue() - map1.get(valueName), 2), min, max);
+    }).reduce(Double::sum).getAsDouble();
 
     return distance;
+  }
+
+  /**
+   * Computes the distance to the given context based on measures only.
+   * 
+   * @param other The context to compute the distance with.
+   * @param mins  A map containing the all-time minimum value for each measure.
+   * @param maxs  A map containing the all-time maximum value for each measure.
+   * @return The distance.
+   */
+  public double distanceMeasures(ParameterAgentContext other, Map<String, Double> mins, Map<String, Double> maxs) {
+    return this.distance(this.measuresValues, other.measuresValues, mins, maxs);
+  }
+
+  /**
+   * Computes the distance to the given context based on parameters only.
+   * 
+   * @param other The context to compute the distance with.
+   * @param mins  A map containing the all-time minimum value for each parameter.
+   * @param maxs  A map containing the all-time maximum value for each parameter.
+   * @return The distance.
+   */
+  public double distanceParameters(ParameterAgentContext other, Map<String, Double> mins, Map<String, Double> maxs) {
+    return this.distance(this.parametersValues, other.parametersValues, mins, maxs);
+  }
+
+  /**
+   * Normalizes a value between two bounds.
+   * 
+   * @param v   The value to normalize.
+   * @param min The lower bound.
+   * @param max The upper bound.
+   * @return The normalized value.
+   */
+  private double normalize(double v, double min, double max) {
+    return (v - min) / (max - min);
   }
 
   @Override

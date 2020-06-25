@@ -1,20 +1,22 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.WritableAgentAttribute;
+import fr.irit.smac.calicoba.mas.Calicoba;
 import fr.irit.smac.calicoba.mas.FloatValueMessage;
 import fr.irit.smac.calicoba.mas.Message;
+import fr.irit.smac.calicoba.mas.World;
 import fr.irit.smac.util.Triplet;
 
 /**
@@ -51,6 +53,13 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
   /** Number of neighbors for KNN. */
   private static final int MAX_NEIGHBORS = 10;
 
+  private Map<String, Double> minimums;
+  private Map<String, Double> maximums;
+
+  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> firstSelection;
+  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> secondSelection;
+  private double selectedActionDistance;
+
   /**
    * Creates a new Parameter agent for the given parameter.
    * 
@@ -63,6 +72,8 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
     this.memory = new HashMap<>();
     this.helpedObjective = Optional.empty();
     this.expectedVariation = Optional.empty();
+    this.firstSelection = Collections.emptyMap();
+    this.secondSelection = Collections.emptyMap();
     this.manual = true;
   }
 
@@ -110,6 +121,8 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
       ParameterAgentMemoryEntry entry = new ParameterAgentMemoryEntry(this.lastAction, variations);
       this.memory.put(this.lastContext, entry);
     }
+
+    this.updateMinimumsAndMaximums();
   }
 
   /**
@@ -140,6 +153,10 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
    *         action is beneficial and the expected variation.
    */
   private Triplet<Double, Optional<String>, Optional<Double>> getAction() {
+    this.firstSelection = Collections.emptyMap();
+    this.secondSelection = Collections.emptyMap();
+    this.selectedActionDistance = Double.NaN;
+
     // TEMP to validate the memory.
     if (this.manual) {
       System.out.print("> ");
@@ -183,18 +200,20 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
       return new Triplet<>(action, this.helpedObjective, Optional.of(expectedVariation));
     }
 
-    Optional<ParameterAgentMemoryEntry> opt = this.getEntriesForContext(this.currentContext).stream()
-        // Filter out entries where the current most critical objective’s criticality
-        // increased.
-        .filter(e -> e.getObjectivesVariations().get(mostCritical) <= 0)
-        // Get the entry where the criticality decreased the most.
-        .min((e1, e2) -> e1.getObjectivesVariations().get(mostCritical)
-            .compareTo(e2.getObjectivesVariations().get(mostCritical)));
+    Optional<Map.Entry<ParameterAgentMemoryEntry, Double>> opt = //
+        this.getEntriesForContext(this.currentContext).entrySet().stream()
+            // Filter out entries where the current most critical objective’s criticality
+            // increased.
+            .filter(e -> e.getKey().getObjectivesVariations().get(mostCritical) <= 0)
+            // Get the entry where the criticality decreased the most.
+            .min((e1, e2) -> e1.getKey().getObjectivesVariations().get(mostCritical)
+                .compareTo(e2.getKey().getObjectivesVariations().get(mostCritical)));
 
     if (opt.isPresent()) {
-      ParameterAgentMemoryEntry entry = opt.get();
-      return new Triplet<>(entry.getAction(), Optional.of(mostCritical),
-          Optional.of(entry.getObjectivesVariations().get(mostCritical)));
+      Map.Entry<ParameterAgentMemoryEntry, Double> entry = opt.get();
+      this.selectedActionDistance = entry.getValue();
+      return new Triplet<>(entry.getKey().getAction(), Optional.of(mostCritical),
+          Optional.of(entry.getKey().getObjectivesVariations().get(mostCritical)));
     }
 
     double defaultAction = 0;
@@ -211,33 +230,102 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
   }
 
   /**
-   * Returns the K closest memory entries for the given context based on the KNN
+   * Returns the K closest memory entries for the given context. Uses the KNN
    * algorithm.
    * 
    * @param context The reference context.
    * @return The corresponding entries; can be empty.
    */
-  private Collection<ParameterAgentMemoryEntry> getEntriesForContext(ParameterAgentContext context) {
-    List<Pair<Double, ParameterAgentMemoryEntry>> knn = new LinkedList<>();
+  private Map<ParameterAgentMemoryEntry, Double> getEntriesForContext(ParameterAgentContext context) {
+    final int N = 3;
 
-    for (Map.Entry<ParameterAgentContext, ParameterAgentMemoryEntry> e : this.memory.entrySet()) {
-      double distance = e.getKey().distance(context);
+    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knnMeasures = //
+        this.knn(this.memory, N * MAX_NEIGHBORS, c -> c.distanceMeasures(context, this.minimums, this.maximums));
+    this.firstSelection = knnMeasures;
+
+    Map<ParameterAgentContext, ParameterAgentMemoryEntry> m = knnMeasures.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getSecond()));
+
+    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knnParameters = //
+        this.knn(m, MAX_NEIGHBORS, c -> c.distanceParameters(context, this.minimums, this.maximums));
+    this.secondSelection = knnParameters;
+
+    return knnParameters.values().stream()
+        .collect(Collectors.toMap(Pair::getSecond, Pair::getFirst));
+  }
+
+  /**
+   * Returns the K closest memory entries in the given memory based on the given
+   * distance function. Uses the KNN algorithm.
+   * 
+   * @param memory      The memory to select entries from.
+   * @param k           The coefficient to multiply {@link #MAX_NEIGHBORS} by.
+   * @param getDistance A function that returns the distance relative to a
+   *                    context.
+   * @return The corresponding entries; can be empty.
+   */
+  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knn(
+      Map<ParameterAgentContext, ParameterAgentMemoryEntry> memory,
+      int k,
+      Function<ParameterAgentContext, Double> getDistance) {
+
+    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knn = new HashMap<>(k);
+
+    for (Map.Entry<ParameterAgentContext, ParameterAgentMemoryEntry> e : memory.entrySet()) {
+      double distance = getDistance.apply(e.getKey());
       Pair<Double, ParameterAgentMemoryEntry> entry = new Pair<>(distance, e.getValue());
 
-      if (knn.size() < MAX_NEIGHBORS) {
-        knn.add(entry);
+      if (knn.size() < k) {
+        knn.put(e.getKey(), entry);
       }
       else {
-        int indexOfMax = knn.indexOf(Collections.max(knn, (a, b) -> (int) Math.signum(a.getKey() - b.getKey())));
+        ParameterAgentContext keyOfMax = null;
+        double max = Double.NEGATIVE_INFINITY;
 
-        if (knn.get(indexOfMax).getKey() > distance) {
-          knn.remove(indexOfMax);
-          knn.add(entry);
+        // Look for the farthest context.
+        for (Map.Entry<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> e2 : knn.entrySet()) {
+          double v = e2.getValue().getFirst();
+          if (v >= max) {
+            max = v;
+            keyOfMax = e2.getKey();
+          }
+        }
+
+        // Remove farthest entry if the current one is closer.
+        if (knn.get(keyOfMax).getKey() > distance) {
+          knn.remove(keyOfMax);
+          knn.put(e.getKey(), entry);
         }
       }
     }
 
-    return knn.stream().map(Pair::getValue).collect(Collectors.toSet());
+    return knn;
+  }
+
+  /**
+   * Updates the minimum and maximum values of all measures and parameters.
+   * 
+   * TODO make static to call only once per cycle
+   */
+  private void updateMinimumsAndMaximums() {
+    World world = Calicoba.instance().getWorld();
+    List<ParameterAgent> params = world.getAgentsForType(ParameterAgent.class);
+    List<MeasureAgent> measures = world.getAgentsForType(MeasureAgent.class);
+
+    Map<String, Double> mins = new HashMap<>();
+    Map<String, Double> maxs = new HashMap<>();
+
+    Consumer<AgentWithAttribute<?>> c = a -> {
+      String id = a.getId();
+      mins.put(id, a.getAttributeMinValue());
+      maxs.put(id, a.getAttributeMaxValue());
+    };
+
+    params.forEach(c);
+    measures.forEach(c);
+
+    this.minimums = Collections.unmodifiableMap(mins);
+    this.maximums = Collections.unmodifiableMap(maxs);
   }
 
   /**
@@ -249,6 +337,18 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
     double v = this.getGamaAttribute().getValue().doubleValue() //
         + (this.isFloat ? value : Math.floor(value));
     this.getGamaAttribute().setValue(v);
+  }
+
+  public Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> getFirstlySelectedMemoryEntries() {
+    return this.firstSelection;
+  }
+
+  public Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> getSecondlySelectedMemoryEntries() {
+    return this.secondSelection;
+  }
+
+  public double getSelectedActionDistance() {
+    return this.selectedActionDistance;
   }
 
   /**

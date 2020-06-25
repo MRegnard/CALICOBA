@@ -6,8 +6,8 @@ species TargetModel skills: [calicoba_target_model] {
   float predators_death_rate <- 0.03;
   float predation_efficiency <- 0.0002;
 
-  float init_preys_number <- 240.0;
-  float init_predators_number <- 45.0;
+  float init_preys_number <- 200.0;
+  float init_predators_number <- 40.0;
 
   float out_preys_number <- init_preys_number;
   float out_predators_number <- init_predators_number;

@@ -2,7 +2,9 @@ package fr.irit.smac.calicoba.gaml;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
@@ -18,7 +20,9 @@ import msi.gama.precompiler.GamlAnnotations.doc;
 import msi.gama.precompiler.GamlAnnotations.skill;
 import msi.gama.runtime.IScope;
 import msi.gama.runtime.exceptions.GamaRuntimeException;
+import msi.gama.util.GamaListFactory;
 import msi.gama.util.GamaMapFactory;
+import msi.gama.util.IList;
 import msi.gama.util.IMap;
 import msi.gaml.types.IType;
 import msi.gaml.types.Types;
@@ -36,6 +40,7 @@ import msi.gaml.types.Types;
 )
 public class TargetModelSkill extends ModelSkill {
   private static final String PARAMETER_NAME = "parameter_name";
+  private static final String SELECTION_STEP = "selection_step";
 
   /**
    * Initializes this skill. Gets all attributes of the current GAMA agent whose
@@ -102,18 +107,8 @@ public class TargetModelSkill extends ModelSkill {
       } //
   )
   public Triplet<Double, String, Double> getParameterAction(final IScope scope) {
-    final String parameterName = scope.getStringArg(PARAMETER_NAME);
-    final ParameterAgent agent;
-
-    try {
-      Supplier<GamaRuntimeException> s = //
-          () -> GamaRuntimeException.error(String.format("'%s' is not a parameter", parameterName), scope);
-      agent = Calicoba.instance().getWorld().getAgentsForType(ParameterAgent.class).stream()
-          .filter(a -> a.getAttributeName().equals(parameterName)).findFirst().orElseThrow(s);
-    }
-    catch (RuntimeException e) {
-      throw GamaRuntimeException.create(e, scope);
-    }
+    final String paramName = scope.getStringArg(PARAMETER_NAME);
+    final ParameterAgent agent = this.getParameterAgent(paramName, scope);
     Triplet<Double, Optional<String>, Optional<Double>> t = agent.getLastAction();
     Triplet<Double, String, Double> res = new Triplet<>(t.getFirst(), t.getSecond().orElse(null),
         t.getThird().orElse(Double.NaN));
@@ -128,25 +123,101 @@ public class TargetModelSkill extends ModelSkill {
    * @return The memory of the agent.
    */
   @action( //
-      name = ICustomSymbols.GET_AGENT_MEMORY, //
+      name = ICustomSymbols.GET_PARAMETER_MEMORY, //
       args = { //
           @arg( //
               name = PARAMETER_NAME, //
               type = IType.STRING, //
               optional = false, //
-              doc = @doc("The number of GAMA iterations between each step of CALICOBA.") //
+              doc = @doc("Name of the parameter.") //
           )
       }, //
       doc = @doc("Returns the memory of the Parameter Agent for the given parameter.") //
   )
-  public IMap<ParameterAgentContext, ParameterAgentMemoryEntry> getAgentMemory(final IScope scope) {
-    final String agentName = scope.getStringArg(PARAMETER_NAME);
-    final ParameterAgent agent = Calicoba.instance().getWorld().getAgentsForType(ParameterAgent.class)
-        .stream().filter(a -> a.getAttributeName().equals(agentName)).findFirst()
-        .orElseThrow(
-            () -> GamaRuntimeException.error(String.format("No agent for parameter name \"%s\"", agentName), scope));
+  public IMap<ParameterAgentContext, ParameterAgentMemoryEntry> getParameterMemory(final IScope scope) {
+    final String paramName = scope.getStringArg(PARAMETER_NAME);
+    final ParameterAgent agent = this.getParameterAgent(paramName, scope);
 
     return GamaMapFactory.wrap(Types.get(ICustomTypes.PARAMETER_CONTEXT),
         Types.get(ICustomTypes.PARAMETER_MEMORY_ENTRY), agent.getMemory());
+  }
+
+  /**
+   * TODO
+   * 
+   * @param scope The current scope.
+   * @return TODO
+   */
+  @action( //
+      name = ICustomSymbols.GET_PARAMETER_SELECTION, //
+      args = { //
+          @arg( //
+              name = PARAMETER_NAME, //
+              type = IType.STRING, //
+              optional = false, //
+              doc = @doc("Name of the parameter.") //
+          ), //
+          @arg( //
+              name = SELECTION_STEP, //
+              type = IType.INT, //
+              optional = false, //
+              doc = @doc("Step of the custom KNN selection process.") //
+          )
+      }, //
+      doc = @doc("Returns the selected memory entries of the given parameter.") //
+  )
+  public IList<Double> getParameterSelection(final IScope scope) {
+    final int selectionStep = scope.getIntArg(SELECTION_STEP);
+    final String paramName = scope.getStringArg(PARAMETER_NAME);
+    final ParameterAgent agent = this.getParameterAgent(paramName, scope);
+
+    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> m;
+
+    switch (selectionStep) {
+      case 1:
+        m = agent.getFirstlySelectedMemoryEntries();
+        break;
+      case 2:
+        m = agent.getSecondlySelectedMemoryEntries();
+        break;
+      default:
+        throw GamaRuntimeException
+            .error(String.format("Invalid value %d for parameter %s.", selectionStep, SELECTION_STEP), scope);
+    }
+
+    return GamaListFactory.wrap(Types.get(IType.FLOAT),
+        m.values().stream().map(v -> v.getFirst()).collect(Collectors.toList()));
+  }
+
+  /**
+   * TODO
+   * 
+   * @param scope The current scope.
+   * @return TODO
+   */
+  @action( //
+      name = ICustomSymbols.GET_PARAMETER_ACTION_DISTANCE, //
+      args = { //
+          @arg( //
+              name = PARAMETER_NAME, //
+              type = IType.STRING, //
+              optional = false, //
+              doc = @doc("Name of the parameter.") //
+          )
+      }, //
+      doc = @doc("Returns the selected action’s distance of the given parameter.") //
+  )
+  public double getParameterActionDistance(final IScope scope) {
+    final String paramName = scope.getStringArg(PARAMETER_NAME);
+    final ParameterAgent agent = this.getParameterAgent(paramName, scope);
+
+    return agent.getSelectedActionDistance();
+  }
+
+  private ParameterAgent getParameterAgent(final String paramName, final IScope scope) {
+    return Calicoba.instance().getWorld().getAgentsForType(ParameterAgent.class)
+        .stream().filter(a -> a.getAttributeName().equals(paramName)).findFirst()
+        .orElseThrow(
+            () -> GamaRuntimeException.error(String.format("No agent for parameter name \"%s\"", paramName), scope));
   }
 }

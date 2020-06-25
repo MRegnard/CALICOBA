@@ -5,6 +5,7 @@ import java.util.Set;
 
 import fr.irit.smac.calicoba.mas.FloatValueMessage;
 import fr.irit.smac.calicoba.mas.Message;
+import fr.irit.smac.util.Logger;
 
 /**
  * An Objective agent gets a Measure and Observation then computes a criticality
@@ -24,6 +25,11 @@ public class ObjectiveAgent extends Agent {
   /** The criticality. */
   private double criticality;
 
+  /** The all-time minimum absolute criticality. */
+  private double minAbsoluteCriticality;
+  /** The all-time maximum absolute criticality. */
+  private double maxAbsoluteCriticality;
+
   /**
    * Creates a new Objective agent for the given Measure and Observation agents.
    * 
@@ -34,6 +40,8 @@ public class ObjectiveAgent extends Agent {
     this.measureAgent = measureAgent;
     this.observationAgent = observationAgent;
     this.parameterAgents = new HashSet<>();
+    this.minAbsoluteCriticality = Double.NaN;
+    this.maxAbsoluteCriticality = Double.NaN;
   }
 
   /**
@@ -86,7 +94,35 @@ public class ObjectiveAgent extends Agent {
    * measure and the observation.
    */
   private void computeCriticality() {
-    this.criticality = Math.abs(this.measureValue - this.observationValue);
+    double absoluteCriticality = Math.abs(this.measureValue - this.observationValue);
+
+    if (Double.isNaN(this.minAbsoluteCriticality)) {
+      this.minAbsoluteCriticality = absoluteCriticality;
+    }
+    else {
+      this.minAbsoluteCriticality = Math.min(absoluteCriticality, this.minAbsoluteCriticality);
+    }
+
+    if (Double.isNaN(this.maxAbsoluteCriticality)) {
+      this.maxAbsoluteCriticality = absoluteCriticality;
+    }
+    else {
+      this.maxAbsoluteCriticality = Math.max(absoluteCriticality, this.maxAbsoluteCriticality);
+    }
+
+    // DEBUG
+    Logger.debug(absoluteCriticality);
+    Logger.debug(this.maxAbsoluteCriticality + " " + this.minAbsoluteCriticality);
+    Logger.debug(this.maxAbsoluteCriticality - this.minAbsoluteCriticality);
+    double diff = this.maxAbsoluteCriticality - this.minAbsoluteCriticality;
+    if (diff == 0) {
+      this.criticality = absoluteCriticality;
+    }
+    else {
+      this.criticality = absoluteCriticality / diff;
+    }
+    // DEBUG
+    Logger.debug(this.criticality);
   }
 
   /**
