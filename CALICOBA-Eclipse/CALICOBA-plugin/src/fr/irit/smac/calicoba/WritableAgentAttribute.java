@@ -3,29 +3,28 @@ package fr.irit.smac.calicoba;
 import msi.gama.metamodel.agent.IAgent;
 
 /**
- * This class represents an attribute of a GAMA agent whose value can be read
- * and set.
- * 
+ * This class represents a float attribute of a GAMA agent whose value can be
+ * read and set.
+ *
  * @author Damien Vergnet
  */
-public class WritableAgentAttribute<T> extends ReadableAgentAttribute<T> {
+public class WritableAgentAttribute extends ReadableAgentAttribute {
   /**
    * Creates a writable attribute for the given agent.
-   * 
+   *
    * @param agent The agent whose attribute this object represents.
    * @param name  The name of the attribute represented by this object.
-   * @param type  The type of the attribute.
    */
-  public WritableAgentAttribute(IAgent agent, String name, Class<T> type) {
-    super(agent, name, type);
+  public WritableAgentAttribute(IAgent agent, String name) {
+    super(agent, name);
   }
 
   /**
    * Sets the value of this attribute.
-   * 
+   *
    * @param value The new value.
    */
-  public void setValue(T value) {
+  public void setValue(double value) {
     this.agent.setAttribute(this.getName(), value);
   }
 

@@ -1,48 +1,45 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.WritableAgentAttribute;
-import fr.irit.smac.calicoba.mas.Calicoba;
-import fr.irit.smac.calicoba.mas.FloatValueMessage;
-import fr.irit.smac.calicoba.mas.Message;
-import fr.irit.smac.calicoba.mas.World;
+import fr.irit.smac.calicoba.mas.messages.ActionProposalMessage;
+import fr.irit.smac.calicoba.mas.messages.FloatValueMessage;
+import fr.irit.smac.calicoba.mas.messages.Message;
+import fr.irit.smac.calicoba.mas.messages.PerformedActionRequestMessage;
+import fr.irit.smac.calicoba.mas.messages.ProposalsSentMessage;
+import fr.irit.smac.calicoba.mas.messages.ValueRequestMessage;
+import fr.irit.smac.util.Logger;
 import fr.irit.smac.util.Triplet;
+import fr.irit.smac.util.ValueMap;
 
 /**
  * Parameter agents control the parameters of the target model. Their actions
  * are based on the current objectives and passed situations.
- * 
+ *
  * @author Damien Vergnet
  */
-public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Double>> {
-  /** Tells wether the attribute is a floating point value. */
-  private final boolean isFloat;
-
-  /** This agent’s memory. */
-  private Map<ParameterAgentContext, ParameterAgentMemoryEntry> memory;
-  /** The current context. */
-  private ParameterAgentContext currentContext;
+public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, ParameterAgent.State> {
+  private List<ObjectiveAgent> objectiveAgents;
   /** The current objective values. */
-  private Map<String, Double> currentObjectivesValues;
-  /** The context of the last action. */
-  private ParameterAgentContext lastContext;
+  private ValueMap currentObjectivesValues;
+  private ValueMap tempObjectives;
+  private List<Triplet<ValueMap, ValueMap, SituationAgent>> proposedActions;
   /** The latest performed action. */
-  private double lastAction;
-  /** The values of the objectives when the last action was performed. */
-  private Map<String, Double> lastObjectivesValues;
-  private Optional<String> helpedObjective;
-  private Optional<Double> expectedVariation;
+  private double selectedAction;
+  private SituationAgent selectedSituation;
+
+  private Set<Agent<?>> valueRequesters;
+  private Set<Agent<?>> performedActionRequesters;
+
+  private int remainingValuesToUpdate;
 
   // TEMP
   private boolean manual;
@@ -50,170 +47,195 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
 
   // TEMP fixed value for now
   private static final double AMOUNT = 0.01;
-  /** Number of neighbors for KNN. */
-  private static final int MAX_NEIGHBORS = 10;
-
-  private Map<String, Double> minimums;
-  private Map<String, Double> maximums;
-
-  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> firstSelection;
-  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> secondSelection;
-  private double selectedActionDistance;
 
   /**
    * Creates a new Parameter agent for the given parameter.
-   * 
+   *
    * @param parameter The GAMA agent’s attribute/parameter.
    * @param isFloat   Wether the attribute is a floating point value.
    */
-  public ParameterAgent(WritableAgentAttribute<Double> parameter, boolean isFloat) {
+  public ParameterAgent(WritableAgentAttribute parameter, boolean isFloat) {
     super(parameter);
-    this.isFloat = isFloat;
-    this.memory = new HashMap<>();
-    this.helpedObjective = Optional.empty();
-    this.expectedVariation = Optional.empty();
-    this.firstSelection = Collections.emptyMap();
-    this.secondSelection = Collections.emptyMap();
+    this.valueRequesters = new HashSet<>();
+    this.performedActionRequesters = new HashSet<>();
+    this.currentObjectivesValues = new ValueMap();
+    this.proposedActions = new LinkedList<>();
     this.manual = true;
+    this.setState(State.REQUESTING_OBJ);
   }
 
-  /**
-   * Reads the measures, objectives and other parameters values.
+  @Override
+  public void onGamaCycleBegin() {
+    super.onGamaCycleBegin();
+
+    if (this.objectiveAgents == null) {
+      this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
+    }
+  }
+
+  /*
+   * Perception
    */
+
   @Override
   public void perceive() {
     super.perceive();
 
-    Map<String, Double> measures = new HashMap<>();
-    Map<String, Double> parameters = new HashMap<>();
-    this.currentObjectivesValues = new HashMap<>();
-    Message message;
+    switch (this.getState()) {
+      case REQUESTING_OBJ:
+        this.onRequestingObjectives();
+        break;
 
-    while ((message = this.getMessage()) != null) {
-      if (message instanceof FloatValueMessage) {
-        FloatValueMessage msg = (FloatValueMessage) message;
-        Agent sender = message.getSender();
-        String id = sender.getId();
-        double value = msg.getValue();
+      case UPDATING_OBJ:
+        this.onUpdatingObjectives();
+        break;
 
-        if (sender instanceof MeasureAgent) {
-          measures.put(id, value);
-        }
-        else if (sender instanceof ParameterAgent) {
-          parameters.put(id, value);
-        }
-        else if (sender instanceof ObjectiveAgent) {
-          this.currentObjectivesValues.put(((ObjectiveAgent) sender).getName(), value);
-        }
-      }
+      case AWAITING_PROPOSALS:
+        this.onAwaitingProposals();
+        break;
+
+      case DISCUSSING:
+        this.onDiscussing();
+        break;
+
+      case EXECUTING:
+        this.onExecuting();
+        break;
     }
-    parameters.put(this.getId(), this.getGamaAttribute().getValue());
-
-    this.currentContext = new ParameterAgentContext(measures, parameters);
-
-    // Adding the previous context and action to the memory.
-    if (this.lastContext != null && !this.memory.containsKey(this.lastContext)) {
-      Map<String, Double> variations = new HashMap<>();
-      for (Map.Entry<String, Double> e : this.currentObjectivesValues.entrySet()) {
-        String key = e.getKey();
-        variations.put(key, e.getValue() - this.lastObjectivesValues.get(key));
-      }
-      ParameterAgentMemoryEntry entry = new ParameterAgentMemoryEntry(this.lastAction, variations);
-      this.memory.put(this.lastContext, entry);
-    }
-
-    this.updateMinimumsAndMaximums();
   }
 
-  /**
-   * Looks for the best action to perform for the current context and objectives
-   * then performs it. If none were found, a random action is performed.
+  private void onRequestingObjectives() {
+    this.tempObjectives = new ValueMap();
+
+    this.iterateOverMessages(this::handleRequest);
+  }
+
+  private void onUpdatingObjectives() {
+    this.iterateOverMessages(m -> {
+      this.handleRequest(m);
+      if (m instanceof FloatValueMessage) {
+        FloatValueMessage fm = (FloatValueMessage) m;
+        Agent<?> sender = m.getSender();
+        double value = fm.getValue();
+
+        switch (fm.getValueNature()) {
+          case CRITICALITY:
+            this.tempObjectives.put(((ObjectiveAgent) sender).getName(), value);
+            break;
+
+          default:
+            break;
+        }
+      }
+    });
+  }
+
+  private void onAwaitingProposals() {
+    this.iterateOverMessages(m -> {
+      this.handleRequest(m);
+      if (m instanceof ActionProposalMessage) {
+        ActionProposalMessage apm = (ActionProposalMessage) m;
+        this.proposedActions.add(new Triplet<>(apm.getActions(), apm.getExpectedObjectivesVariations(),
+            apm.getSender()));
+      }
+      else if (m instanceof ProposalsSentMessage) {
+        this.setState(State.DISCUSSING);
+      }
+    });
+  }
+
+  private void onDiscussing() {
+    this.iterateOverMessages(this::handleRequest);
+  }
+
+  private void onExecuting() {
+    this.iterateOverMessages(this::handleRequest);
+  }
+
+  private void handleRequest(Message<?> m) {
+    if (m instanceof ValueRequestMessage) {
+      this.valueRequesters.add(m.getSender());
+    }
+    else if (m instanceof PerformedActionRequestMessage) {
+      this.performedActionRequesters.add(m.getSender());
+    }
+  }
+
+  /*
+   * Decision and action
    */
+
   @Override
   public void decideAndAct() {
     super.decideAndAct();
 
-    Triplet<Double, Optional<String>, Optional<Double>> result = this.getAction();
-    double action = result.getFirst();
+    switch (this.getState()) {
+      case REQUESTING_OBJ:
+        this.requestObjectives();
+        break;
 
-    this.helpedObjective = result.getSecond();
-    this.expectedVariation = result.getThird();
+      case UPDATING_OBJ:
+        this.checkUpdateFinished();
+        break;
 
-    this.addToParameterValue(action);
+      case DISCUSSING:
+        this.discussAction();
+        break;
 
-    this.lastContext = this.currentContext;
-    this.lastAction = action;
-    this.lastObjectivesValues = this.currentObjectivesValues;
+      case EXECUTING:
+        this.executeAction();
+        break;
+
+      default:
+        break;
+    }
+
+    FloatValueMessage message = new FloatValueMessage(this, this.getAttributeValue(),
+        FloatValueMessage.ValueNature.PARAM_VALUE);
+    this.valueRequesters.forEach(a -> a.onMessage(message));
+  }
+
+  private void requestObjectives() {
+    ValueRequestMessage m = new ValueRequestMessage(this);
+
+    this.objectiveAgents.forEach(o -> o.onMessage(m));
+    this.remainingValuesToUpdate = this.objectiveAgents.size();
+
+    this.setState(State.UPDATING_OBJ);
+  }
+
+  private void checkUpdateFinished() {
+    if (this.remainingValuesToUpdate <= 0) {
+      this.proposedActions.clear();
+      this.setState(State.AWAITING_PROPOSALS);
+    }
+  }
+
+  private void discussAction() {
+    Pair<Double, SituationAgent> result = this.getAction();
+
+    this.selectedAction = result.getFirst();
+    this.selectedSituation = result.getSecond();
+
+    this.setState(State.EXECUTING);
+  }
+
+  private void executeAction() {
+    this.addToParameterValue(this.selectedAction);
+    this.getWorld().restoreGama();
   }
 
   /**
    * Returns the best action to perform.
-   * 
+   *
    * @return The best action to perform, if any, the objective for which the
    *         action is beneficial and the expected variation.
    */
-  private Triplet<Double, Optional<String>, Optional<Double>> getAction() {
-    this.firstSelection = Collections.emptyMap();
-    this.secondSelection = Collections.emptyMap();
-    this.selectedActionDistance = Double.NaN;
-
-    // TEMP to validate the memory.
-    if (this.manual) {
-      System.out.print("> ");
-      String input = this.sc.nextLine().trim().toLowerCase();
-
-      if (!"m".equals(input)) {
-        double action = 0;
-
-        if ("i".equals(input)) {
-          action = AMOUNT;
-        }
-        else if ("d".equals(input)) {
-          action = -AMOUNT;
-        }
-
-        return new Triplet<>(action, Optional.empty(), Optional.empty());
-      }
-      else {
-        this.manual = false;
-      }
-    }
-
-    // Should always exist.
-    String mostCritical = this.currentObjectivesValues.entrySet().stream()
-        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
-        .map(e -> e.getKey()).get();
-
-    // Keep helping the last helped objective as long as it is the most critical.
-    if (this.helpedObjective.isPresent() && this.helpedObjective.get().equals(mostCritical)) {
-      double variation = this.currentObjectivesValues.get(this.helpedObjective.get())
-          - this.lastObjectivesValues.get(this.helpedObjective.get());
-      double action = this.lastAction;
-      double expectedVariation = variation;
-
-      // The criticality increased, do the opposite action.
-      if (variation > 0) {
-        action = -action;
-        expectedVariation = -expectedVariation;
-      }
-
-      return new Triplet<>(action, this.helpedObjective, Optional.of(expectedVariation));
-    }
-
-    Optional<Map.Entry<ParameterAgentMemoryEntry, Double>> opt = //
-        this.getEntriesForContext(this.currentContext).entrySet().stream()
-            // Filter out entries where the current most critical objective’s criticality
-            // increased.
-            .filter(e -> e.getKey().getObjectivesVariations().get(mostCritical) <= 0)
-            // Get the entry where the criticality decreased the most.
-            .min((e1, e2) -> e1.getKey().getObjectivesVariations().get(mostCritical)
-                .compareTo(e2.getKey().getObjectivesVariations().get(mostCritical)));
+  private Pair<Double, SituationAgent> getAction() {
+    Optional<Pair<Double, SituationAgent>> opt = this.selectAction();
 
     if (opt.isPresent()) {
-      Map.Entry<ParameterAgentMemoryEntry, Double> entry = opt.get();
-      this.selectedActionDistance = entry.getValue();
-      return new Triplet<>(entry.getKey().getAction(), Optional.of(mostCritical),
-          Optional.of(entry.getKey().getObjectivesVariations().get(mostCritical)));
+      return opt.get();
     }
 
     double defaultAction = 0;
@@ -226,148 +248,60 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute<Do
       defaultAction = AMOUNT;
     }
 
-    return new Triplet<>(defaultAction, Optional.empty(), Optional.empty());
+    return new Pair<>(defaultAction, null);
   }
 
-  /**
-   * Returns the K closest memory entries for the given context. Uses the KNN
-   * algorithm.
-   * 
-   * @param context The reference context.
-   * @return The corresponding entries; can be empty.
-   */
-  private Map<ParameterAgentMemoryEntry, Double> getEntriesForContext(ParameterAgentContext context) {
-    final int N = 3;
+  // TODO choisir l’action à la main.
+  private Optional<Pair<Double, SituationAgent>> selectAction() {
+    // Should always exist.
+    String mostCritical = this.currentObjectivesValues.entrySet().stream()
+        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
+        .map(e -> e.getKey()).get();
 
-    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knnMeasures = //
-        this.knn(this.memory, N * MAX_NEIGHBORS, c -> c.distanceMeasures(context, this.minimums, this.maximums));
-    this.firstSelection = knnMeasures;
+    Optional<Triplet<ValueMap, ValueMap, SituationAgent>> opt = //
+        this.proposedActions.stream()
+            // Filter out entries where the current most critical objective’s criticality
+            // increased.
+            .filter(a -> a.getSecond().get(mostCritical) <= 0)
+            // Get the entry where the criticality decreased the most.
+            .min((a1, a2) -> a1.getSecond().get(mostCritical)
+                .compareTo(a2.getSecond().get(mostCritical)));
 
-    Map<ParameterAgentContext, ParameterAgentMemoryEntry> m = knnMeasures.entrySet().stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getSecond()));
-
-    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knnParameters = //
-        this.knn(m, MAX_NEIGHBORS, c -> c.distanceParameters(context, this.minimums, this.maximums));
-    this.secondSelection = knnParameters;
-
-    return knnParameters.values().stream()
-        .collect(Collectors.toMap(Pair::getSecond, Pair::getFirst));
-  }
-
-  /**
-   * Returns the K closest memory entries in the given memory based on the given
-   * distance function. Uses the KNN algorithm.
-   * 
-   * @param memory      The memory to select entries from.
-   * @param k           The coefficient to multiply {@link #MAX_NEIGHBORS} by.
-   * @param getDistance A function that returns the distance relative to a
-   *                    context.
-   * @return The corresponding entries; can be empty.
-   */
-  private Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knn(
-      Map<ParameterAgentContext, ParameterAgentMemoryEntry> memory,
-      int k,
-      Function<ParameterAgentContext, Double> getDistance) {
-
-    Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> knn = new HashMap<>(k);
-
-    for (Map.Entry<ParameterAgentContext, ParameterAgentMemoryEntry> e : memory.entrySet()) {
-      double distance = getDistance.apply(e.getKey());
-      Pair<Double, ParameterAgentMemoryEntry> entry = new Pair<>(distance, e.getValue());
-
-      if (knn.size() < k) {
-        knn.put(e.getKey(), entry);
-      }
-      else {
-        ParameterAgentContext keyOfMax = null;
-        double max = Double.NEGATIVE_INFINITY;
-
-        // Look for the farthest context.
-        for (Map.Entry<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> e2 : knn.entrySet()) {
-          double v = e2.getValue().getFirst();
-          if (v >= max) {
-            max = v;
-            keyOfMax = e2.getKey();
-          }
-        }
-
-        // Remove farthest entry if the current one is closer.
-        if (knn.get(keyOfMax).getKey() > distance) {
-          knn.remove(keyOfMax);
-          knn.put(e.getKey(), entry);
-        }
-      }
+    // TEMP
+    Logger.debug("Selected situation: " + opt);
+    if (this.manual) {
+      this.proposedActions.forEach(System.out::println);
+      System.out.println("Situation to select:");
+      int i = this.sc.nextInt();
+      opt = Optional.of(this.proposedActions.get(i));
     }
 
-    return knn;
-  }
-
-  /**
-   * Updates the minimum and maximum values of all measures and parameters.
-   * 
-   * TODO make static to call only once per cycle
-   */
-  private void updateMinimumsAndMaximums() {
-    World world = Calicoba.instance().getWorld();
-    List<ParameterAgent> params = world.getAgentsForType(ParameterAgent.class);
-    List<MeasureAgent> measures = world.getAgentsForType(MeasureAgent.class);
-
-    Map<String, Double> mins = new HashMap<>();
-    Map<String, Double> maxs = new HashMap<>();
-
-    Consumer<AgentWithAttribute<?>> c = a -> {
-      String id = a.getId();
-      mins.put(id, a.getAttributeMinValue());
-      maxs.put(id, a.getAttributeMaxValue());
-    };
-
-    params.forEach(c);
-    measures.forEach(c);
-
-    this.minimums = Collections.unmodifiableMap(mins);
-    this.maximums = Collections.unmodifiableMap(maxs);
+    return opt.map(t -> new Pair<>(t.getFirst().get(this.getAttributeName()), t.getThird()));
   }
 
   /**
    * Adds the given value to the parameter.
-   * 
+   *
    * @param value The value to add.
    */
   private void addToParameterValue(double value) {
-    double v = this.getGamaAttribute().getValue().doubleValue() //
-        + (this.isFloat ? value : Math.floor(value));
-    this.getGamaAttribute().setValue(v);
-  }
-
-  public Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> getFirstlySelectedMemoryEntries() {
-    return this.firstSelection;
-  }
-
-  public Map<ParameterAgentContext, Pair<Double, ParameterAgentMemoryEntry>> getSecondlySelectedMemoryEntries() {
-    return this.secondSelection;
-  }
-
-  public double getSelectedActionDistance() {
-    return this.selectedActionDistance;
+    this.getGamaAttribute().setValue(this.getGamaAttribute().getValue() + value);
   }
 
   /**
    * @return The latest performed action, the associated objective that it should
    *         help and the expected variation.
    */
-  public Triplet<Double, Optional<String>, Optional<Double>> getLastAction() {
-    return new Triplet<>(this.lastAction, this.helpedObjective, this.expectedVariation);
-  }
-
-  /**
-   * @return A copy of the memory of this agent.
-   */
-  public Map<ParameterAgentContext, ParameterAgentMemoryEntry> getMemory() {
-    return new HashMap<>(this.memory);
+  public Pair<Double, SituationAgent> getLastAction() {
+    return new Pair<>(this.selectedAction, this.selectedSituation);
   }
 
   @Override
   public String toString() {
-    return super.toString() + String.format("{parameter=%s,isFloat=%b}", this.getGamaAttribute(), this.isFloat);
+    return super.toString() + String.format("{parameter=%s}", this.getGamaAttribute());
+  }
+
+  public enum State {
+    REQUESTING_OBJ, UPDATING_OBJ, AWAITING_PROPOSALS, DISCUSSING, EXECUTING;
   }
 }

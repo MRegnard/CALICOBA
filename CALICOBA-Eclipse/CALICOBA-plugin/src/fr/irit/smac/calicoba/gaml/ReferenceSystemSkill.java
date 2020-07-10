@@ -16,7 +16,7 @@ import msi.gama.util.IMap;
  * Skill that defines an agent as a reference system. There should be only one
  * species at a time with this skill in a simulation. Only one agent from a
  * species with this skill must be alive at a time.
- * 
+ *
  * @author Damien Vergnet
  */
 @skill( //
@@ -28,7 +28,7 @@ public class ReferenceSystemSkill extends ModelSkill {
    * Initializes this skill. Gets all attributes of the current GAMA agent whose
    * name start with <code>out_</code> and adds them as observation attributes
    * into CALICOBA.
-   * 
+   *
    * @param scope The current scope.
    */
   @action( //
@@ -46,12 +46,11 @@ public class ReferenceSystemSkill extends ModelSkill {
       Class<?> attributeType = attribute.getValue().getClass();
 
       if (attributeName.startsWith("out_")) {
-        if (!Number.class.isAssignableFrom(attributeType)) {
-          throw GamaRuntimeException.error("Observation variables should be numbers.", scope);
+        if (attributeType != Double.class) {
+          throw GamaRuntimeException.error("Observation variables should be floats.", scope);
         }
         try {
-          ReadableAgentAttribute<Double> attr = //
-              new ReadableAgentAttribute<Double>(agent, attributeName, Double.class);
+          ReadableAgentAttribute attr = new ReadableAgentAttribute(agent, attributeName);
           Calicoba.instance().addObservation(attr);
         }
         catch (RuntimeException e) {

@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
+import fr.irit.smac.calicoba.mas.agents.CurrentSituationAgent;
 import fr.irit.smac.calicoba.mas.agents.MeasureAgent;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationAgent;
@@ -15,7 +16,7 @@ import fr.irit.smac.util.Logger;
 
 /**
  * Main class of CALICOBA.
- * 
+ *
  * @author Damien Vergnet
  */
 public class Calicoba {
@@ -24,7 +25,7 @@ public class Calicoba {
 
   /**
    * Tells wether CALICOBA has been initialized.
-   * 
+   *
    * @return true if and only if CALICOBA has been initialized.
    */
   public static boolean isInitialized() {
@@ -33,7 +34,7 @@ public class Calicoba {
 
   /**
    * Initializes CALICOBA.
-   * 
+   *
    * @param stepInterval The number of GAMA iterations between each step.
    */
   public static void init(int stepInterval) {
@@ -42,7 +43,7 @@ public class Calicoba {
 
   /**
    * Returns CALICOBA’s unique instance.
-   * 
+   *
    * @return CALICOBA instance.
    * @throws RuntimeException if CALICOBA has not been initialized.
    * @see #init()
@@ -60,7 +61,7 @@ public class Calicoba {
 
   /**
    * Creates a new instance of CALICOBA.
-   * 
+   *
    * @param stepInterval The number of GAMA iterations between each step.
    */
   private Calicoba(int stepInterval) {
@@ -71,31 +72,31 @@ public class Calicoba {
 
   /**
    * Creates an new agent for the given target model parameter.
-   * 
+   *
    * @param parameter A parameter of the target model.
    * @param isFloat   Wether the parameter is a float or an int.
    */
-  public void addParameter(WritableAgentAttribute<Double> parameter, boolean isFloat) {
+  public void addParameter(WritableAgentAttribute parameter, boolean isFloat) {
     Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
     this.world.addAgent(new ParameterAgent(parameter, isFloat));
   }
 
   /**
    * Creates a new agent for the given target model output.
-   * 
+   *
    * @param measure An output of the target model.
    */
-  public void addMeasure(ReadableAgentAttribute<Double> measure) {
+  public void addMeasure(ReadableAgentAttribute measure) {
     Logger.info(String.format("Creating measure \"%s\".", measure.getName()));
     this.world.addAgent(new MeasureAgent(measure));
   }
 
   /**
    * Creates a new agent for the given reference system output.
-   * 
+   *
    * @param observation An output of the reference system.
    */
-  public void addObservation(ReadableAgentAttribute<Double> observation) {
+  public void addObservation(ReadableAgentAttribute observation) {
     Logger.info(String.format("Creating observation \"%s\".", observation.getName()));
     this.world.addAgent(new ObservationAgent(observation));
   }
@@ -111,20 +112,16 @@ public class Calicoba {
 
     for (MeasureAgent measureAgent : this.world.getAgentsForType(MeasureAgent.class)) {
       ObservationAgent obsAgent = observationAgents.get(measureAgent.getAttributeName());
-      ObjectiveAgent objAgent = new ObjectiveAgent(measureAgent, obsAgent);
+      ObjectiveAgent objAgent = new ObjectiveAgent(obsAgent.getAttributeName(), measureAgent, obsAgent);
 
       Logger.info(String.format("Creating objective for measure \"%s\" and observation \"%s\".",
           measureAgent.getAttributeName(), obsAgent.getAttributeName()));
 
-      obsAgent.addTargetAgent(objAgent);
-      measureAgent.addTargetAgent(objAgent);
       this.world.addAgent(objAgent);
-
-      this.world.getAgentsForType(ParameterAgent.class).forEach(a -> {
-        measureAgent.addTargetAgent(a);
-        objAgent.addParameterAgent(a);
-      });
     }
+
+    CurrentSituationAgent currentSituation = new CurrentSituationAgent();
+    this.getWorld().addAgent(currentSituation);
 
     Logger.info("CALICOBA set up finished.");
   }

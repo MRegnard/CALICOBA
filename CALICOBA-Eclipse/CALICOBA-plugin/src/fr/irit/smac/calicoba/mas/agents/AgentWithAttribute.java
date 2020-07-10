@@ -6,10 +6,10 @@ import fr.irit.smac.calicoba.ReadableAgentAttribute;
 
 /**
  * Base class for agents associated to a GAMA agent attribute.
- * 
+ *
  * @author Damien Vergnet
  */
-public abstract class AgentWithAttribute<T extends ReadableAgentAttribute<Double>> extends Agent {
+public abstract class AgentWithAttribute<T extends ReadableAgentAttribute, S> extends Agent<S> {
   /** The attribute this agent has access to. */
   private final T attribute;
 
@@ -25,7 +25,7 @@ public abstract class AgentWithAttribute<T extends ReadableAgentAttribute<Double
 
   /**
    * Creates a new agent for the given GAMA agent attribute.
-   * 
+   *
    * @param attribute The GAMA agent attribute.
    */
   public AgentWithAttribute(T attribute) {

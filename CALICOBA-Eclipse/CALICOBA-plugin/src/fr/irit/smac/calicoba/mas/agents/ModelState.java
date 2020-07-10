@@ -14,17 +14,17 @@ import msi.gama.runtime.exceptions.GamaRuntimeException;
 import msi.gaml.types.IType;
 
 /**
- * The context of a Parameter agent is composed of all measure and parameter
- * values.
- * 
+ * A model state is a snapshot of the values of all model measures and
+ * parameters at specific point in time.
+ *
  * @author Damien Vergnet
  */
 @vars({
-    @variable(name = ParameterAgentContext.MEASURES, type = IType.MAP),
-    @variable(name = ParameterAgentContext.PARAMETERS, type = IType.MAP),
+    @variable(name = ModelState.MEASURES, type = IType.MAP),
+    @variable(name = ModelState.PARAMETERS, type = IType.MAP),
 })
-@doc("A context is a snapshot of the inputs/outputs of the target model at a given time.")
-public class ParameterAgentContext implements IValue {
+@doc("A system state is a snapshot of the inputs/outputs of the target model at a given time.")
+public final class ModelState implements IValue, Cloneable {
   public static final String MEASURES = "measures";
   public static final String PARAMETERS = "parameters";
 
@@ -32,12 +32,12 @@ public class ParameterAgentContext implements IValue {
   private final Map<String, Double> parametersValues;
 
   /**
-   * Creates a new context.
-   * 
+   * Creates a new model state.
+   *
    * @param measuresValues   All measure values.
    * @param parametersValues All parameter values.
    */
-  public ParameterAgentContext(final Map<String, Double> measuresValues, final Map<String, Double> parametersValues) {
+  public ModelState(final Map<String, Double> measuresValues, final Map<String, Double> parametersValues) {
     this.measuresValues = Collections.unmodifiableMap(measuresValues);
     this.parametersValues = Collections.unmodifiableMap(parametersValues);
   }
@@ -54,7 +54,7 @@ public class ParameterAgentContext implements IValue {
 
   /**
    * Returns the value for the given measure.
-   * 
+   *
    * @param measureName The measure name.
    * @return The value.
    */
@@ -64,7 +64,7 @@ public class ParameterAgentContext implements IValue {
 
   /**
    * Returns the value for the given parameter.
-   * 
+   *
    * @param parameterName The parameter name.
    * @return The value.
    */
@@ -73,13 +73,15 @@ public class ParameterAgentContext implements IValue {
   }
 
   /**
-   * Computes the distance to the given context based on the given maps. These
+   * Computes the distance to the given model state based on the given maps. These
    * maps should contain the same keys.
-   * 
+   *
    * @param map1 The first map.
    * @param map2 The second map.
-   * @param mins A map containing the all-time minimum value for each measure.
-   * @param maxs A map containing the all-time maximum value for each measure.
+   * @param mins A map containing the all-time minimum value for each
+   *             measure/parameter.
+   * @param maxs A map containing the all-time maximum value for each
+   *             measure/parameter.
    * @return The distance.
    */
   private double distance(Map<String, Double> map1, Map<String, Double> map2, Map<String, Double> mins,
@@ -97,32 +99,32 @@ public class ParameterAgentContext implements IValue {
   }
 
   /**
-   * Computes the distance to the given context based on measures only.
-   * 
+   * Computes the distance to the given model state based on measures only.
+   *
    * @param other The context to compute the distance with.
    * @param mins  A map containing the all-time minimum value for each measure.
    * @param maxs  A map containing the all-time maximum value for each measure.
    * @return The distance.
    */
-  public double distanceMeasures(ParameterAgentContext other, Map<String, Double> mins, Map<String, Double> maxs) {
+  public double distanceMeasures(ModelState other, Map<String, Double> mins, Map<String, Double> maxs) {
     return this.distance(this.measuresValues, other.measuresValues, mins, maxs);
   }
 
   /**
-   * Computes the distance to the given context based on parameters only.
-   * 
+   * Computes the distance to the given model state based on parameters only.
+   *
    * @param other The context to compute the distance with.
    * @param mins  A map containing the all-time minimum value for each parameter.
    * @param maxs  A map containing the all-time maximum value for each parameter.
    * @return The distance.
    */
-  public double distanceParameters(ParameterAgentContext other, Map<String, Double> mins, Map<String, Double> maxs) {
+  public double distanceParameters(ModelState other, Map<String, Double> mins, Map<String, Double> maxs) {
     return this.distance(this.parametersValues, other.parametersValues, mins, maxs);
   }
 
   /**
    * Normalizes a value between two bounds.
-   * 
+   *
    * @param v   The value to normalize.
    * @param min The lower bound.
    * @param max The upper bound.
@@ -148,7 +150,7 @@ public class ParameterAgentContext implements IValue {
     if (obj == null || this.getClass() != obj.getClass())
       return false;
 
-    ParameterAgentContext other = (ParameterAgentContext) obj;
+    ModelState other = (ModelState) obj;
     return this.measuresValues.equals(other.measuresValues) && this.parametersValues.equals(other.parametersValues);
   }
 
@@ -166,5 +168,10 @@ public class ParameterAgentContext implements IValue {
   public IValue copy(final IScope scope) throws GamaRuntimeException {
     // TODO Auto-generated method stub
     return null;
+  }
+
+  @Override
+  public ModelState clone() {
+    return new ModelState(this.measuresValues, this.parametersValues);
   }
 }
