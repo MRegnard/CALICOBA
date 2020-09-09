@@ -91,6 +91,9 @@ public abstract class Agent<S> {
    * received messages, gather data from their sensors…).
    */
   public void perceive() {
+    // DEBUG
+//    System.out.println(this.getClass());
+//    System.out.println(this.getState());
   }
 
   /**

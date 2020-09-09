@@ -1,9 +1,9 @@
 package fr.irit.smac.calicoba.mas.messages;
 
-import fr.irit.smac.calicoba.mas.agents.CurrentSituationAgent;
+import fr.irit.smac.calicoba.mas.agents.MediatorAgent;
 
-public class ActionProposalRequestMessage extends Message<CurrentSituationAgent> {
-  public ActionProposalRequestMessage(final CurrentSituationAgent sender) {
+public class ActionProposalRequestMessage extends Message<MediatorAgent> {
+  public ActionProposalRequestMessage(final MediatorAgent sender) {
     super(sender);
   }
 }

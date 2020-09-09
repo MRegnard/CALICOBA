@@ -1,11 +1,11 @@
 package fr.irit.smac.calicoba.mas.agents;
 
+import java.util.HashSet;
 import java.util.Set;
 
 import fr.irit.smac.calicoba.mas.messages.FloatValueMessage;
 import fr.irit.smac.calicoba.mas.messages.Message;
 import fr.irit.smac.calicoba.mas.messages.ValueRequestMessage;
-import fr.irit.smac.util.Logger;
 
 /**
  * An Objective agent gets a Measure and Observation then computes a criticality
@@ -43,6 +43,7 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
     this.name = name;
     this.measureAgent = measureAgent;
     this.observationAgent = observationAgent;
+    this.targetAgents = new HashSet<>();
     this.minAbsoluteCriticality = Double.NaN;
     this.maxAbsoluteCriticality = Double.NaN;
   }
@@ -53,7 +54,7 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
 
     this.observationUpdated = false;
     this.measureUpdated = false;
-    this.setState(State.IDLE);
+    this.setState(State.REQUESTING);
   }
 
   /*
@@ -69,10 +70,6 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
     super.perceive();
 
     switch (this.getState()) {
-      case IDLE:
-        this.onIdle();
-        break;
-
       case REQUESTING:
         this.onRequesting();
         break;
@@ -85,13 +82,6 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
         this.onUpdated();
         break;
     }
-  }
-
-  private void onIdle() {
-    if (this.isNewGamaCycle()) {
-      this.setState(State.REQUESTING);
-    }
-    this.iterateOverMessages(this::handleRequest);
   }
 
   private void onRequesting() {
@@ -145,10 +135,6 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
     super.decideAndAct();
 
     switch (this.getState()) {
-      case IDLE:
-        // Nothing to do here
-        break;
-
       case REQUESTING:
         this.requestValues();
         break;
@@ -193,9 +179,9 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
       }
 
       // DEBUG
-      Logger.debug(absoluteCriticality);
-      Logger.debug(this.maxAbsoluteCriticality + " " + this.minAbsoluteCriticality);
-      Logger.debug(this.maxAbsoluteCriticality - this.minAbsoluteCriticality);
+//      Logger.debug(absoluteCriticality);
+//      Logger.debug(this.maxAbsoluteCriticality + " " + this.minAbsoluteCriticality);
+//      Logger.debug(this.maxAbsoluteCriticality - this.minAbsoluteCriticality);
       double diff = this.maxAbsoluteCriticality - this.minAbsoluteCriticality;
       if (diff == 0) {
         this.criticality = absoluteCriticality;
@@ -204,7 +190,7 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
         this.criticality = absoluteCriticality / diff;
       }
       // DEBUG
-      Logger.debug(this.criticality);
+//      Logger.debug(this.criticality);
 
       this.setState(State.UPDATED);
     }
@@ -229,6 +215,6 @@ public class ObjectiveAgent extends Agent<ObjectiveAgent.State> {
   }
 
   public enum State {
-    IDLE, REQUESTING, UPDATING, UPDATED;
+    REQUESTING, UPDATING, UPDATED;
   }
 }

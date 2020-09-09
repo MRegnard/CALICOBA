@@ -11,15 +11,15 @@ import fr.irit.smac.util.ValueMap;
 public class SituationAgent extends Agent<SituationAgent.State> {
   private ModelState modelState;
   private ValueMap parametersActions;
-  private ValueMap expectedObjectivesVariations;
+  private ValueMap expectedCriticalitiesVariations;
   private List<Agent<?>> requesters;
 
   public SituationAgent(ModelState modelState, ValueMap parametersActions,
-      ValueMap expectedObjectivesVariations) {
+      ValueMap expectedCriticalitiesVariations) {
     super();
     this.modelState = modelState.clone();
     this.parametersActions = parametersActions.clone();
-    this.expectedObjectivesVariations = expectedObjectivesVariations.clone();
+    this.expectedCriticalitiesVariations = expectedCriticalitiesVariations.clone();
     this.requesters = new LinkedList<>();
   }
 
@@ -49,7 +49,7 @@ public class SituationAgent extends Agent<SituationAgent.State> {
 
     if (this.hasState(State.PROPOSAL_REQUESTED)) {
       this.requesters.forEach(r -> r.onMessage(
-          new ActionProposalMessage(this, this.parametersActions, this.expectedObjectivesVariations)));
+          new ActionProposalMessage(this, this.parametersActions, this.expectedCriticalitiesVariations)));
       this.setState(State.IDLE);
     }
   }

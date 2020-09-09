@@ -6,6 +6,7 @@ import java.util.Set;
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.mas.messages.FloatValueMessage;
 import fr.irit.smac.calicoba.mas.messages.ValueRequestMessage;
+import fr.irit.smac.util.Logger;
 
 /**
  * Base class for agents that can read an agent attribute and broadcast its
@@ -13,7 +14,7 @@ import fr.irit.smac.calicoba.mas.messages.ValueRequestMessage;
  *
  * @author Damien Vergnet
  */
-public abstract class ValueProviderAgent extends AgentWithAttribute<ReadableAgentAttribute, Void> {
+public abstract class ValueProviderAgent extends AgentWithGamaAttribute<ReadableAgentAttribute, Void> {
   /** The list of agents that requested the value. */
   private Set<Agent<?>> requesters;
   private final FloatValueMessage.ValueNature messageType;
@@ -36,6 +37,9 @@ public abstract class ValueProviderAgent extends AgentWithAttribute<ReadableAgen
     this.requesters.clear();
     this.iterateOverMessages(m -> {
       if (m instanceof ValueRequestMessage) {
+        if (this instanceof MeasureAgent) {
+          Logger.debug(m.getSender()); // DEBUG
+        }
         this.requesters.add(m.getSender());
       }
     });

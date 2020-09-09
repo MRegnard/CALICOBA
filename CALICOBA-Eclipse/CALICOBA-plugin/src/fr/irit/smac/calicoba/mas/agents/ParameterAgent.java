@@ -26,7 +26,7 @@ import fr.irit.smac.util.ValueMap;
  *
  * @author Damien Vergnet
  */
-public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, ParameterAgent.State> {
+public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute, ParameterAgent.State> {
   private List<ObjectiveAgent> objectiveAgents;
   /** The current objective values. */
   private ValueMap currentObjectivesValues;
@@ -70,7 +70,9 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
 
     if (this.objectiveAgents == null) {
       this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
+      Logger.debug(this.objectiveAgents); // DEBUG
     }
+    this.setState(State.REQUESTING_OBJ);
   }
 
   /*
@@ -121,6 +123,7 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
         switch (fm.getValueNature()) {
           case CRITICALITY:
             this.tempObjectives.put(((ObjectiveAgent) sender).getName(), value);
+            this.remainingValuesToUpdate--;
             break;
 
           default:
@@ -135,7 +138,7 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
       this.handleRequest(m);
       if (m instanceof ActionProposalMessage) {
         ActionProposalMessage apm = (ActionProposalMessage) m;
-        this.proposedActions.add(new Triplet<>(apm.getActions(), apm.getExpectedObjectivesVariations(),
+        this.proposedActions.add(new Triplet<>(apm.getActions(), apm.getExpectedCriticalitiesVariations(),
             apm.getSender()));
       }
       else if (m instanceof ProposalsSentMessage) {
@@ -206,6 +209,7 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
 
   private void checkUpdateFinished() {
     if (this.remainingValuesToUpdate <= 0) {
+      this.currentObjectivesValues = this.tempObjectives;
       this.proposedActions.clear();
       this.setState(State.AWAITING_PROPOSALS);
     }
@@ -251,8 +255,8 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
     return new Pair<>(defaultAction, null);
   }
 
-  // TODO choisir l’action à la main.
   private Optional<Pair<Double, SituationAgent>> selectAction() {
+    System.out.println(this.currentObjectivesValues); // DEBUG
     // Should always exist.
     String mostCritical = this.currentObjectivesValues.entrySet().stream()
         .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
@@ -268,13 +272,25 @@ public class ParameterAgent extends AgentWithAttribute<WritableAgentAttribute, P
                 .compareTo(a2.getSecond().get(mostCritical)));
 
     // TEMP
-    Logger.debug("Selected situation: " + opt);
     if (this.manual) {
-      this.proposedActions.forEach(System.out::println);
-      System.out.println("Situation to select:");
-      int i = this.sc.nextInt();
-      opt = Optional.of(this.proposedActions.get(i));
+      System.out.println("Action to execute:");
+      String s = this.sc.nextLine();
+      if (s.equals("m")) {
+        this.manual = false;
+      }
+      else {
+        return Optional.of(new Pair<>(Double.parseDouble(s), null));
+      }
     }
+
+    // TEMP
+//    Logger.debug("Selected situation: " + opt);
+//    if (this.manual) {
+//      this.proposedActions.forEach(System.out::println);
+//      System.out.println("Situation to select:");
+//      int i = this.sc.nextInt();
+//      opt = Optional.of(this.proposedActions.get(i));
+//    }
 
     return opt.map(t -> new Pair<>(t.getFirst().get(this.getAttributeName()), t.getThird()));
   }

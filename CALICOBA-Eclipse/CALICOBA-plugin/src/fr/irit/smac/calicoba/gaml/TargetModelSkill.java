@@ -94,7 +94,7 @@ public class TargetModelSkill extends ModelSkill {
           ), //
       } //
   )
-  public Double getParameterAction(final IScope scope) {
+  public double getParameterAction(final IScope scope) {
     final String paramName = scope.getStringArg(PARAMETER_NAME);
     final ParameterAgent agent = this.getParameterAgent(paramName, scope);
     return agent.getLastAction().getFirst();

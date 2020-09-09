@@ -20,7 +20,7 @@ import msi.gaml.types.Types;
 
 /**
  * This skill should only be used by the global agent species.
- * 
+ *
  * @author Damien Vergnet
  */
 @skill( //
@@ -34,7 +34,7 @@ public class GlobalSkill extends ModelSkill {
   /**
    * Initializes CALICOBA. Should only be called in the init statement, before any
    * other statement.
-   * 
+   *
    * @param scope The current scope.
    */
   @action( //
@@ -65,7 +65,7 @@ public class GlobalSkill extends ModelSkill {
   /**
    * Sets up CALICOBA. It should only be called in the init statement, after the
    * target and reference models have been instanciated.
-   * 
+   *
    * @param scope The current scope.
    */
   @action( //
@@ -83,7 +83,7 @@ public class GlobalSkill extends ModelSkill {
 
   /**
    * Runs CALICOBA for 1 step. Should not be called more than once per cycle.
-   * 
+   *
    * @param scope The current scope.
    */
   @action( //
@@ -101,7 +101,7 @@ public class GlobalSkill extends ModelSkill {
 
   /**
    * Returns the values of all objectives.
-   * 
+   *
    * @param scope The current scope.
    * @return The objectives’ values.
    */
@@ -125,7 +125,7 @@ public class GlobalSkill extends ModelSkill {
 
   /**
    * Returns the value of the given objective.
-   * 
+   *
    * @param scope The current scope.
    * @return The objective value.
    * @throws GamaRuntimeException If the given objective name doesn’t exist.
@@ -148,12 +148,12 @@ public class GlobalSkill extends ModelSkill {
 
     try {
       Supplier<GamaRuntimeException> s = //
-          () -> GamaRuntimeException.error(String.format("'%s' is not a parameter", objectiveName), scope);
+          () -> GamaRuntimeException.error(String.format("'%s' is not an objective", objectiveName), scope);
       agent = Calicoba.instance().getWorld().getAgentsForType(ObjectiveAgent.class).stream()
           .filter(a -> a.getName().equals(objectiveName)).findFirst().orElseThrow(s);
     }
     catch (RuntimeException e) {
-      throw GamaRuntimeException.create(e, scope);
+      return Double.NaN;
     }
 
     return agent.getCriticality();

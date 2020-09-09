@@ -1,14 +1,13 @@
 package fr.irit.smac.calicoba.mas;
 
-import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
-import fr.irit.smac.calicoba.mas.agents.CurrentSituationAgent;
 import fr.irit.smac.calicoba.mas.agents.MeasureAgent;
+import fr.irit.smac.calicoba.mas.agents.MediatorAgent;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationAgent;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
@@ -24,7 +23,7 @@ public class Calicoba {
   private static Calicoba instance;
 
   /**
-   * Tells wether CALICOBA has been initialized.
+   * Tells whether CALICOBA has been initialized.
    *
    * @return true if and only if CALICOBA has been initialized.
    */
@@ -65,16 +64,14 @@ public class Calicoba {
    * @param stepInterval The number of GAMA iterations between each step.
    */
   private Calicoba(int stepInterval) {
-    this.world = new World(
-        Arrays.asList(MeasureAgent.class, ObservationAgent.class, ObjectiveAgent.class, ParameterAgent.class),
-        stepInterval);
+    this.world = new World(stepInterval);
   }
 
   /**
    * Creates an new agent for the given target model parameter.
    *
    * @param parameter A parameter of the target model.
-   * @param isFloat   Wether the parameter is a float or an int.
+   * @param isFloat   Whether the parameter is a float or an int.
    */
   public void addParameter(WritableAgentAttribute parameter, boolean isFloat) {
     Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
@@ -107,6 +104,9 @@ public class Calicoba {
    */
   public void setup() {
     Logger.info("Setting up CALICOBA…");
+
+    this.world.init(); // Insert agents that have already been added prior to setup.
+
     Map<String, ObservationAgent> observationAgents = this.world.getAgentsForType(ObservationAgent.class).stream()
         .collect(Collectors.toMap(ObservationAgent::getAttributeName, Function.identity()));
 
@@ -120,8 +120,10 @@ public class Calicoba {
       this.world.addAgent(objAgent);
     }
 
-    CurrentSituationAgent currentSituation = new CurrentSituationAgent();
-    this.getWorld().addAgent(currentSituation);
+    MediatorAgent mediator = new MediatorAgent();
+    this.world.addAgent(mediator);
+
+    this.world.init();
 
     Logger.info("CALICOBA set up finished.");
   }

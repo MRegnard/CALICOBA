@@ -19,6 +19,8 @@ import fr.irit.smac.util.Logger;
 public class World {
   /** The list of last attributed IDs for each agent type. */
   private Map<Class<? extends Agent<?>>, Integer> globalIds;
+  /** List of agents to insert at the start of the next cycle. */
+  private List<Agent<?>> pendingAgents;
   /** List of all alive agents in insertion order. */
   private List<Agent<?>> orderedAgents;
   /** Registry of all alive agents by type. */
@@ -56,6 +58,7 @@ public class World {
   protected World(List<Class<? extends Agent<?>>> customSchedule, int stepInterval) {
     Logger.info("Creating World…");
     this.globalIds = new HashMap<>();
+    this.pendingAgents = new LinkedList<>();
     this.orderedAgents = new LinkedList<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
@@ -75,6 +78,9 @@ public class World {
    */
   @SuppressWarnings("unchecked")
   public <T extends Agent<?>> List<T> getAgentsForType(Class<T> type) {
+    if (!this.agentsRegistry.containsKey(type)) {
+      return Collections.emptyList();
+    }
     return (List<T>) new ArrayList<>(this.agentsRegistry.get(type));
   }
 
@@ -111,17 +117,17 @@ public class World {
       this.globalIds.put(agentClass, 0);
     }
     this.globalIds.put(agentClass, this.globalIds.get(agentClass) + 1);
-
-    if (!this.agentsRegistry.containsKey(agentClass)) {
-      this.agentsRegistry.put(agentClass, new LinkedList<>());
-    }
-    this.agentsRegistry.get(agentClass).add(agent);
-
-    this.agentsIdsRegistry.put(agent.getId(), agent);
-    this.orderedAgents.add(agent);
+    this.pendingAgents.add(agent);
 
     agent.setId(String.format("%s_%d", agentClass.getSimpleName(), this.globalIds.get(agentClass)));
     agent.setWorld(this);
+  }
+
+  /**
+   * Initializes this world by inserting all agents added so far.
+   */
+  public void init() {
+    this.insertPendingAgents();
   }
 
   /**
@@ -152,6 +158,8 @@ public class World {
 
       this.orderedAgents.forEach(Agent::onGamaCycleEnd);
 
+      this.insertPendingAgents();
+
       this.stepCountdown = this.stepInterval;
       this.restoreGama = false;
     }
@@ -163,5 +171,32 @@ public class World {
 
   public void restoreGama() {
     this.restoreGama = true;
+  }
+
+  /**
+   * Inserts all pending agents into the scheduler.
+   */
+  private void insertPendingAgents() {
+    if (!this.pendingAgents.isEmpty()) {
+      Logger.info(String.format("Inserting %d pending agents…", this.pendingAgents.size()));
+    }
+
+    for (Agent<?> agent : this.pendingAgents) {
+      @SuppressWarnings("unchecked")
+      Class<? extends Agent<?>> agentClass = (Class<? extends Agent<?>>) agent.getClass();
+
+      if (!this.agentsRegistry.containsKey(agentClass)) {
+        this.agentsRegistry.put(agentClass, new LinkedList<>());
+      }
+      this.agentsRegistry.get(agentClass).add(agent);
+
+      this.agentsIdsRegistry.put(agent.getId(), agent);
+      this.orderedAgents.add(agent);
+    }
+
+    if (!this.pendingAgents.isEmpty()) {
+      Logger.info("Agents inserted.");
+    }
+    this.pendingAgents.clear();
   }
 }

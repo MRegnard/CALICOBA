@@ -19,10 +19,8 @@ import msi.gaml.types.IType;
  *
  * @author Damien Vergnet
  */
-@vars({
-    @variable(name = ModelState.MEASURES, type = IType.MAP),
-    @variable(name = ModelState.PARAMETERS, type = IType.MAP),
-})
+@vars({ @variable(name = ModelState.MEASURES, type = IType.MAP),
+    @variable(name = ModelState.PARAMETERS, type = IType.MAP), })
 @doc("A system state is a snapshot of the inputs/outputs of the target model at a given time.")
 public final class ModelState implements IValue, Cloneable {
   public static final String MEASURES = "measures";
@@ -93,7 +91,7 @@ public final class ModelState implements IValue, Cloneable {
       double min = mins.get(valueName);
       double max = maxs.get(valueName);
       return this.normalize(Math.pow(e.getValue() - map1.get(valueName), 2), min, max);
-    }).reduce(Double::sum).getAsDouble();
+    }).reduce(Double::sum).getAsDouble(); // FIXME no such element error
 
     return distance;
   }
@@ -156,7 +154,7 @@ public final class ModelState implements IValue, Cloneable {
 
   @Override
   public String toString() {
-    return String.format("Context{measures=%s,parameters=%s}", this.measuresValues, this.parametersValues);
+    return String.format("ModelState{measures=%s,parameters=%s}", this.measuresValues, this.parametersValues);
   }
 
   @Override
