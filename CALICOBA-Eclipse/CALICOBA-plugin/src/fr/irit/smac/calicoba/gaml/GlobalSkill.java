@@ -45,8 +45,7 @@ public class GlobalSkill extends ModelSkill {
               type = IType.INT, //
               optional = false, //
               doc = @doc("The number of GAMA iterations between each step of CALICOBA.") //
-          )
-      }, //
+          ) }, //
       doc = @doc("Initializes CALICOBA. Must be called <em>before</em> any other statement.") //
   )
   public void init(final IScope scope) {
@@ -56,8 +55,7 @@ public class GlobalSkill extends ModelSkill {
 
     try {
       Calicoba.init(scope.getIntArg(INIT_STEP_INTERVAL_ARG_NAME));
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
   }
@@ -75,8 +73,7 @@ public class GlobalSkill extends ModelSkill {
   public void setup(final IScope scope) {
     try {
       Calicoba.instance().setup();
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
   }
@@ -93,8 +90,7 @@ public class GlobalSkill extends ModelSkill {
   public void step(final IScope scope) {
     try {
       Calicoba.instance().step();
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
   }
@@ -113,10 +109,9 @@ public class GlobalSkill extends ModelSkill {
     Map<String, Double> objectives;
 
     try {
-      objectives = Calicoba.instance().getWorld().getAgentsForType(ObjectiveAgent.class).stream()
+      objectives = Calicoba.instance().getAgentsForType(ObjectiveAgent.class).stream()
           .collect(Collectors.toMap(ObjectiveAgent::getName, ObjectiveAgent::getCriticality));
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
 
@@ -149,10 +144,9 @@ public class GlobalSkill extends ModelSkill {
     try {
       Supplier<GamaRuntimeException> s = //
           () -> GamaRuntimeException.error(String.format("'%s' is not an objective", objectiveName), scope);
-      agent = Calicoba.instance().getWorld().getAgentsForType(ObjectiveAgent.class).stream()
+      agent = Calicoba.instance().getAgentsForType(ObjectiveAgent.class).stream()
           .filter(a -> a.getName().equals(objectiveName)).findFirst().orElseThrow(s);
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       return Double.NaN;
     }
 

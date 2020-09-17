@@ -1,17 +1,22 @@
-package fr.irit.smac.calicoba.mas.messages;
+package fr.irit.smac.calicoba.mas.agents.data;
 
 import fr.irit.smac.calicoba.mas.agents.SituationAgent;
 import fr.irit.smac.util.ValueMap;
 
-public class ActionProposalMessage extends Message<SituationAgent> {
+public class ActionProposal {
+  private final SituationAgent proposer;
   private final ValueMap actions;
   private final ValueMap expectedCriticalitiesVariations;
 
-  public ActionProposalMessage(final SituationAgent sender, final ValueMap actions,
+  public ActionProposal(final SituationAgent proposer, final ValueMap actions,
       final ValueMap expectedCriticalitiesVariations) {
-    super(sender);
+    this.proposer = proposer;
     this.actions = actions.clone();
     this.expectedCriticalitiesVariations = expectedCriticalitiesVariations.clone();
+  }
+
+  public SituationAgent getProposer() {
+    return this.proposer;
   }
 
   public ValueMap getActions() {

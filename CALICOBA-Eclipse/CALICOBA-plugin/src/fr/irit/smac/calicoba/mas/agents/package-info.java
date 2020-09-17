@@ -1,5 +1,6 @@
 /**
- * This package contains classes directly related to CALICOBA’s agents.
+ * This package contains classes directly related to CALICOBA’s agents and
+ * entities.
  * 
  * @author Damien Vergnet
  */

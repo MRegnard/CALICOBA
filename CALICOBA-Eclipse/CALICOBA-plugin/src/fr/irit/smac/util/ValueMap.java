@@ -24,6 +24,6 @@ public class ValueMap extends HashMap<String, Double> {
 
   @Override
   public ValueMap clone() {
-    return (ValueMap) super.clone();
+    return new ValueMap(this);
   }
 }

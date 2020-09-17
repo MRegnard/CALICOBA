@@ -2,7 +2,7 @@ package fr.irit.smac.calicoba.gaml;
 
 import java.util.Collections;
 
-import fr.irit.smac.calicoba.mas.agents.ModelState;
+import fr.irit.smac.calicoba.mas.agents.data.ModelState;
 import msi.gama.precompiler.GamlAnnotations.doc;
 import msi.gama.precompiler.GamlAnnotations.type;
 import msi.gama.precompiler.ISymbolKind;

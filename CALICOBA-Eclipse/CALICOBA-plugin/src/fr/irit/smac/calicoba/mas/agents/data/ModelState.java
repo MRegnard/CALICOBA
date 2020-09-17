@@ -1,4 +1,4 @@
-package fr.irit.smac.calicoba.mas.agents;
+package fr.irit.smac.calicoba.mas.agents.data;
 
 import java.util.Collections;
 import java.util.HashMap;

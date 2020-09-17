@@ -66,8 +66,7 @@ public class TargetModelSkill extends ModelSkill {
           Calicoba.instance().addMeasure(new ReadableAgentAttribute(agent, attributeName));
         }
       }
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
   }
@@ -101,9 +100,8 @@ public class TargetModelSkill extends ModelSkill {
   }
 
   private ParameterAgent getParameterAgent(final String paramName, final IScope scope) {
-    return Calicoba.instance().getWorld().getAgentsForType(ParameterAgent.class)
-        .stream().filter(a -> a.getAttributeName().equals(paramName)).findFirst()
-        .orElseThrow(
+    return Calicoba.instance().getAgentsForType(ParameterAgent.class).stream()
+        .filter(a -> a.getAttributeName().equals(paramName)).findFirst().orElseThrow(
             () -> GamaRuntimeException.error(String.format("No agent for parameter name \"%s\"", paramName), scope));
   }
 }

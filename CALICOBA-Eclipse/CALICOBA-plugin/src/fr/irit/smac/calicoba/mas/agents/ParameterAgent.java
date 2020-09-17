@@ -1,22 +1,18 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.HashSet;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
-import java.util.Set;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.WritableAgentAttribute;
-import fr.irit.smac.calicoba.mas.messages.ActionProposalMessage;
-import fr.irit.smac.calicoba.mas.messages.FloatValueMessage;
-import fr.irit.smac.calicoba.mas.messages.Message;
-import fr.irit.smac.calicoba.mas.messages.PerformedActionRequestMessage;
-import fr.irit.smac.calicoba.mas.messages.ProposalsSentMessage;
-import fr.irit.smac.calicoba.mas.messages.ValueRequestMessage;
-import fr.irit.smac.util.Logger;
+import fr.irit.smac.calicoba.mas.agents.data.ActionProposal;
 import fr.irit.smac.util.Triplet;
 import fr.irit.smac.util.ValueMap;
 
@@ -26,20 +22,17 @@ import fr.irit.smac.util.ValueMap;
  *
  * @author Damien Vergnet
  */
-public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute, ParameterAgent.State> {
+public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute> {
   private List<ObjectiveAgent> objectiveAgents;
   /** The current objective values. */
   private ValueMap currentObjectivesValues;
-  private ValueMap tempObjectives;
   private List<Triplet<ValueMap, ValueMap, SituationAgent>> proposedActions;
+  private boolean actionChosen;
   /** The latest performed action. */
-  private double selectedAction;
-  private SituationAgent selectedSituation;
+  private Optional<Double> selectedAction;
+  private Optional<SituationAgent> selectedSituation;
 
-  private Set<Agent<?>> valueRequesters;
-  private Set<Agent<?>> performedActionRequesters;
-
-  private int remainingValuesToUpdate;
+  private boolean hasExecutedAction;
 
   // TEMP
   private boolean manual;
@@ -56,241 +49,148 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
    */
   public ParameterAgent(WritableAgentAttribute parameter, boolean isFloat) {
     super(parameter);
-    this.valueRequesters = new HashSet<>();
-    this.performedActionRequesters = new HashSet<>();
     this.currentObjectivesValues = new ValueMap();
     this.proposedActions = new LinkedList<>();
+    this.actionChosen = false;
+    this.selectedAction = Optional.empty();
+    this.selectedSituation = Optional.empty();
+    this.hasExecutedAction = false;
     this.manual = true;
-    this.setState(State.REQUESTING_OBJ);
   }
 
-  @Override
-  public void onGamaCycleBegin() {
-    super.onGamaCycleBegin();
-
-    if (this.objectiveAgents == null) {
-      this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
-      Logger.debug(this.objectiveAgents); // DEBUG
-    }
-    this.setState(State.REQUESTING_OBJ);
+  public void suggestActions(Collection<ActionProposal> proposals) {
+    proposals.forEach(proposal -> this.proposedActions.add(
+        new Triplet<>(proposal.getActions(), proposal.getExpectedCriticalitiesVariations(), proposal.getProposer())));
   }
 
-  /*
-   * Perception
+  /**
+   * @return The latest performed action, the associated objective that it should
+   *         help and the expected variation.
    */
+  public Pair<Double, SituationAgent> getLastAction() {
+    return new Pair<>(this.selectedAction.orElse(null), this.selectedSituation.orElse(null));
+  }
+
+  public boolean hasExecutedAction() {
+    return this.hasExecutedAction;
+  }
 
   @Override
   public void perceive() {
     super.perceive();
 
-    switch (this.getState()) {
-      case REQUESTING_OBJ:
-        this.onRequestingObjectives();
-        break;
-
-      case UPDATING_OBJ:
-        this.onUpdatingObjectives();
-        break;
-
-      case AWAITING_PROPOSALS:
-        this.onAwaitingProposals();
-        break;
-
-      case DISCUSSING:
-        this.onDiscussing();
-        break;
-
-      case EXECUTING:
-        this.onExecuting();
-        break;
+    this.hasExecutedAction = false;
+    this.actionChosen = false;
+    if (this.objectiveAgents == null) {
+      this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
     }
+    this.objectiveAgents.forEach(oa -> this.currentObjectivesValues.put(oa.getName(), oa.getCriticality()));
   }
-
-  private void onRequestingObjectives() {
-    this.tempObjectives = new ValueMap();
-
-    this.iterateOverMessages(this::handleRequest);
-  }
-
-  private void onUpdatingObjectives() {
-    this.iterateOverMessages(m -> {
-      this.handleRequest(m);
-      if (m instanceof FloatValueMessage) {
-        FloatValueMessage fm = (FloatValueMessage) m;
-        Agent<?> sender = m.getSender();
-        double value = fm.getValue();
-
-        switch (fm.getValueNature()) {
-          case CRITICALITY:
-            this.tempObjectives.put(((ObjectiveAgent) sender).getName(), value);
-            this.remainingValuesToUpdate--;
-            break;
-
-          default:
-            break;
-        }
-      }
-    });
-  }
-
-  private void onAwaitingProposals() {
-    this.iterateOverMessages(m -> {
-      this.handleRequest(m);
-      if (m instanceof ActionProposalMessage) {
-        ActionProposalMessage apm = (ActionProposalMessage) m;
-        this.proposedActions.add(new Triplet<>(apm.getActions(), apm.getExpectedCriticalitiesVariations(),
-            apm.getSender()));
-      }
-      else if (m instanceof ProposalsSentMessage) {
-        this.setState(State.DISCUSSING);
-      }
-    });
-  }
-
-  private void onDiscussing() {
-    this.iterateOverMessages(this::handleRequest);
-  }
-
-  private void onExecuting() {
-    this.iterateOverMessages(this::handleRequest);
-  }
-
-  private void handleRequest(Message<?> m) {
-    if (m instanceof ValueRequestMessage) {
-      this.valueRequesters.add(m.getSender());
-    }
-    else if (m instanceof PerformedActionRequestMessage) {
-      this.performedActionRequesters.add(m.getSender());
-    }
-  }
-
-  /*
-   * Decision and action
-   */
 
   @Override
   public void decideAndAct() {
     super.decideAndAct();
 
-    switch (this.getState()) {
-      case REQUESTING_OBJ:
-        this.requestObjectives();
-        break;
-
-      case UPDATING_OBJ:
-        this.checkUpdateFinished();
-        break;
-
-      case DISCUSSING:
-        this.discussAction();
-        break;
-
-      case EXECUTING:
-        this.executeAction();
-        break;
-
-      default:
-        break;
-    }
-
-    FloatValueMessage message = new FloatValueMessage(this, this.getAttributeValue(),
-        FloatValueMessage.ValueNature.PARAM_VALUE);
-    this.valueRequesters.forEach(a -> a.onMessage(message));
-  }
-
-  private void requestObjectives() {
-    ValueRequestMessage m = new ValueRequestMessage(this);
-
-    this.objectiveAgents.forEach(o -> o.onMessage(m));
-    this.remainingValuesToUpdate = this.objectiveAgents.size();
-
-    this.setState(State.UPDATING_OBJ);
-  }
-
-  private void checkUpdateFinished() {
-    if (this.remainingValuesToUpdate <= 0) {
-      this.currentObjectivesValues = this.tempObjectives;
-      this.proposedActions.clear();
-      this.setState(State.AWAITING_PROPOSALS);
+    if (!this.actionChosen) {
+      this.discussActions();
+    } else {
+      this.addToParameterValue(this.selectedAction.get());
+      this.hasExecutedAction = true;
     }
   }
 
-  private void discussAction() {
+  private void discussActions() {
     Pair<Double, SituationAgent> result = this.getAction();
 
-    this.selectedAction = result.getFirst();
-    this.selectedSituation = result.getSecond();
+    this.actionChosen = true;
+    this.selectedAction = Optional.of(result.getFirst());
+    this.selectedSituation = Optional.ofNullable(result.getSecond());
 
-    this.setState(State.EXECUTING);
-  }
-
-  private void executeAction() {
-    this.addToParameterValue(this.selectedAction);
-    this.getWorld().restoreGama();
+    // Notify proposing situations of being chosen or rejected
+    this.proposedActions.stream().map(Triplet::getThird).forEach(s -> {
+      if (this.selectedSituation.isPresent() && s == this.selectedSituation.get()) {
+        s.setChosen(true);
+      } else {
+        s.setRejected(true);
+      }
+    });
   }
 
   /**
    * Returns the best action to perform.
    *
-   * @return The best action to perform, if any, the objective for which the
-   *         action is beneficial and the expected variation.
+   * @return The best action to perform, if any, and the associated situation.
    */
   private Pair<Double, SituationAgent> getAction() {
-    Optional<Pair<Double, SituationAgent>> opt = this.selectAction();
-
+    Optional<Pair<Double, SituationAgent>> opt = this.selectAction(true);
     if (opt.isPresent()) {
       return opt.get();
     }
 
-    double defaultAction = 0;
-    double random = Math.random();
-
-    if (random < 0.33) {
-      defaultAction = -AMOUNT;
-    }
-    else if (random > 0.66) {
-      defaultAction = AMOUNT;
+    // No action are beneficial to the most critical objective, perform the opposite
+    // action that previously increased the most its criticality.
+    opt = this.selectAction(false);
+    if (opt.isPresent()) {
+      return new Pair<>(-opt.get().getFirst(), null);
     }
 
-    return new Pair<>(defaultAction, null);
+    // TEMP There is no action either, select a random action.
+    double action;
+    double r = Math.random();
+
+    if (r < 0.33) {
+      action = -AMOUNT;
+    } else if (r > 0.66) {
+      action = AMOUNT;
+    } else {
+      action = 0.0;
+    }
+
+    return new Pair<>(action, null);
   }
 
-  private Optional<Pair<Double, SituationAgent>> selectAction() {
-    System.out.println(this.currentObjectivesValues); // DEBUG
+  private Optional<Pair<Double, SituationAgent>> selectAction(boolean getBest) {
     // Should always exist.
     String mostCritical = this.currentObjectivesValues.entrySet().stream()
-        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
-        .map(e -> e.getKey()).get();
+        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue())).map(e -> e.getKey()).get();
 
-    Optional<Triplet<ValueMap, ValueMap, SituationAgent>> opt = //
-        this.proposedActions.stream()
-            // Filter out entries where the current most critical objective’s criticality
-            // increased.
-            .filter(a -> a.getSecond().get(mostCritical) <= 0)
-            // Get the entry where the criticality decreased the most.
-            .min((a1, a2) -> a1.getSecond().get(mostCritical)
-                .compareTo(a2.getSecond().get(mostCritical)));
+    Predicate<Double> filter;
 
-    // TEMP
+    if (getBest) {
+      // Filter out entries where the current most critical objective’s criticality
+      // increased.
+      filter = d -> d <= 0;
+    } else {
+      // Filter out entries where the current most critical objective’s criticality
+      // decreased.
+      filter = d -> d >= 0;
+    }
+
+    Comparator<Triplet<ValueMap, ValueMap, SituationAgent>> c = (a1, a2) -> a1.getSecond().get(mostCritical)
+        .compareTo(a2.getSecond().get(mostCritical));
+
+    Stream<Triplet<ValueMap, ValueMap, SituationAgent>> stream = this.proposedActions.stream()
+        .filter(a -> filter.test(a.getSecond().get(mostCritical)));
+    Optional<Triplet<ValueMap, ValueMap, SituationAgent>> opt;
+
+    if (getBest) {
+      // Get the entry where the criticality decreased the most.
+      opt = stream.min(c);
+    } else {
+      // Get the entry where the criticality increased the most.
+      opt = stream.max(c);
+    }
+
+    // TEMP set “by hand” the action to execute
     if (this.manual) {
       System.out.println("Action to execute:");
       String s = this.sc.nextLine();
       if (s.equals("m")) {
         this.manual = false;
-      }
-      else {
+      } else {
         return Optional.of(new Pair<>(Double.parseDouble(s), null));
       }
     }
-
-    // TEMP
-//    Logger.debug("Selected situation: " + opt);
-//    if (this.manual) {
-//      this.proposedActions.forEach(System.out::println);
-//      System.out.println("Situation to select:");
-//      int i = this.sc.nextInt();
-//      opt = Optional.of(this.proposedActions.get(i));
-//    }
 
     return opt.map(t -> new Pair<>(t.getFirst().get(this.getAttributeName()), t.getThird()));
   }
@@ -304,20 +204,8 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     this.getGamaAttribute().setValue(this.getGamaAttribute().getValue() + value);
   }
 
-  /**
-   * @return The latest performed action, the associated objective that it should
-   *         help and the expected variation.
-   */
-  public Pair<Double, SituationAgent> getLastAction() {
-    return new Pair<>(this.selectedAction, this.selectedSituation);
-  }
-
   @Override
   public String toString() {
     return super.toString() + String.format("{parameter=%s}", this.getGamaAttribute());
-  }
-
-  public enum State {
-    REQUESTING_OBJ, UPDATING_OBJ, AWAITING_PROPOSALS, DISCUSSING, EXECUTING;
   }
 }

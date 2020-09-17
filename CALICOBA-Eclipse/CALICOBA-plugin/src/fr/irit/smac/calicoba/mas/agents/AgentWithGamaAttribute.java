@@ -9,7 +9,7 @@ import fr.irit.smac.calicoba.ReadableAgentAttribute;
  *
  * @author Damien Vergnet
  */
-public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute, S> extends Agent<S> {
+public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute> extends Agent {
   /** The attribute this agent has access to. */
   private final T attribute;
 
