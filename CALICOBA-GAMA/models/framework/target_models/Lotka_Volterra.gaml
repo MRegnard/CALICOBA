@@ -31,4 +31,14 @@ species TargetModel skills: [calicoba_target_model] {
     // Using Runge-Kutta 4 method.
     solve lotka_volterra method: "rk4" step_size: integration_time_step;
   }
+
+  bool shouldReset {
+  	return out_preys_number <= 0 or out_predators_number <= 0;
+  }
+
+  action reset {
+  	t <- 0.0;
+    out_preys_number <- init_preys_number;
+    out_predators_number <- init_predators_number;
+  }
 }

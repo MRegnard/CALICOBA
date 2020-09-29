@@ -16,26 +16,10 @@ global skills: [calicoba] {
     target_model <- first(target);
 
     do calicoba_setup();
-    string header <- "cycle,nb preys (ref),nb predators (ref),nb preys (target)," +
-        "nb predators (target),parameter α,parameter α action,helped obj," +
-        "expected variation,obj preys nb criticality,obj predators nb criticality";
-    save header to: "out.csv" type: csv rewrite: true header: false;
   }
 
   reflex step {
     do calicoba_step();
-
-    float performed_action <- target_model.get_parameter_action("param_preys_birth_rate");
-    string line <- string(cycle) + "," +
-        string(reference_system.out_preys_number) + "," +
-        string(reference_system.out_predators_number) + "," +
-        string(target_model.out_preys_number) + "," +
-        string(target_model.out_predators_number) + "," +
-        string(target_model.param_preys_birth_rate) + "," +
-        string(performed_action) + "," +
-        string(get_objective("out_preys_number")) + "," +
-        string(get_objective("out_predators_number"));
-    save line to: "out.csv" type: csv header: false rewrite: false;
   }
 }
 

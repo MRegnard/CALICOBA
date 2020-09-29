@@ -1,5 +1,10 @@
 package fr.irit.smac.calicoba.gaml;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -49,7 +54,23 @@ public class GlobalSkill extends ModelSkill {
       doc = @doc("Initializes CALICOBA. Must be called <em>before</em> any other statement.") //
   )
   public void init(final IScope scope) {
-    Logger.setLevel(Logger.Level.DEBUG);
+    Path path = Paths.get(Calicoba.OUTPUT_DIR);
+    if (!Files.isDirectory(path)) {
+      try {
+        Files.createDirectories(path);
+      } catch (IOException e) {
+        throw GamaRuntimeException.create(e, scope);
+      }
+    }
+    try {
+      String fname = Calicoba.OUTPUT_DIR + "calicoba.log";
+      Logger.info("Log output file: " + fname);
+      Logger.setWriter(new FileWriter(fname));
+    } catch (IOException e) {
+      throw GamaRuntimeException.create(e, scope);
+    }
+    Logger.setWriterLevel(Logger.Level.INFO);
+    Logger.setStdoutLevel(Logger.Level.DEBUG);
 
     super.init();
 

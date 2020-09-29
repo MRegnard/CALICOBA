@@ -1,5 +1,8 @@
 package fr.irit.smac.util;
 
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.util.Objects;
 
 /**
@@ -8,16 +11,39 @@ import java.util.Objects;
  * @author Damien Vergnet
  */
 public final class Logger {
-  /** Minimum level of events that will be logged. */
-  private static Level level = Level.DEBUG;
+  /** Minimum level of events that will be logged by the standard output. */
+  private static Level stdoutLevel = Level.DEBUG;
+  /** Minimum level of events that will be logged by the writer. */
+  private static Level writerLevel = Level.INFO;
+
+  private static PrintStream printer = System.out;
+
+  private static OutputStreamWriter writer;
+
+  public static void setPrinter(PrintStream out) {
+    printer = Objects.requireNonNull(out);
+  }
+
+  public static void setWriter(OutputStreamWriter out) {
+    writer = out;
+  }
 
   /**
    * Sets the minimum logging level.
    * 
    * @param level The minimum level.
    */
-  public static void setLevel(Level level) {
-    Logger.level = level;
+  public static void setStdoutLevel(Level level) {
+    Logger.stdoutLevel = level;
+  }
+
+  /**
+   * Sets the minimum logging level for the writer.
+   * 
+   * @param level The minimum level.
+   */
+  public static void setWriterLevel(Level level) {
+    Logger.writerLevel = level;
   }
 
   /**
@@ -63,17 +89,28 @@ public final class Logger {
    * @param value The value to log.
    */
   private static void log(Level level, Object value) {
-    if (level.isHigherOrEqualTo(Logger.level)) {
+    if (level.isHigherOrEqualTo(Logger.stdoutLevel)) {
       StackTraceElement[] trace = Thread.currentThread().getStackTrace();
       StackTraceElement callingMethodTrace = trace[3];
 
-      System.out.println(String.format("[%s] %s.%s:%d: %s", //
+      String v = String.format("[%s] %s.%s:%d: %s", //
           Objects.requireNonNull(level), //
           callingMethodTrace.getClassName(), //
           callingMethodTrace.getMethodName(), //
           callingMethodTrace.getLineNumber(), //
           String.valueOf(value) //
-      ));
+      );
+
+      printer.println(v);
+
+      if (writer != null && level.isHigherOrEqualTo(writerLevel)) {
+        try {
+          writer.write(v + "\n");
+          writer.flush();
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      }
     }
   }
 

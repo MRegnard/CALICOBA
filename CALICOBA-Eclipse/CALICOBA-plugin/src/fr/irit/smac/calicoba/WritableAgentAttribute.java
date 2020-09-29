@@ -8,7 +8,7 @@ import msi.gama.metamodel.agent.IAgent;
  *
  * @author Damien Vergnet
  */
-public class WritableAgentAttribute extends ReadableAgentAttribute {
+public class WritableAgentAttribute<T> extends ReadableAgentAttribute<T> {
   /**
    * Creates a writable attribute for the given agent.
    *
@@ -24,7 +24,7 @@ public class WritableAgentAttribute extends ReadableAgentAttribute {
    *
    * @param value The new value.
    */
-  public void setValue(double value) {
+  public void setValue(T value) {
     this.agent.setAttribute(this.getName(), value);
   }
 

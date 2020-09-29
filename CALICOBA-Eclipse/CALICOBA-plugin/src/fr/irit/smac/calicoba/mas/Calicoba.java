@@ -1,5 +1,6 @@
 package fr.irit.smac.calicoba.mas;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -13,8 +14,8 @@ import java.util.stream.Collectors;
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.agents.Agent;
+import fr.irit.smac.calicoba.mas.agents.CurrentSituationAgent;
 import fr.irit.smac.calicoba.mas.agents.MeasureEntity;
-import fr.irit.smac.calicoba.mas.agents.Mediator;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationEntity;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
@@ -27,6 +28,9 @@ import fr.irit.smac.util.Logger;
  * @author Damien Vergnet
  */
 public class Calicoba {
+  public static final String OUTPUT_DIR = System.getProperty("user.dir") + File.separator + "calicoba_output"
+      + File.separator;
+
   /** Single instance. */
   private static Calicoba instance;
 
@@ -70,18 +74,24 @@ public class Calicoba {
   /** Registry of all alive agents by ID. */
   private Map<String, Agent> agentsIdsRegistry;
 
+  private CurrentSituationAgent currentSituation;
+
   /** Number of GAMA iterations between each step. */
   private final int stepInterval;
   /** Number of remaining steps until the next iteration. */
   private int stepCountdown;
 
-  private boolean firstCycle;
+  private int cycle;
 
-  private Mediator mediator;
+  private boolean resetFlag;
+
   private List<MeasureEntity> measures;
   private List<ObservationEntity> observations;
   private List<ObjectiveAgent> objectives;
   private List<ParameterAgent> parameters;
+
+  private ReadableAgentAttribute<Boolean> shouldReset;
+  private WritableAgentAttribute<Boolean> reset;
 
   /**
    * Creates a new instance of CALICOBA.
@@ -95,7 +105,26 @@ public class Calicoba {
 
     this.stepInterval = stepInterval;
     this.stepCountdown = 0;
-    this.firstCycle = true;
+  }
+
+  public CurrentSituationAgent getCurrentSituation() {
+    return this.currentSituation;
+  }
+
+  public int getCycle() {
+    return this.cycle;
+  }
+
+  public void setResetFlag() {
+    this.resetFlag = true;
+  }
+
+  public void setShouldResetPredicate(ReadableAgentAttribute<Boolean> shouldReset) {
+    this.shouldReset = shouldReset;
+  }
+
+  public void setResetAttribute(WritableAgentAttribute<Boolean> reset) {
+    this.reset = reset;
   }
 
   /**
@@ -104,7 +133,7 @@ public class Calicoba {
    * @param parameter A parameter of the target model.
    * @param isFloat   Whether the parameter is a float or an int.
    */
-  public void addParameter(WritableAgentAttribute parameter, boolean isFloat) {
+  public void addParameter(WritableAgentAttribute<Double> parameter, boolean isFloat) {
     Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
     this.addAgent(new ParameterAgent(parameter, isFloat));
   }
@@ -114,7 +143,7 @@ public class Calicoba {
    *
    * @param measure An output of the target model.
    */
-  public void addMeasure(ReadableAgentAttribute measure) {
+  public void addMeasure(ReadableAgentAttribute<Double> measure) {
     Logger.info(String.format("Creating measure \"%s\".", measure.getName()));
     this.addAgent(new MeasureEntity(measure));
   }
@@ -124,7 +153,7 @@ public class Calicoba {
    *
    * @param observation An output of the reference system.
    */
-  public void addObservation(ReadableAgentAttribute observation) {
+  public void addObservation(ReadableAgentAttribute<Double> observation) {
     Logger.info(String.format("Creating observation \"%s\".", observation.getName()));
     this.addAgent(new ObservationEntity(observation));
   }
@@ -155,7 +184,7 @@ public class Calicoba {
       this.objectives.add(objAgent);
     }
 
-    this.mediator = new Mediator(this, this.parameters, this.measures, this.objectives);
+    this.cycle = 0;
 
     Logger.info("CALICOBA set up finished.");
   }
@@ -227,48 +256,57 @@ public class Calicoba {
    */
   public void step() {
     if (this.stepCountdown == 0) {
-      Logger.info("Executing agents…");
+      Logger.info(String.format("Cycle %d", this.cycle));
 
-      // Shuffle parameter agents list to avoid insertion order bias
-      Collections.shuffle(this.parameters);
+      boolean reset = this.shouldReset.getValue();
 
-      this.measures.forEach(MeasureEntity::perceive);
-      this.measures.forEach(MeasureEntity::decideAndAct);
+      if (!reset) {
+        // Shuffle parameter agents list to avoid insertion order bias
+        Collections.shuffle(this.parameters);
 
-      this.observations.forEach(ObservationEntity::perceive);
-      this.observations.forEach(ObservationEntity::decideAndAct);
+        this.measures.forEach(MeasureEntity::perceive);
+        this.measures.forEach(MeasureEntity::decideAndAct);
 
-      this.objectives.forEach(ObjectiveAgent::perceive);
-      this.objectives.forEach(ObjectiveAgent::decideAndAct);
+        this.observations.forEach(ObservationEntity::perceive);
+        this.observations.forEach(ObservationEntity::decideAndAct);
 
-      this.parameters.forEach(ParameterAgent::perceive);
+        this.objectives.forEach(ObjectiveAgent::perceive);
+        this.objectives.forEach(ObjectiveAgent::decideAndAct);
 
-      // Update current situation
-      this.mediator.update();
-      if (!this.firstCycle) {
-        // Compute objectives variations, get executed actions and update memory
-        this.mediator.updateMemory();
+        this.parameters.forEach(ParameterAgent::perceive);
 
-        // Update all Situation agents that proposed an action
-        List<SituationAgent> situations = this.getAgentsForType(SituationAgent.class).stream()
-            .filter(sa -> sa.isChosen() || sa.isRejected()).collect(Collectors.toList());
+        Logger.info(this.measures);
+
+        if (this.currentSituation == null) {
+          this.currentSituation = new CurrentSituationAgent();
+          this.currentSituation.setWorld(this);
+        }
+
+        this.currentSituation.perceive();
+        this.currentSituation.decideAndAct();
+
+        List<SituationAgent> situations = this.getAgentsForType(SituationAgent.class);
         situations.forEach(SituationAgent::perceive);
         situations.forEach(SituationAgent::decideAndAct);
-      } else {
-        this.firstCycle = false;
-      }
-      // Select situations to make action proposalsParameterAgent
-      this.mediator.selectSituations();
 
-      // Discuss/execute actions
-      do {
-        this.parameters.forEach(ParameterAgent::decideAndAct);
-      } while (!this.parameters.stream().allMatch(ParameterAgent::hasExecutedAction));
+        reset = this.resetFlag;
+      }
+
+      if (reset) {
+        this.reset.setValue(true);
+        this.resetFlag = false;
+      } else {
+        // Discuss/execute actions
+        do {
+          this.parameters.forEach(ParameterAgent::decideAndAct);
+        } while (!this.parameters.stream().allMatch(ParameterAgent::hasExecutedAction));
+      }
 
       this.stepCountdown = this.stepInterval;
+      this.cycle++;
     } else {
       this.stepCountdown--;
-      Logger.info(String.format("Waiting. %d steps remaining.", this.stepCountdown));
+      Logger.debug(String.format("Waiting. %d steps remaining.", this.stepCountdown));
     }
   }
 }

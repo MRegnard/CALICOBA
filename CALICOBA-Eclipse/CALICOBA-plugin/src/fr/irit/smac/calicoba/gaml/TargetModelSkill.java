@@ -46,6 +46,8 @@ public class TargetModelSkill extends ModelSkill {
 
     final IAgent agent = this.getCurrentAgent(scope);
     final IMap<String, Object> attributes = agent.getOrCreateAttributes();
+    Calicoba.instance().setShouldResetPredicate(new ReadableAgentAttribute<>(agent, "should_reset"));
+    Calicoba.instance().setResetAttribute(new WritableAgentAttribute<>(agent, "reset"));
 
     try {
       for (Map.Entry<String, Object> attribute : attributes.entrySet()) {
@@ -56,14 +58,14 @@ public class TargetModelSkill extends ModelSkill {
           if (attributeType != Double.class) {
             throw GamaRuntimeException.error("Parameters should be floats.", scope);
           }
-          Calicoba.instance().addParameter(new WritableAgentAttribute(agent, attributeName),
+          Calicoba.instance().addParameter(new WritableAgentAttribute<>(agent, attributeName),
               attributeType == Double.class);
         }
         if (attributeName.startsWith("out_")) {
           if (attributeType != Double.class) {
             throw GamaRuntimeException.error("Parameters should be floats.", scope);
           }
-          Calicoba.instance().addMeasure(new ReadableAgentAttribute(agent, attributeName));
+          Calicoba.instance().addMeasure(new ReadableAgentAttribute<>(agent, attributeName));
         }
       }
     } catch (RuntimeException e) {

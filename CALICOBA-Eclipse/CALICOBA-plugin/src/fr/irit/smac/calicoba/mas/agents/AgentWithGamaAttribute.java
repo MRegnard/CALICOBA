@@ -9,7 +9,7 @@ import fr.irit.smac.calicoba.ReadableAgentAttribute;
  *
  * @author Damien Vergnet
  */
-public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute> extends Agent {
+public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute<Double>> extends Agent {
   /** The attribute this agent has access to. */
   private final T attribute;
 
@@ -78,5 +78,10 @@ public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute> e
    */
   public double getAttributeMaxValue() {
     return this.max;
+  }
+
+  @Override
+  public String toString() {
+    return String.format("%s(%f)", this.getAttributeName(), this.cachedAttributeValue);
   }
 }

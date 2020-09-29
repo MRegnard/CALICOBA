@@ -8,7 +8,7 @@ import msi.gama.metamodel.agent.IAgent;
  *
  * @author Damien Vergnet
  */
-public class ReadableAgentAttribute {
+public class ReadableAgentAttribute<T> {
   /** This attribute’s name. */
   private final String name;
   /** The GAMA agent this attribute belongs to. */
@@ -36,8 +36,9 @@ public class ReadableAgentAttribute {
   /**
    * @return This attribute’s value.
    */
-  public double getValue() {
-    return (double) this.agent.getAttribute(this.getName());
+  @SuppressWarnings("unchecked")
+  public T getValue() {
+    return (T) this.agent.getAttribute(this.getName());
   }
 
   @Override

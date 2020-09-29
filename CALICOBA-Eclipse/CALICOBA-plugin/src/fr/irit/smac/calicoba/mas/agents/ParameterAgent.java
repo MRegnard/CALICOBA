@@ -1,6 +1,5 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
@@ -13,6 +12,7 @@ import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.agents.data.ActionProposal;
+import fr.irit.smac.util.Logger;
 import fr.irit.smac.util.Triplet;
 import fr.irit.smac.util.ValueMap;
 
@@ -22,7 +22,7 @@ import fr.irit.smac.util.ValueMap;
  *
  * @author Damien Vergnet
  */
-public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute> {
+public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute<Double>> {
   private List<ObjectiveAgent> objectiveAgents;
   /** The current objective values. */
   private ValueMap currentObjectivesValues;
@@ -39,7 +39,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
   private Scanner sc = new Scanner(System.in);
 
   // TEMP fixed value for now
-  private static final double AMOUNT = 0.01;
+  private static final double AMOUNT = 1;
 
   /**
    * Creates a new Parameter agent for the given parameter.
@@ -47,7 +47,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
    * @param parameter The GAMA agent’s attribute/parameter.
    * @param isFloat   Wether the attribute is a floating point value.
    */
-  public ParameterAgent(WritableAgentAttribute parameter, boolean isFloat) {
+  public ParameterAgent(WritableAgentAttribute<Double> parameter, boolean isFloat) {
     super(parameter);
     this.currentObjectivesValues = new ValueMap();
     this.proposedActions = new LinkedList<>();
@@ -58,9 +58,9 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     this.manual = true;
   }
 
-  public void suggestActions(Collection<ActionProposal> proposals) {
-    proposals.forEach(proposal -> this.proposedActions.add(
-        new Triplet<>(proposal.getActions(), proposal.getExpectedCriticalitiesVariations(), proposal.getProposer())));
+  public void suggestAction(ActionProposal proposal) {
+    this.proposedActions.add(
+        new Triplet<>(proposal.getActions(), proposal.getExpectedCriticalitiesVariations(), proposal.getProposer()));
   }
 
   /**
@@ -68,7 +68,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
    *         help and the expected variation.
    */
   public Pair<Double, SituationAgent> getLastAction() {
-    return new Pair<>(this.selectedAction.orElse(null), this.selectedSituation.orElse(null));
+    return new Pair<>(this.selectedAction.orElse(Double.NaN), this.selectedSituation.orElse(null));
   }
 
   public boolean hasExecutedAction() {
@@ -81,6 +81,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
 
     this.hasExecutedAction = false;
     this.actionChosen = false;
+    this.proposedActions.clear();
     if (this.objectiveAgents == null) {
       this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
     }
@@ -109,9 +110,9 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     // Notify proposing situations of being chosen or rejected
     this.proposedActions.stream().map(Triplet::getThird).forEach(s -> {
       if (this.selectedSituation.isPresent() && s == this.selectedSituation.get()) {
-        s.setChosen(true);
+        s.choose();
       } else {
-        s.setRejected(true);
+        s.reject();
       }
     });
   }
@@ -124,6 +125,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
   private Pair<Double, SituationAgent> getAction() {
     Optional<Pair<Double, SituationAgent>> opt = this.selectAction(true);
     if (opt.isPresent()) {
+      Logger.info("action found " + opt.get()); // DEBUG
       return opt.get();
     }
 
@@ -131,6 +133,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     // action that previously increased the most its criticality.
     opt = this.selectAction(false);
     if (opt.isPresent()) {
+      Logger.info("anti-action found " + opt.get()); // DEBUG
       return new Pair<>(-opt.get().getFirst(), null);
     }
 
@@ -146,6 +149,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
       action = 0.0;
     }
 
+    Logger.info("random action " + action); // DEBUG
     return new Pair<>(action, null);
   }
 
@@ -187,6 +191,7 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
       String s = this.sc.nextLine();
       if (s.equals("m")) {
         this.manual = false;
+        this.getWorld().setResetFlag();
       } else {
         return Optional.of(new Pair<>(Double.parseDouble(s), null));
       }
@@ -202,10 +207,5 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
    */
   private void addToParameterValue(double value) {
     this.getGamaAttribute().setValue(this.getGamaAttribute().getValue() + value);
-  }
-
-  @Override
-  public String toString() {
-    return super.toString() + String.format("{parameter=%s}", this.getGamaAttribute());
   }
 }

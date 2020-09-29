@@ -1,5 +1,7 @@
 package fr.irit.smac.calicoba.mas.agents;
 
+import fr.irit.smac.util.Logger;
+
 /**
  * An Objective agent gets a Measure and Observation then computes a criticality
  * value and finally sends it to all Parameter agents.
@@ -19,9 +21,9 @@ public class ObjectiveAgent extends Agent {
   private double criticality;
 
   /** The all-time minimum absolute criticality. */
-  private double minAbsoluteCriticality;
+  private double minDiff;
   /** The all-time maximum absolute criticality. */
-  private double maxAbsoluteCriticality;
+  private double maxDiff;
 
   /**
    * Creates a new Objective agent with the given name.
@@ -32,8 +34,8 @@ public class ObjectiveAgent extends Agent {
     this.name = name;
     this.measureAgent = measureAgent;
     this.observationAgent = observationAgent;
-    this.minAbsoluteCriticality = Double.NaN;
-    this.maxAbsoluteCriticality = Double.NaN;
+    this.minDiff = Double.NaN;
+    this.maxDiff = Double.NaN;
   }
 
   /**
@@ -61,32 +63,30 @@ public class ObjectiveAgent extends Agent {
    * measure and the observation.
    */
   private void computeCriticality() {
-    double absoluteCriticality = Math.abs(this.measureValue - this.observationValue);
+    double diff = Math.abs(this.measureValue - this.observationValue);
 
-    if (Double.isNaN(this.minAbsoluteCriticality)) {
-      this.minAbsoluteCriticality = absoluteCriticality;
+    if (Double.isNaN(this.minDiff)) {
+      this.minDiff = diff;
     } else {
-      this.minAbsoluteCriticality = Math.min(absoluteCriticality, this.minAbsoluteCriticality);
+      this.minDiff = Math.min(diff, this.minDiff);
     }
 
-    if (Double.isNaN(this.maxAbsoluteCriticality)) {
-      this.maxAbsoluteCriticality = absoluteCriticality;
+    if (Double.isNaN(this.maxDiff)) {
+      this.maxDiff = diff;
     } else {
-      this.maxAbsoluteCriticality = Math.max(absoluteCriticality, this.maxAbsoluteCriticality);
+      this.maxDiff = Math.max(diff, this.maxDiff);
     }
 
-    // DEBUG
-//      Logger.debug(absoluteCriticality);
-//      Logger.debug(this.maxAbsoluteCriticality + " " + this.minAbsoluteCriticality);
-//      Logger.debug(this.maxAbsoluteCriticality - this.minAbsoluteCriticality);
-    double diff = this.maxAbsoluteCriticality - this.minAbsoluteCriticality;
-    if (diff == 0) {
-      this.criticality = absoluteCriticality;
+    Logger.debug(diff);
+    Logger.debug(this.maxDiff + " " + this.minDiff);
+    Logger.debug(this.maxDiff - this.minDiff);
+    double minMaxDiff = this.maxDiff - this.minDiff; // TODO pas bon
+    if (minMaxDiff == 0) {
+      this.criticality = diff;
     } else {
-      this.criticality = absoluteCriticality / diff;
+      this.criticality = diff / minMaxDiff;
     }
-    // DEBUG
-//      Logger.debug(this.criticality);
+    Logger.debug(this.criticality);
   }
 
   /**
@@ -98,5 +98,10 @@ public class ObjectiveAgent extends Agent {
 
   public double getCriticality() {
     return this.criticality;
+  }
+
+  @Override
+  public String toString() {
+    return String.format("obj_%s(%f)", this.getName(), this.criticality);
   }
 }

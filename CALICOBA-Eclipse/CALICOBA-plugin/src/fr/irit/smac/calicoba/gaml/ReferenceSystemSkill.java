@@ -50,10 +50,9 @@ public class ReferenceSystemSkill extends ModelSkill {
           throw GamaRuntimeException.error("Observation variables should be floats.", scope);
         }
         try {
-          ReadableAgentAttribute attr = new ReadableAgentAttribute(agent, attributeName);
+          ReadableAgentAttribute<Double> attr = new ReadableAgentAttribute<>(agent, attributeName);
           Calicoba.instance().addObservation(attr);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
           throw GamaRuntimeException.create(e, scope);
         }
       }

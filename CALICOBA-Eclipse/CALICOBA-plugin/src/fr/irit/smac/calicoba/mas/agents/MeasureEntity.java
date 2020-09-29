@@ -8,13 +8,13 @@ import fr.irit.smac.calicoba.ReadableAgentAttribute;
  *
  * @author Damien Vergnet
  */
-public class MeasureEntity extends AgentWithGamaAttribute<ReadableAgentAttribute> {
+public class MeasureEntity extends AgentWithGamaAttribute<ReadableAgentAttribute<Double>> {
   /**
    * Creates a new Measure entity.
    *
    * @param attribute The attribute this entity can read.
    */
-  public MeasureEntity(ReadableAgentAttribute attribute) {
+  public MeasureEntity(ReadableAgentAttribute<Double> attribute) {
     super(attribute);
   }
 }

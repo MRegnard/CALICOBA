@@ -10,7 +10,6 @@ import fr.irit.smac.calicoba.mas.Calicoba;
  */
 public abstract class Agent {
   private Calicoba world;
-  private Mediator mediator;
   private String id;
 
   /**
@@ -29,14 +28,6 @@ public abstract class Agent {
    */
   public void setWorld(Calicoba world) {
     this.world = world;
-  }
-
-  public Mediator getMediator() {
-    return this.mediator;
-  }
-
-  public void setMediator(Mediator mediator) {
-    this.mediator = mediator;
   }
 
   /**

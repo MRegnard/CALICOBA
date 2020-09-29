@@ -8,13 +8,13 @@ import fr.irit.smac.calicoba.ReadableAgentAttribute;
  *
  * @author Damien Vergnet
  */
-public class ObservationEntity extends AgentWithGamaAttribute<ReadableAgentAttribute> {
+public class ObservationEntity extends AgentWithGamaAttribute<ReadableAgentAttribute<Double>> {
   /**
    * Creates a new Observation entity.
    *
    * @param attribute The attribute this entity can read.
    */
-  public ObservationEntity(ReadableAgentAttribute attribute) {
+  public ObservationEntity(ReadableAgentAttribute<Double> attribute) {
     super(attribute);
   }
 }
