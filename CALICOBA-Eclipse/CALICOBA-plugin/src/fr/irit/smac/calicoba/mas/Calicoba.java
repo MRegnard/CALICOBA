@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.agents.Agent;
-import fr.irit.smac.calicoba.mas.agents.CurrentSituationAgent;
 import fr.irit.smac.calicoba.mas.agents.MeasureEntity;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationEntity;
@@ -74,7 +73,13 @@ public class Calicoba {
   /** Registry of all alive agents by ID. */
   private Map<String, Agent> agentsIdsRegistry;
 
-  private CurrentSituationAgent currentSituation;
+  /**
+   * Used to keep track of the current model state at all times. Not an actual
+   * agent.
+   */
+  private SituationAgent defaultCurrentSituation;
+  /** Current situation agent. Changes at each cycle. */
+  private SituationAgent currentSituation;
 
   /** Number of GAMA iterations between each step. */
   private final int stepInterval;
@@ -107,7 +112,7 @@ public class Calicoba {
     this.stepCountdown = 0;
   }
 
-  public CurrentSituationAgent getCurrentSituation() {
+  public SituationAgent getCurrentSituation() {
     return this.currentSituation;
   }
 
@@ -275,12 +280,20 @@ public class Calicoba {
 
         this.parameters.forEach(ParameterAgent::perceive);
 
-        Logger.info(this.measures);
-
-        if (this.currentSituation == null) {
-          this.currentSituation = new CurrentSituationAgent();
-          this.currentSituation.setWorld(this);
+        if (this.defaultCurrentSituation == null) {
+          this.defaultCurrentSituation = new SituationAgent(null, null, null);
+          this.defaultCurrentSituation.setCurrent();
         }
+
+        this.defaultCurrentSituation.perceive();
+
+        // If current situation was created during previous cycle, add it to the world.
+        if (!this.agentsIdsRegistry.values().contains(this.currentSituation)) {
+          this.addAgent(this.currentSituation);
+        }
+
+        this.currentSituation = this.getCurrentSituationFromMemoryOrCreate();
+        this.currentSituation.setCurrent();
 
         this.currentSituation.perceive();
         this.currentSituation.decideAndAct();
@@ -308,5 +321,17 @@ public class Calicoba {
       this.stepCountdown--;
       Logger.debug(String.format("Waiting. %d steps remaining.", this.stepCountdown));
     }
+  }
+
+  private SituationAgent getCurrentSituationFromMemoryOrCreate() {
+    List<SituationAgent> situations = this.getAgentsForType(SituationAgent.class).stream()
+        .filter(sa -> sa.getModelState().equals(this.defaultCurrentSituation.getModelState()))
+        .collect(Collectors.toList());
+
+    if (!situations.isEmpty()) {
+      return situations.get(0);
+    }
+
+    return this.defaultCurrentSituation.createNewSituation();
   }
 }

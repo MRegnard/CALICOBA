@@ -150,8 +150,125 @@
     <operatorsCategories>
         <category id="Iterator operators"/>
     </operatorsCategories>
-    <operators/>
-    <skills/>
+    <operators>
+        <operator alphabetOrder="sz" id="triplet" name="triplet">
+            <operatorCategories>
+                <category id="Types-related operators"/>
+            </operatorCategories>
+            <concepts/>
+            <combinaisonIO>
+                <operands class="fr.irit.smac.calicoba.gaml.TripletType" contentType="" returnType="triplet" type="">
+                    <operand name="val" position="0" type="any"/>
+                </operands>
+            </combinaisonIO>
+            <documentation>
+                <result>casts the operand in a triplet object.</result>
+            </documentation>
+            <documentation>
+                <result>Do not use.</result>
+            </documentation>
+        </operator>
+        <operator alphabetOrder="nr" id="parameter_context" name="parameter_context">
+            <operatorCategories>
+                <category id="Types-related operators"/>
+            </operatorCategories>
+            <concepts/>
+            <combinaisonIO>
+                <operands class="fr.irit.smac.calicoba.gaml.ParameterAgentContextType" contentType="" returnType="parameter_context" type="">
+                    <operand name="val" position="0" type="any"/>
+                </operands>
+            </combinaisonIO>
+            <documentation>
+                <result>casts the operand in a parameter_context object.</result>
+            </documentation>
+            <documentation>
+                <result>Do not use.</result>
+            </documentation>
+        </operator>
+    </operators>
+    <skills>
+        <skill class="fr.irit.smac.calicoba.gaml.TargetModelSkill" extends="fr.irit.smac.calicoba.gaml.ModelSkill" id="calicoba_target_model" name="calicoba_target_model">
+            <actions>
+                <action name="model_init" returnType="void">
+                    <args/>
+                    <documentation>
+                        <result>Initializes the &lt;code&gt;calicoba_target_model&lt;/code&gt; skill.</result>
+                    </documentation>
+                </action>
+                <action name="get_parameter_action" returnType="float">
+                    <args>
+                        <arg name="parameter_name" optional="false" type="string">
+                            <documentation>
+                                <result>Name of the parameter.</result>
+                            </documentation>
+                        </arg>
+                    </args>
+                    <documentation>
+                        <result>Returns the action performed by the given parameter of the &lt;code&gt;calicoba_target_model&lt;/code&gt;.</result>
+                    </documentation>
+                </action>
+            </actions>
+            <concepts/>
+        </skill>
+        <skill class="fr.irit.smac.calicoba.gaml.ReferenceSystemSkill" extends="fr.irit.smac.calicoba.gaml.ModelSkill" id="calicoba_reference_system" name="calicoba_reference_system">
+            <actions>
+                <action name="system_init" returnType="void">
+                    <args/>
+                    <documentation>
+                        <result>Initializes the &lt;code&gt;calicoba_reference_system&lt;/code&gt; skill.</result>
+                    </documentation>
+                </action>
+            </actions>
+            <concepts/>
+        </skill>
+        <skill class="fr.irit.smac.calicoba.gaml.GlobalSkill" extends="fr.irit.smac.calicoba.gaml.ModelSkill" id="calicoba" name="calicoba">
+            <actions>
+                <action name="calicoba_init" returnType="void">
+                    <args>
+                        <arg name="step_interval" optional="false" type="int">
+                            <documentation>
+                                <result>The number of GAMA iterations between each step of CALICOBA.</result>
+                            </documentation>
+                        </arg>
+                    </args>
+                    <documentation>
+                        <result>Initializes CALICOBA. Must be called &lt;em&gt;before&lt;/em&gt; any other statement.</result>
+                    </documentation>
+                </action>
+                <action name="calicoba_setup" returnType="void">
+                    <args/>
+                    <documentation>
+                        <result>Sets up CALICOBA. Must be called &lt;em&gt;after&lt;/em&gt; target and reference models have been instanciated.</result>
+                    </documentation>
+                </action>
+                <action name="calicoba_step" returnType="void">
+                    <args/>
+                    <documentation>
+                        <result>Runs CALICOBA for 1 step.</result>
+                    </documentation>
+                </action>
+                <action name="get_objectives" returnType="map&lt;string,float&gt;">
+                    <args/>
+                    <documentation>
+                        <result>Returns the objectives’ values.</result>
+                    </documentation>
+                </action>
+                <action name="get_objective" returnType="float">
+                    <args>
+                        <arg name="objective_name" optional="false" type="string">
+                            <documentation>
+                                <result>Name of the objective.</result>
+                            </documentation>
+                        </arg>
+                    </args>
+                    <documentation>
+                        <result>Returns the objective value with the given name.</result>
+                    </documentation>
+                </action>
+            </actions>
+            <concepts/>
+        </skill>
+    </skills>
     <architectures/>
     <speciess/>
     <insideStatementKinds/>
@@ -159,5 +276,18 @@
     <statementsKinds/>
     <statements/>
     <files/>
-    <types/>
+    <types>
+        <type id="52" kind="102" name="triplet">
+            <documentation>
+                <result>This type represents a context, i.e. a snapshot of the inputs/outputs of the target model at a given time.</result>
+            </documentation>
+            <concepts/>
+        </type>
+        <type id="50" kind="102" name="parameter_context">
+            <documentation>
+                <result>A triplet is a container that holds 3 values.</result>
+            </documentation>
+            <concepts/>
+        </type>
+    </types>
 </doc>

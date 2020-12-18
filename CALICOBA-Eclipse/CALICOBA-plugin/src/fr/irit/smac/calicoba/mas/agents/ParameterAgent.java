@@ -106,15 +106,6 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     this.actionChosen = true;
     this.selectedAction = Optional.of(result.getFirst());
     this.selectedSituation = Optional.ofNullable(result.getSecond());
-
-    // Notify proposing situations of being chosen or rejected
-    this.proposedActions.stream().map(Triplet::getThird).forEach(s -> {
-      if (this.selectedSituation.isPresent() && s == this.selectedSituation.get()) {
-        s.choose();
-      } else {
-        s.reject();
-      }
-    });
   }
 
   /**

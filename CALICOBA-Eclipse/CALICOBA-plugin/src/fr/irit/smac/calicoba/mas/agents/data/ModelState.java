@@ -136,20 +136,31 @@ public final class ModelState implements IValue, Cloneable {
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    result = prime * result + ((this.measuresValues == null) ? 0 : this.measuresValues.hashCode());
-    result = prime * result + ((this.parametersValues == null) ? 0 : this.parametersValues.hashCode());
+    result = prime * result + this.measuresValues.hashCode();
+    result = prime * result + this.parametersValues.hashCode();
     return result;
   }
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj)
+    if (this == obj) {
       return true;
-    if (obj == null || this.getClass() != obj.getClass())
+    }
+    if (obj == null || this.getClass() != obj.getClass()) {
       return false;
+    }
 
     ModelState other = (ModelState) obj;
-    return this.measuresValues.equals(other.measuresValues) && this.parametersValues.equals(other.parametersValues);
+    double precision = 1e-6;
+    return this.mapEquals(this.measuresValues, other.measuresValues, precision)
+        && this.mapEquals(this.parametersValues, other.parametersValues, precision);
+  }
+
+  public boolean mapEquals(Map<String, Double> m1, Map<String, Double> m2, double precision) {
+    return m1.entrySet().stream()
+        .allMatch(e -> m2.containsKey(e.getKey()) && Math.abs(e.getValue() - m2.get(e.getKey())) < precision)
+        && m2.entrySet().stream()
+            .allMatch(e -> m1.containsKey(e.getKey()) && Math.abs(e.getValue() - m1.get(e.getKey())) < precision);
   }
 
   @Override
