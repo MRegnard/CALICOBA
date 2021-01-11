@@ -1,34 +1,39 @@
 model LinearFunction
 
 species TargetModel skills: [calicoba_target_model] {
-  float param_action <- 0.0;
-  float out_x <- 0.0;
-  float reset_point <- 0.0;
+  float param_x <- 5.0;
+  float param_y <- -1.0;
+  point reset_point <- {0.0, 0.0};
 
-  float out_y <- f(out_x);
+  float out_1 <- f1(param_x, param_y);
+  float out_2 <- f2(param_x, param_y);
 
   bool should_reset <- false;
   bool reset <- false; // Set by CALICOBA plugin
 
-  float x_min <- -50.0;
-  float x_max <- 50.0;
+  float mini <- -50.0;
+  float maxi <- 50.0;
 
   list<float> function_x <- [];
   list<float> function_y <- [];
+  list<float> function_out_1 <- [];
+  list<float> function_out_2 <- [];
 
   init {
     do model_init();
 
-  	loop i from: x_min to: x_max step: 1 {
+  	loop i from: mini to: maxi step: 1 {
   		function_x <+ i;
-  		function_y <+ f(i);
+      function_y <+ i;
+  		function_out_1 <+ f1(i, i);
+      function_out_2 <+ f2(i, i);
   	}
   }
 
   reflex update {
-  	out_x <- out_x + param_action;
-  	out_y <- f(out_x);
-  	should_reset <- (out_x < x_min) or (out_x > x_max);
+  	out_1 <- f1(param_x, param_y);
+    out_2 <- f2(param_x, param_y);
+  	should_reset <- (out_1 < mini) or (out_1 > maxi) or (out_2 < mini) or (out_2 > maxi);
   	if (should_reset or reset) {
   	  do reset();
   	  if (reset) {
@@ -37,19 +42,24 @@ species TargetModel skills: [calicoba_target_model] {
   	}
   }
 
-  float f(float z) {
-  	return 2 * z;
+  float f1(float x, float y) {
+  	return 2 * x - 3 * y;
+  }
+
+  float f2(float x, float y) {
+    return -5 * x + y;
   }
 
   action reset {
     write "reset";
-    write out_x;
-    if (reset_point = 0) {
-      reset_point <- out_x;
+    write string(param_x) + " " + string(param_y);
+    if (reset_point = {0.0, 0.0}) {
+      reset_point <- {param_x, param_y};
     }
-    out_x <- reset_point;
-    out_y <- f(out_x);
-    write out_x;
-    param_action <- 0.0;
+    param_x <- reset_point.x;
+    param_y <- reset_point.y;
+    out_1 <- f1(param_x, param_y);
+    out_2 <- f2(param_x, param_y);
+    write string(out_1) + " " + string(out_2);
   }
 }

@@ -18,7 +18,6 @@ import fr.irit.smac.calicoba.mas.agents.MeasureEntity;
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ObservationEntity;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
-import fr.irit.smac.calicoba.mas.agents.SituationAgent;
 import fr.irit.smac.util.Logger;
 
 /**
@@ -73,14 +72,6 @@ public class Calicoba {
   /** Registry of all alive agents by ID. */
   private Map<String, Agent> agentsIdsRegistry;
 
-  /**
-   * Used to keep track of the current model state at all times. Not an actual
-   * agent.
-   */
-  private SituationAgent defaultCurrentSituation;
-  /** Current situation agent. Changes at each cycle. */
-  private SituationAgent currentSituation;
-
   /** Number of GAMA iterations between each step. */
   private final int stepInterval;
   /** Number of remaining steps until the next iteration. */
@@ -112,10 +103,6 @@ public class Calicoba {
     this.stepCountdown = 0;
   }
 
-  public SituationAgent getCurrentSituation() {
-    return this.currentSituation;
-  }
-
   public int getCycle() {
     return this.cycle;
   }
@@ -138,9 +125,9 @@ public class Calicoba {
    * @param parameter A parameter of the target model.
    * @param isFloat   Whether the parameter is a float or an int.
    */
-  public void addParameter(WritableAgentAttribute<Double> parameter, boolean isFloat) {
+  public void addParameter(WritableAgentAttribute<Double> parameter) {
     Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
-    this.addAgent(new ParameterAgent(parameter, isFloat));
+    this.addAgent(new ParameterAgent(parameter));
   }
 
   /**
@@ -188,6 +175,48 @@ public class Calicoba {
       this.addAgent(objAgent);
       this.objectives.add(objAgent);
     }
+
+//    this.parameters.forEach(p -> p
+//        .setInitialSensitivities(this.objectives.stream().collect(Collectors.toMap(Function.identity(), o -> 1.0))));
+//    this.objectives.forEach(o -> o
+//        .setInitialSensitivities(this.parameters.stream().collect(Collectors.toMap(Function.identity(), p -> 1.0))));
+    // TEMP fixed values for testing
+    this.parameters.forEach(
+        p -> p.setInitialSensitivities(this.objectives.stream().collect(Collectors.toMap(Function.identity(), o -> {
+          switch (o.getName()) {
+            case "out_1":
+              if (p.getAttributeName().equals("param_x")) {
+                return 2.0;
+              } else {
+                return -3.0;
+              }
+            case "out_2":
+              if (p.getAttributeName().equals("param_x")) {
+                return -5.0;
+              } else {
+                return 1.0;
+              }
+          }
+          throw new RuntimeException(); // Should not happen
+        }))));
+    this.objectives.forEach(
+        o -> o.setInitialSensitivities(this.parameters.stream().collect(Collectors.toMap(Function.identity(), p -> {
+          switch (o.getName()) {
+            case "out_1":
+              if (p.getAttributeName().equals("param_x")) {
+                return 2.0;
+              } else {
+                return -3.0;
+              }
+            case "out_2":
+              if (p.getAttributeName().equals("param_x")) {
+                return -5.0;
+              } else {
+                return 1.0;
+              }
+          }
+          throw new RuntimeException(); // Should not happen
+        }))));
 
     this.cycle = 0;
 
@@ -275,32 +304,19 @@ public class Calicoba {
         this.observations.forEach(ObservationEntity::perceive);
         this.observations.forEach(ObservationEntity::decideAndAct);
 
+        // Update objective agents
         this.objectives.forEach(ObjectiveAgent::perceive);
         this.objectives.forEach(ObjectiveAgent::decideAndAct);
 
+        // Update parameter agents
         this.parameters.forEach(ParameterAgent::perceive);
+        this.parameters.forEach(ParameterAgent::decideAndAct);
 
-        if (this.defaultCurrentSituation == null) {
-          this.defaultCurrentSituation = new SituationAgent(null, null, null);
-          this.defaultCurrentSituation.setCurrent();
-        }
+        // Objective agents decide which parameter agents should perform another action
+        this.objectives.forEach(ObjectiveAgent::decideAndAct);
 
-        this.defaultCurrentSituation.perceive();
-
-        // If current situation was created during previous cycle, add it to the world.
-        if (!this.agentsIdsRegistry.values().contains(this.currentSituation)) {
-          this.addAgent(this.currentSituation);
-        }
-
-        this.currentSituation = this.getCurrentSituationFromMemoryOrCreate();
-        this.currentSituation.setCurrent();
-
-        this.currentSituation.perceive();
-        this.currentSituation.decideAndAct();
-
-        List<SituationAgent> situations = this.getAgentsForType(SituationAgent.class);
-        situations.forEach(SituationAgent::perceive);
-        situations.forEach(SituationAgent::decideAndAct);
+        // Parameter agents execute their actions
+        this.parameters.forEach(ParameterAgent::decideAndAct);
 
         reset = this.resetFlag;
       }
@@ -308,11 +324,6 @@ public class Calicoba {
       if (reset) {
         this.reset.setValue(true);
         this.resetFlag = false;
-      } else {
-        // Discuss/execute actions
-        do {
-          this.parameters.forEach(ParameterAgent::decideAndAct);
-        } while (!this.parameters.stream().allMatch(ParameterAgent::hasExecutedAction));
       }
 
       this.stepCountdown = this.stepInterval;
@@ -321,17 +332,5 @@ public class Calicoba {
       this.stepCountdown--;
       Logger.debug(String.format("Waiting. %d steps remaining.", this.stepCountdown));
     }
-  }
-
-  private SituationAgent getCurrentSituationFromMemoryOrCreate() {
-    List<SituationAgent> situations = this.getAgentsForType(SituationAgent.class).stream()
-        .filter(sa -> sa.getModelState().equals(this.defaultCurrentSituation.getModelState()))
-        .collect(Collectors.toList());
-
-    if (!situations.isEmpty()) {
-      return situations.get(0);
-    }
-
-    return this.defaultCurrentSituation.createNewSituation();
   }
 }

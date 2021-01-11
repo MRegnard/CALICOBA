@@ -1,11 +1,13 @@
 package fr.irit.smac.calicoba.gaml;
 
 import java.util.Map;
+import java.util.Optional;
 
 import fr.irit.smac.calicoba.ReadableAgentAttribute;
 import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.Calicoba;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
+import fr.irit.smac.calicoba.mas.agents.data.ActionProposal;
 import msi.gama.metamodel.agent.IAgent;
 import msi.gama.precompiler.GamlAnnotations.action;
 import msi.gama.precompiler.GamlAnnotations.arg;
@@ -58,8 +60,7 @@ public class TargetModelSkill extends ModelSkill {
           if (attributeType != Double.class) {
             throw GamaRuntimeException.error("Parameters should be floats.", scope);
           }
-          Calicoba.instance().addParameter(new WritableAgentAttribute<>(agent, attributeName),
-              attributeType == Double.class);
+          Calicoba.instance().addParameter(new WritableAgentAttribute<>(agent, attributeName));
         }
         if (attributeName.startsWith("out_")) {
           if (attributeType != Double.class) {
@@ -98,7 +99,11 @@ public class TargetModelSkill extends ModelSkill {
   public double getParameterAction(final IScope scope) {
     final String paramName = scope.getStringArg(PARAMETER_NAME);
     final ParameterAgent agent = this.getParameterAgent(paramName, scope);
-    return agent.getLastAction().getFirst();
+    Optional<ActionProposal> opt = agent.getExecutedActionProposal();
+    if (opt.isPresent()) {
+      return opt.get().getAction();
+    }
+    return Double.NaN;
   }
 
   private ParameterAgent getParameterAgent(final String paramName, final IScope scope) {

@@ -1,14 +1,11 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Scanner;
-import java.util.function.Predicate;
-import java.util.stream.Stream;
-
-import org.apache.commons.math3.util.Pair;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.agents.data.ActionProposal;
@@ -23,69 +20,78 @@ import fr.irit.smac.util.ValueMap;
  * @author Damien Vergnet
  */
 public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribute<Double>> {
-  private List<ObjectiveAgent> objectiveAgents;
-  /** The current objective values. */
-  private ValueMap currentObjectivesValues;
-  private List<Triplet<ValueMap, ValueMap, SituationAgent>> proposedActions;
+  private Map<String, ObjectiveAgent> objectiveAgents;
+  private ValueMap currentObjectivesCriticalities;
   private boolean actionChosen;
+  /** The objective agent this agent has chosen to help. */
+  private Optional<String> helpedObjective;
+  /** The action this agent plans to execute. */
+  private Optional<ActionProposal> actionProposal;
   /** The latest performed action. */
-  private Optional<Double> selectedAction;
-  private Optional<SituationAgent> selectedSituation;
+  private Optional<ActionProposal> executedActionProposal;
+  private boolean rejected;
 
-  private boolean hasExecutedAction;
-
-  // TEMP
-  private boolean manual;
-  private Scanner sc = new Scanner(System.in);
+  /** Sensitivities of this parameter on each objective. */
+  private Map<ObjectiveAgent, Double> sensitivities;
 
   // TEMP fixed value for now
-  private static final double AMOUNT = 1;
+  private static final double VARIATION_AMOUNT = 1;
 
   /**
-   * Creates a new Parameter agent for the given parameter.
+   * Creates a new Parameter agent for the given model parameter.
    *
    * @param parameter The GAMA agent’s attribute/parameter.
    * @param isFloat   Wether the attribute is a floating point value.
    */
-  public ParameterAgent(WritableAgentAttribute<Double> parameter, boolean isFloat) {
+  public ParameterAgent(WritableAgentAttribute<Double> parameter) {
     super(parameter);
-    this.currentObjectivesValues = new ValueMap();
-    this.proposedActions = new LinkedList<>();
+    this.currentObjectivesCriticalities = new ValueMap();
     this.actionChosen = false;
-    this.selectedAction = Optional.empty();
-    this.selectedSituation = Optional.empty();
-    this.hasExecutedAction = false;
-    this.manual = true;
+    this.helpedObjective = Optional.empty();
+    this.actionProposal = Optional.empty();
+    this.executedActionProposal = Optional.empty();
+    this.rejected = false;
   }
 
-  public void suggestAction(ActionProposal proposal) {
-    this.proposedActions.add(
-        new Triplet<>(proposal.getActions(), proposal.getExpectedCriticalitiesVariations(), proposal.getProposer()));
+  public Map<ObjectiveAgent, Double> getSensitivities() {
+    return this.sensitivities;
   }
 
-  /**
-   * @return The latest performed action, the associated objective that it should
-   *         help and the expected variation.
-   */
-  public Pair<Double, SituationAgent> getLastAction() {
-    return new Pair<>(this.selectedAction.orElse(Double.NaN), this.selectedSituation.orElse(null));
+  public void setInitialSensitivities(Map<ObjectiveAgent, Double> sensitivities) {
+    this.sensitivities = sensitivities;
   }
 
-  public boolean hasExecutedAction() {
-    return this.hasExecutedAction;
+  public Optional<ActionProposal> getExecutedActionProposal() {
+    return this.executedActionProposal;
+  }
+
+  public Optional<String> getHelpedObjective() {
+    return this.helpedObjective;
+  }
+
+  public void onActionProposalRejection() {
+    this.rejected = true;
+    Logger.debug("rejected (" + this.getAttributeName() + ")");
+  }
+
+  public void onActionProposalConfirmation() {
+    this.rejected = false;
+    Logger.debug("confirmed (" + this.getAttributeName() + ")");
   }
 
   @Override
   public void perceive() {
     super.perceive();
 
-    this.hasExecutedAction = false;
     this.actionChosen = false;
-    this.proposedActions.clear();
+    this.rejected = false;
     if (this.objectiveAgents == null) {
-      this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class);
+      this.objectiveAgents = this.getWorld().getAgentsForType(ObjectiveAgent.class).stream()
+          .collect(Collectors.toMap(ObjectiveAgent::getName, Function.identity()));
     }
-    this.objectiveAgents.forEach(oa -> this.currentObjectivesValues.put(oa.getName(), oa.getCriticality()));
+    this.currentObjectivesCriticalities.clear();
+    this.objectiveAgents.values()
+        .forEach(oa -> this.currentObjectivesCriticalities.put(oa.getName(), oa.getCriticality()));
   }
 
   @Override
@@ -93,102 +99,106 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
     super.decideAndAct();
 
     if (!this.actionChosen) {
-      this.discussActions();
+      Triplet<Double, Optional<String>, ValueMap> action = this.selectAction(false);
+      this.helpedObjective = action.getSecond();
+      this.actionProposal = Optional.of(new ActionProposal(this, action.getFirst(), action.getThird()));
+      this.actionChosen = true;
+      // Send only to selected objective
+      this.helpedObjective.ifPresent(o -> this.objectiveAgents.get(o).onActionProposal(this.actionProposal.get()));
+
     } else {
-      this.addToParameterValue(this.selectedAction.get());
-      this.hasExecutedAction = true;
+      Logger.debug("rejected (" + this.getAttributeName() + "): " + this.rejected);
+      if (this.rejected) {
+        Triplet<Double, Optional<String>, ValueMap> action = this.selectAction(true);
+        this.helpedObjective = action.getSecond();
+        this.actionProposal = Optional.of(new ActionProposal(this, action.getFirst(), action.getThird()));
+        Logger.debug("new action proposal (" + this.getAttributeName() + "): " + this.actionProposal);
+      }
+
+      this.addToParameterValue(this.actionProposal.get().getAction());
+      this.executedActionProposal = this.actionProposal;
+      this.actionProposal = Optional.empty();
+      Logger.debug("executed action (" + this.getAttributeName() + ")");
     }
-  }
-
-  private void discussActions() {
-    Pair<Double, SituationAgent> result = this.getAction();
-
-    this.actionChosen = true;
-    this.selectedAction = Optional.of(result.getFirst());
-    this.selectedSituation = Optional.ofNullable(result.getSecond());
   }
 
   /**
    * Returns the best action to perform.
    *
-   * @return The best action to perform, if any, and the associated situation.
+   * @param ignoreRejecter If true, the currently selected objective will be
+   *                       ignored as it has rejected this agent’s action
+   *                       proposal.
+   * @return The selected action, and the associated situation (if any) and
+   *         expected objectives variations.
    */
-  private Pair<Double, SituationAgent> getAction() {
-    Optional<Pair<Double, SituationAgent>> opt = this.selectAction(true);
-    if (opt.isPresent()) {
-      Logger.info("action found " + opt.get()); // DEBUG
-      return opt.get();
+  private Triplet<Double, Optional<String>, ValueMap> selectAction(boolean ignoreRejecter) {
+    ValueMap expectedCriticalities = new ValueMap();
+    List<String> ignored = new LinkedList<>();
+    Optional<String> selectedObjective = Optional.empty();
+    double action = 0;
+    boolean tryOpposite = false;
+
+    Logger.debug("helped objective (" + this.getAttributeName() + "): " + this.helpedObjective);
+    if (ignoreRejecter && this.helpedObjective.isPresent()) {
+      ignored.add(this.helpedObjective.get());
     }
 
-    // No action are beneficial to the most critical objective, perform the opposite
-    // action that previously increased the most its criticality.
-    opt = this.selectAction(false);
-    if (opt.isPresent()) {
-      Logger.info("anti-action found " + opt.get()); // DEBUG
-      return new Pair<>(-opt.get().getFirst(), null);
-    }
+    // Get overall most critical.
+    String mostCritical = this.currentObjectivesCriticalities.entrySet().stream()
+        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue())) //
+        .map(e -> e.getKey()) //
+        .get(); // Should always exist
 
-    // TEMP There is no action either, select a random action.
-    double action;
-    double r = Math.random();
+    boolean actionFound = false;
+    while (!actionFound) {
+      // Get most critical that is not ignored.
+      selectedObjective = this.currentObjectivesCriticalities.entrySet().stream()
+          .filter(e -> !ignored.contains(e.getKey())) //
+          .max((e1, e2) -> e1.getValue().compareTo(e2.getValue())) //
+          .map(e -> e.getKey());
+      Logger.debug("selected objective (" + this.getAttributeName() + "): " + selectedObjective);
 
-    if (r < 0.33) {
-      action = -AMOUNT;
-    } else if (r > 0.66) {
-      action = AMOUNT;
-    } else {
-      action = 0.0;
-    }
+      if (selectedObjective.isPresent()) {
+        ObjectiveAgent objective = this.objectiveAgents.get(selectedObjective.get());
+        double sensitivity = this.sensitivities.get(objective);
+        double actionSign = 0;
 
-    Logger.info("random action " + action); // DEBUG
-    return new Pair<>(action, null);
-  }
+        if (objective.isAboveSetpoint()) {
+          actionSign = -Math.copySign(1, sensitivity);
+        } else if (objective.isBelowSetpoint()) {
+          actionSign = Math.copySign(1, sensitivity);
+        }
+        if (tryOpposite) {
+          actionSign = -actionSign;
+        }
+        Logger.debug("action sign (" + this.getAttributeName() + "): " + actionSign);
+        action = actionSign * VARIATION_AMOUNT;
 
-  private Optional<Pair<Double, SituationAgent>> selectAction(boolean getBest) {
-    // Should always exist.
-    String mostCritical = this.currentObjectivesValues.entrySet().stream()
-        .max((e1, e2) -> e1.getValue().compareTo(e2.getValue())).map(e -> e.getKey()).get();
+        final double a = action * sensitivity;
+        this.objectiveAgents.values()
+            // FIXME estimateCriticality pas terrible
+            .forEach(agent -> expectedCriticalities.put(agent.getName(), agent.estimateCriticality(a)));
+        Logger.debug("expected variations (" + this.getAttributeName() + "): " + expectedCriticalities);
 
-    Predicate<Double> filter;
+        // Check if expected criticalities do not exceed current max criticality
+        actionFound = !expectedCriticalities.entrySet().stream() //
+            .filter(e -> e.getValue() > this.objectiveAgents.get(mostCritical).getCriticality()) //
+            .findAny() //
+            .isPresent();
+        if (!actionFound) {
+          tryOpposite = !tryOpposite;
+          if (!tryOpposite) {
+            ignored.add(selectedObjective.get());
+          }
+        }
 
-    if (getBest) {
-      // Filter out entries where the current most critical objective’s criticality
-      // increased.
-      filter = d -> d <= 0;
-    } else {
-      // Filter out entries where the current most critical objective’s criticality
-      // decreased.
-      filter = d -> d >= 0;
-    }
-
-    Comparator<Triplet<ValueMap, ValueMap, SituationAgent>> c = (a1, a2) -> a1.getSecond().get(mostCritical)
-        .compareTo(a2.getSecond().get(mostCritical));
-
-    Stream<Triplet<ValueMap, ValueMap, SituationAgent>> stream = this.proposedActions.stream()
-        .filter(a -> filter.test(a.getSecond().get(mostCritical)));
-    Optional<Triplet<ValueMap, ValueMap, SituationAgent>> opt;
-
-    if (getBest) {
-      // Get the entry where the criticality decreased the most.
-      opt = stream.min(c);
-    } else {
-      // Get the entry where the criticality increased the most.
-      opt = stream.max(c);
-    }
-
-    // TEMP set “by hand” the action to execute
-    if (this.manual) {
-      System.out.println("Action to execute:");
-      String s = this.sc.nextLine();
-      if (s.equals("m")) {
-        this.manual = false;
-        this.getWorld().setResetFlag();
-      } else {
-        return Optional.of(new Pair<>(Double.parseDouble(s), null));
+      } else { // Cannot help any objective, do nothing
+        action = 0;
+        actionFound = true;
       }
     }
 
-    return opt.map(t -> new Pair<>(t.getFirst().get(this.getAttributeName()), t.getThird()));
+    return new Triplet<>(action, selectedObjective, expectedCriticalities);
   }
 
   /**
