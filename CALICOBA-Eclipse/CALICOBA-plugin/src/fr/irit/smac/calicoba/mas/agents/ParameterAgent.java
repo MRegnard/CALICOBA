@@ -31,6 +31,8 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
   private Optional<ActionProposal> executedActionProposal;
   private boolean rejected;
 
+  private double cachedValue;
+
   /** Sensitivities of this parameter on each objective. */
   private Map<ObjectiveAgent, Double> sensitivities;
 
@@ -120,6 +122,16 @@ public class ParameterAgent extends AgentWithGamaAttribute<WritableAgentAttribut
       this.actionProposal = Optional.empty();
       Logger.debug("executed action (" + this.getAttributeName() + ")");
     }
+  }
+
+  public void executeActionProposal() {
+    this.cachedValue = this.getAttributeValue();
+    this.addToParameterValue(this.actionProposal.get().getAction());
+  }
+
+  public void rollbackAction() {
+    // Do not add the opposite of the action proposal to avoid floating point errors
+    this.getGamaAttribute().setValue(this.cachedValue);
   }
 
   /**

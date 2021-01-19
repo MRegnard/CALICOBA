@@ -79,6 +79,8 @@ public class Calicoba {
 
   private int cycle;
 
+  private boolean estimatingCriticalities;
+
   private boolean resetFlag;
 
   private List<MeasureEntity> measures;
@@ -101,10 +103,16 @@ public class Calicoba {
 
     this.stepInterval = stepInterval;
     this.stepCountdown = 0;
+
+    this.estimatingCriticalities = true;
   }
 
   public int getCycle() {
     return this.cycle;
+  }
+
+  public boolean isEstimatingCriticalities() {
+    return this.estimatingCriticalities;
   }
 
   public void setResetFlag() {
@@ -312,11 +320,19 @@ public class Calicoba {
         this.parameters.forEach(ParameterAgent::perceive);
         this.parameters.forEach(ParameterAgent::decideAndAct);
 
-        // Objective agents decide which parameter agents should perform another action
-        this.objectives.forEach(ObjectiveAgent::decideAndAct);
-
-        // Parameter agents execute their actions
-        this.parameters.forEach(ParameterAgent::decideAndAct);
+        if (this.estimatingCriticalities) {
+          // Parameter agents execute their action proposals
+          this.parameters.forEach(ParameterAgent::executeActionProposal);
+          this.estimatingCriticalities = false;
+        } else {
+          // Rollback action proposals after criticalities estimation
+          this.parameters.forEach(ParameterAgent::rollbackAction);
+          // Objective agents decide which parameter agents should perform another action
+          this.objectives.forEach(ObjectiveAgent::decideAndAct);
+          // Parameter agents execute their actions
+          this.parameters.forEach(ParameterAgent::decideAndAct);
+          this.estimatingCriticalities = true;
+        }
 
         reset = this.resetFlag;
       }
