@@ -79,8 +79,6 @@ public class Calicoba {
 
   private int cycle;
 
-  private boolean estimatingCriticalities;
-
   private boolean resetFlag;
 
   private List<MeasureEntity> measures;
@@ -103,16 +101,10 @@ public class Calicoba {
 
     this.stepInterval = stepInterval;
     this.stepCountdown = 0;
-
-    this.estimatingCriticalities = true;
   }
 
   public int getCycle() {
     return this.cycle;
-  }
-
-  public boolean isEstimatingCriticalities() {
-    return this.estimatingCriticalities;
   }
 
   public void setResetFlag() {
@@ -167,7 +159,6 @@ public class Calicoba {
 
     this.measures = this.getAgentsForType(MeasureEntity.class);
     this.observations = this.getAgentsForType(ObservationEntity.class);
-    this.objectives = new ArrayList<>();
     this.parameters = this.getAgentsForType(ParameterAgent.class);
 
     Map<String, ObservationEntity> observationAgents = this.observations.stream()
@@ -181,8 +172,8 @@ public class Calicoba {
           measureAgent.getAttributeName(), obsAgent.getAttributeName()));
 
       this.addAgent(objAgent);
-      this.objectives.add(objAgent);
     }
+    this.objectives = this.getAgentsForType(ObjectiveAgent.class);
 
 //    this.parameters.forEach(p -> p
 //        .setInitialSensitivities(this.objectives.stream().collect(Collectors.toMap(Function.identity(), o -> 1.0))));
@@ -319,20 +310,6 @@ public class Calicoba {
         // Update parameter agents
         this.parameters.forEach(ParameterAgent::perceive);
         this.parameters.forEach(ParameterAgent::decideAndAct);
-
-        if (this.estimatingCriticalities) {
-          // Parameter agents execute their action proposals
-          this.parameters.forEach(ParameterAgent::executeActionProposal);
-          this.estimatingCriticalities = false;
-        } else {
-          // Rollback action proposals after criticalities estimation
-          this.parameters.forEach(ParameterAgent::rollbackAction);
-          // Objective agents decide which parameter agents should perform another action
-          this.objectives.forEach(ObjectiveAgent::decideAndAct);
-          // Parameter agents execute their actions
-          this.parameters.forEach(ParameterAgent::decideAndAct);
-          this.estimatingCriticalities = true;
-        }
 
         reset = this.resetFlag;
       }
