@@ -1,37 +1,40 @@
 package fr.irit.smac.calicoba.mas.agents;
 
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
-import fr.irit.smac.calicoba.ReadableAgentAttribute;
+import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
+import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 
 /**
- * Base class for agents associated to a GAMA agent attribute.
+ * Base class for agents associated to an attribute of the target model. This
+ * type of agents can receive messages through its
+ * {@link #onRequest(VariationRequest)} method.
  *
  * @author Damien Vergnet
+ * 
+ * @param <T> The type of attribute this agent is associated to.
  */
-public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute<Double>> extends Agent {
+public abstract class AgentWithGamaAttribute<T extends ReadableModelAttribute<Double>> extends Agent {
   /** The attribute this agent has access to. */
   private final T attribute;
-
   /**
    * The cached value of the attribute. Necessary to store the value between
    * perceive and act phases.
    */
   private double cachedAttributeValue;
-  /** The all-time minimum value. */
-  private double min;
-  /** The all-time maximum value. */
-  private double max;
+  /** The set of received variation requests. */
+  protected final Set<VariationRequest> requests;
 
   /**
-   * Creates a new agent for the given GAMA agent attribute.
+   * Creates a new agent for the given model attribute.
    *
-   * @param attribute The GAMA agent attribute.
+   * @param attribute The model attribute.
    */
   public AgentWithGamaAttribute(T attribute) {
     this.attribute = Objects.requireNonNull(attribute);
-    this.min = Double.NaN;
-    this.max = Double.NaN;
+    this.requests = new HashSet<>();
   }
 
   /**
@@ -40,44 +43,51 @@ public abstract class AgentWithGamaAttribute<T extends ReadableAgentAttribute<Do
   @Override
   public void perceive() {
     super.perceive();
-    this.cachedAttributeValue = this.getGamaAttribute().getValue();
-    this.min = Double.isNaN(this.min) ? this.cachedAttributeValue : Math.min(this.cachedAttributeValue, this.min);
-    this.max = Double.isNaN(this.max) ? this.cachedAttributeValue : Math.max(this.cachedAttributeValue, this.max);
+    this.cachedAttributeValue = this.getAttribute().getValue();
   }
 
   /**
-   * @return The GAMA agent attribute.
+   * This method is called whenever this agent receives a variation request.
+   * 
+   * @param request The variation request.
    */
-  protected T getGamaAttribute() {
+  public void onRequest(VariationRequest request) {
+    this.requests.add(request);
+  }
+
+  /**
+   * @return The model attribute.
+   */
+  protected T getAttribute() {
     return this.attribute;
   }
 
   /**
-   * @return The name of the GAMA agent attribute.
+   * @return The name of this attribute.
    */
   public String getAttributeName() {
     return this.attribute.getName();
   }
 
   /**
-   * @return The value of the GAMA agent attribute.
+   * @return The value of the model attribute.
    */
   public double getAttributeValue() {
     return this.cachedAttributeValue;
   }
 
   /**
-   * @return The all-time minimum value of the GAMA agent attribute.
+   * @return The minimum allowed value of the model attribute.
    */
   public double getAttributeMinValue() {
-    return this.min;
+    return this.attribute.getMin();
   }
 
   /**
-   * @return The all-time maximum value of the GAMA agent attribute.
+   * @return The maximum allowed value of the model attribute.
    */
   public double getAttributeMaxValue() {
-    return this.max;
+    return this.attribute.getMax();
   }
 
   @Override

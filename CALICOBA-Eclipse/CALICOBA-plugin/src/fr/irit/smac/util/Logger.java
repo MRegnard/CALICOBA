@@ -6,7 +6,7 @@ import java.io.PrintStream;
 import java.util.Objects;
 
 /**
- * Simple logger.
+ * A very basic logger.
  * 
  * @author Damien Vergnet
  */
@@ -91,7 +91,7 @@ public final class Logger {
   private static void log(Level level, Object value) {
     if (level.isHigherOrEqualTo(Logger.stdoutLevel)) {
       StackTraceElement[] trace = Thread.currentThread().getStackTrace();
-      StackTraceElement callingMethodTrace = trace[3];
+      StackTraceElement callingMethodTrace = trace[3]; // Trace element for the calling method.
 
       String v = String.format("[%s] %s.%s:%d: %s", //
           Objects.requireNonNull(level), //

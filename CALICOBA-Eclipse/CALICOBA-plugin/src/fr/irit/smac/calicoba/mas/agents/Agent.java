@@ -3,8 +3,7 @@ package fr.irit.smac.calicoba.mas.agents;
 import fr.irit.smac.calicoba.mas.Calicoba;
 
 /**
- * Base class for all agents. Every agent has an ID and a message queue into
- * which it can receive messages from other agents.
+ * Base class for all agents.
  *
  * @author Damien Vergnet
  */
@@ -20,7 +19,7 @@ public abstract class Agent {
   }
 
   /**
-   * Sets the world this agent is in.
+   * Sets the world for this agent.
    *
    * @param world The world.
    * @note This method should ONLY be called from
@@ -41,7 +40,8 @@ public abstract class Agent {
    * Sets the ID for this agent.
    *
    * @param id This agent’s ID.
-   * @note This method should ONLY be called from {@link World#addAgent(Agent)}.
+   * @note This method should ONLY be called from
+   *       {@link Calicoba#addAgent(Agent)}.
    */
   public void setId(String id) {
     this.id = id;
@@ -49,15 +49,15 @@ public abstract class Agent {
 
   /**
    * Agents should implement this method to perceive their environment (read
-   * received messages, gather data from their sensors…).
+   * received messages, gather data from their sensors, etc.).
    */
   public void perceive() {
   }
 
   /**
    * Agents should implement this method to decide which action they are going to
-   * perform on their environment and perform it (send messages, act on the
-   * environment…).
+   * perform on their environment then perform it (send messages, act on the
+   * environment, etc.).
    */
   public void decideAndAct() {
   }

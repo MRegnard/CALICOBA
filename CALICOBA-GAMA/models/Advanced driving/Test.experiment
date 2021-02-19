@@ -1,7 +1,0 @@
-experiment Test  type:gui {
-  init {
-    loop _ from: 0 to: 100 {
-      write rnd(0.0, 0.0);
-    }
-  }
-}

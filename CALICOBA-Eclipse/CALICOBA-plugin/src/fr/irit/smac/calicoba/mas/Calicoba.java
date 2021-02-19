@@ -7,17 +7,18 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Optional;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
-import fr.irit.smac.calicoba.ReadableAgentAttribute;
-import fr.irit.smac.calicoba.WritableAgentAttribute;
 import fr.irit.smac.calicoba.mas.agents.Agent;
-import fr.irit.smac.calicoba.mas.agents.MeasureEntity;
-import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
-import fr.irit.smac.calicoba.mas.agents.ObservationEntity;
+import fr.irit.smac.calicoba.mas.agents.AgentWithGamaAttribute;
+import fr.irit.smac.calicoba.mas.agents.MeasureAgent;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
+import fr.irit.smac.calicoba.mas.agents.SatisfactionAgent;
+import fr.irit.smac.calicoba.mas.agents.data.CorrelationMatrix;
+import fr.irit.smac.calicoba.mas.agents.data.CriticalityFunctionParameters;
+import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
+import fr.irit.smac.calicoba.mas.model_attributes.WritableAgentAttribute;
 import fr.irit.smac.util.Logger;
 
 /**
@@ -29,7 +30,7 @@ public class Calicoba {
   public static final String OUTPUT_DIR = System.getProperty("user.dir") + File.separator + "calicoba_output"
       + File.separator;
 
-  /** Single instance. */
+  /** Singleton instance. */
   private static Calicoba instance;
 
   /**
@@ -71,23 +72,18 @@ public class Calicoba {
   private Map<Class<? extends Agent>, List<Agent>> agentsRegistry;
   /** Registry of all alive agents by ID. */
   private Map<String, Agent> agentsIdsRegistry;
-
-  /** Number of GAMA iterations between each step. */
-  private final int stepInterval;
-  /** Number of remaining steps until the next iteration. */
-  private int stepCountdown;
-
+  /** Current simulation cycle. */
   private int cycle;
 
-  private boolean resetFlag;
+  /** Measure agents list for easier access. */
+  private List<MeasureAgent> measureAgents;
+  /** Parameter agents list for easier access. */
+  private List<ParameterAgent> parameterAgents;
+  /** Satisfaction agents list for easier access. */
+  private List<SatisfactionAgent> satisfactionAgents;
 
-  private List<MeasureEntity> measures;
-  private List<ObservationEntity> observations;
-  private List<ObjectiveAgent> objectives;
-  private List<ParameterAgent> parameters;
-
-  private ReadableAgentAttribute<Boolean> shouldReset;
-  private WritableAgentAttribute<Boolean> reset;
+  /** Correlation matrix used to initialise measure agents. */
+  private CorrelationMatrix matrix;
 
   /**
    * Creates a new instance of CALICOBA.
@@ -98,32 +94,19 @@ public class Calicoba {
     this.globalIds = new HashMap<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
-
-    this.stepInterval = stepInterval;
-    this.stepCountdown = 0;
   }
 
+  /**
+   * @return The current simulation cycle.
+   */
   public int getCycle() {
     return this.cycle;
   }
 
-  public void setResetFlag() {
-    this.resetFlag = true;
-  }
-
-  public void setShouldResetPredicate(ReadableAgentAttribute<Boolean> shouldReset) {
-    this.shouldReset = shouldReset;
-  }
-
-  public void setResetAttribute(WritableAgentAttribute<Boolean> reset) {
-    this.reset = reset;
-  }
-
   /**
-   * Creates an new agent for the given target model parameter.
+   * Creates an new parameter agent for the given target model parameter.
    *
    * @param parameter A parameter of the target model.
-   * @param isFloat   Whether the parameter is a float or an int.
    */
   public void addParameter(WritableAgentAttribute<Double> parameter) {
     Logger.info(String.format("Creating parameter \"%s\".", parameter.getName()));
@@ -131,91 +114,85 @@ public class Calicoba {
   }
 
   /**
-   * Creates a new agent for the given target model output.
+   * Creates a new measure agent for the given target model output.
    *
    * @param measure An output of the target model.
    */
-  public void addMeasure(ReadableAgentAttribute<Double> measure) {
+  public void addMeasure(final ReadableModelAttribute<Double> measure) {
     Logger.info(String.format("Creating measure \"%s\".", measure.getName()));
-    this.addAgent(new MeasureEntity(measure));
+    this.addAgent(new MeasureAgent(measure));
   }
 
   /**
-   * Creates a new agent for the given reference system output.
-   *
-   * @param observation An output of the reference system.
+   * Creates a new satisfaction agent.
+   * 
+   * @param name                          Name of the new agent.
+   * @param criticalityFunctionParameters Parameters of the agent’s criticality
+   *                                      function.
+   * @param relativeAgentName             Name of the parameter/measure agent the
+   *                                      new agent will send requests to.
    */
-  public void addObservation(ReadableAgentAttribute<Double> observation) {
-    Logger.info(String.format("Creating observation \"%s\".", observation.getName()));
-    this.addAgent(new ObservationEntity(observation));
+  public void addObjective(final String name, final CriticalityFunctionParameters criticalityFunctionParameters,
+      final String relativeAgentName) {
+    Logger.info(String.format("Creating objective \"%s\".", name));
+
+    AgentWithGamaAttribute<?> relativeAgent = this
+        .<AgentWithGamaAttribute<?>>getAgent(a -> a instanceof AgentWithGamaAttribute
+            && ((AgentWithGamaAttribute<?>) a).getAttributeName().equals(relativeAgentName))
+        .orElseThrow(
+            () -> new RuntimeException(String.format("agent with name '%s' does not exist", relativeAgentName)));
+
+    this.addAgent(new SatisfactionAgent(name, relativeAgent, criticalityFunctionParameters));
   }
 
   /**
-   * Sets up the simulation. Creates links between agents, creates new agents when
-   * needed and adds them to the world.
+   * Defines the correlation matrix for measures and parameters.
+   * 
+   * @param matrix A map associating measure names to pairs of measure/parameter
+   *               names and their corresponding variation direction (> 0 for +, <
+   *               0 for -).
+   */
+  public void setCorrelationMatrix(Map<String, Map<String, Number>> matrix) {
+    Map<MeasureAgent, Map<AgentWithGamaAttribute<?>, Boolean>> columns = new HashMap<>();
+
+    for (Map.Entry<String, Map<String, Number>> e : matrix.entrySet()) {
+      Map<AgentWithGamaAttribute<?>, Boolean> m = new HashMap<>();
+
+      for (Map.Entry<String, Number> e2 : e.getValue().entrySet()) {
+        Optional<AgentWithGamaAttribute<?>> agent = this.getAgent( //
+            a -> a instanceof AgentWithGamaAttribute
+                && ((AgentWithGamaAttribute<?>) a).getAttributeName().equals(e2.getKey()) //
+        );
+        double n = e2.getValue().doubleValue();
+
+        if (agent != null && n != 0) {
+          agent.ifPresent(a -> m.put(a, n > 0));
+        }
+      }
+
+      if (!m.isEmpty()) {
+        this.getAgentsForType(MeasureAgent.class).stream() //
+            .filter(a -> a.getAttributeName().equals(e.getKey())) //
+            .findFirst() //
+            .ifPresent(a -> columns.put(a, m));
+      }
+    }
+
+    this.matrix = new CorrelationMatrix(columns);
+  }
+
+  /**
+   * Sets up the simulation.
    */
   public void setup() {
     Logger.info("Setting up CALICOBA…");
 
-    this.measures = this.getAgentsForType(MeasureEntity.class);
-    this.observations = this.getAgentsForType(ObservationEntity.class);
-    this.parameters = this.getAgentsForType(ParameterAgent.class);
+    this.measureAgents = this.getAgentsForType(MeasureAgent.class);
+    this.parameterAgents = this.getAgentsForType(ParameterAgent.class);
 
-    Map<String, ObservationEntity> observationAgents = this.observations.stream()
-        .collect(Collectors.toMap(ObservationEntity::getAttributeName, Function.identity()));
+    this.measureAgents.forEach(a -> a.init(this.matrix));
 
-    for (MeasureEntity measureAgent : this.measures) {
-      ObservationEntity obsAgent = observationAgents.get(measureAgent.getAttributeName());
-      ObjectiveAgent objAgent = new ObjectiveAgent(obsAgent.getAttributeName(), measureAgent, obsAgent);
-
-      Logger.info(String.format("Creating objective for measure \"%s\" and observation \"%s\".",
-          measureAgent.getAttributeName(), obsAgent.getAttributeName()));
-
-      this.addAgent(objAgent);
-    }
-    this.objectives = this.getAgentsForType(ObjectiveAgent.class);
-
-//    this.parameters.forEach(p -> p
-//        .setInitialSensitivities(this.objectives.stream().collect(Collectors.toMap(Function.identity(), o -> 1.0))));
-//    this.objectives.forEach(o -> o
-//        .setInitialSensitivities(this.parameters.stream().collect(Collectors.toMap(Function.identity(), p -> 1.0))));
-    // TEMP fixed values for testing
-    this.parameters.forEach(
-        p -> p.setInitialSensitivities(this.objectives.stream().collect(Collectors.toMap(Function.identity(), o -> {
-          switch (o.getName()) {
-            case "out_1":
-              if (p.getAttributeName().equals("param_x")) {
-                return 2.0;
-              } else {
-                return -3.0;
-              }
-            case "out_2":
-              if (p.getAttributeName().equals("param_x")) {
-                return -5.0;
-              } else {
-                return 1.0;
-              }
-          }
-          throw new RuntimeException(); // Should not happen
-        }))));
-    this.objectives.forEach(
-        o -> o.setInitialSensitivities(this.parameters.stream().collect(Collectors.toMap(Function.identity(), p -> {
-          switch (o.getName()) {
-            case "out_1":
-              if (p.getAttributeName().equals("param_x")) {
-                return 2.0;
-              } else {
-                return -3.0;
-              }
-            case "out_2":
-              if (p.getAttributeName().equals("param_x")) {
-                return -5.0;
-              } else {
-                return 1.0;
-              }
-          }
-          throw new RuntimeException(); // Should not happen
-        }))));
+    this.satisfactionAgents = this.getAgentsForType(SatisfactionAgent.class);
 
     this.cycle = 0;
 
@@ -253,8 +230,9 @@ public class Calicoba {
    * @param filter The filter the agent has to match.
    * @return The first agent that fulfills the filter, or null if none did.
    */
-  public Agent getAgent(Predicate<Agent> filter) {
-    return this.agentsIdsRegistry.values().stream().filter(filter).findFirst().orElse(null);
+  @SuppressWarnings("unchecked")
+  public <T extends Agent> Optional<T> getAgent(Predicate<Agent> filter) {
+    return (Optional<T>) this.agentsIdsRegistry.values().stream().filter(filter).findFirst();
   }
 
   /**
@@ -275,55 +253,28 @@ public class Calicoba {
     }
     this.agentsRegistry.get(agentClass).add(agent);
 
+    agent.setId(String.format("%s_%d", agentClass.getSimpleName(), this.globalIds.get(agentClass)));
     this.agentsIdsRegistry.put(agent.getId(), agent);
 
-    agent.setId(String.format("%s_%d", agentClass.getSimpleName(), this.globalIds.get(agentClass)));
     agent.setWorld(this);
   }
 
   /**
-   * Runs the simulation for 1 step. If a custom schedule has been set, for each
-   * agent type, all agents of said type perceive their environment then decide
-   * and act. Otherwise, all agents (in creation order) perceive their environment
-   * then they decide and act.
+   * Runs the system for 1 step.
    */
   public void step() {
-    if (this.stepCountdown == 0) {
-      Logger.info(String.format("Cycle %d", this.cycle));
+    Logger.info(String.format("Cycle %d", this.cycle));
+    this.measureAgents.forEach(MeasureAgent::perceive);
+    this.parameterAgents.forEach(ParameterAgent::perceive);
+    this.satisfactionAgents.forEach(SatisfactionAgent::perceive);
 
-      boolean reset = this.shouldReset.getValue();
+    this.satisfactionAgents.forEach(SatisfactionAgent::decideAndAct);
+    // Loop until no more requests have been sent
+    do {
+      this.measureAgents.forEach(MeasureAgent::decideAndAct);
+    } while (this.getAgentsForType(MeasureAgent.class).stream().anyMatch(MeasureAgent::hasSentRequest));
+    this.parameterAgents.forEach(ParameterAgent::decideAndAct);
 
-      if (!reset) {
-        // Shuffle parameter agents list to avoid insertion order bias
-        Collections.shuffle(this.parameters);
-
-        this.measures.forEach(MeasureEntity::perceive);
-        this.measures.forEach(MeasureEntity::decideAndAct);
-
-        this.observations.forEach(ObservationEntity::perceive);
-        this.observations.forEach(ObservationEntity::decideAndAct);
-
-        // Update objective agents
-        this.objectives.forEach(ObjectiveAgent::perceive);
-        this.objectives.forEach(ObjectiveAgent::decideAndAct);
-
-        // Update parameter agents
-        this.parameters.forEach(ParameterAgent::perceive);
-        this.parameters.forEach(ParameterAgent::decideAndAct);
-
-        reset = this.resetFlag;
-      }
-
-      if (reset) {
-        this.reset.setValue(true);
-        this.resetFlag = false;
-      }
-
-      this.stepCountdown = this.stepInterval;
-      this.cycle++;
-    } else {
-      this.stepCountdown--;
-      Logger.debug(String.format("Waiting. %d steps remaining.", this.stepCountdown));
-    }
+    this.cycle++;
   }
 }
