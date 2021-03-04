@@ -5,8 +5,10 @@ import "target_models/Lotka_Volterra.gaml"
 global skills: [calicoba] {
   TargetModel target_model;
 
+  bool do_calibration <- true;
+
   init {
-    do calicoba_init(step_interval: 5);
+    do calicoba_init();
 
     create TargetModel number: 1 returns: target;
     target_model <- first(target);
@@ -15,16 +17,20 @@ global skills: [calicoba] {
   }
 
   reflex step {
-    do calicoba_step();
+    if (do_calibration) {
+      do calicoba_step();
+    }
   }
 }
 
 experiment Experiment type: gui {
+  parameter "Do calibration?" var: do_calibration;
+
   output {
     display "Time Series" {
 //      chart "Lotka Volterra Phase Portrait" type: xy size: {0.5, 0.5} position: {0, 0} {
 //        data 'Equilibrium point' value: {target_model.param_predators_death_rate / target_model.param_predation_efficiency, target_model.param_preys_birth_rate / target_model.param_predation_rate} color: #blue;
-//        data 'Number of preys according to number of predators' value:{target_model.out_preys_number, target_model.out_predators_number} color: #black;
+//        data 'Number of preys according to number of predators' value: {target_model.out_preys_number, target_model.out_predators_number} color: #black marker: false;
 //      }
 
       chart "Lotka Volterra Time Series" type: series size: {0.5, 0.5} position: {0, 0} {

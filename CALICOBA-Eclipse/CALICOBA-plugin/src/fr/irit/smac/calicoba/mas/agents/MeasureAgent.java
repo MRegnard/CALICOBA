@@ -50,6 +50,7 @@ public class MeasureAgent extends AgentWithGamaAttribute<ReadableModelAttribute<
 
     this.sentRequest = false;
     this.requests.forEach(r -> {
+      System.out.println(r + " -> " + this.getAttributeName()); // DEBUG
       // Forward requests to all neighbors.
       this.neighbors.entrySet().forEach(e -> {
         VariationRequest vr = r;
@@ -57,6 +58,7 @@ public class MeasureAgent extends AgentWithGamaAttribute<ReadableModelAttribute<
         if (!e.getValue()) {
           vr = r.getOppositeRequest();
         }
+        System.out.println(this.getAttributeName() + " -> " + vr + " -> " + e.getKey().getAttributeName()); // DEBUG
         e.getKey().onRequest(vr);
         this.sentRequest = true;
       });

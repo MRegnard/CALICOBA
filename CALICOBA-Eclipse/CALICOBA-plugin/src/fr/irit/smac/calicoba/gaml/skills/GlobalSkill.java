@@ -32,7 +32,6 @@ import msi.gaml.types.Types;
     doc = @doc("Skill for the global agent.") //
 )
 public class GlobalSkill extends ModelSkill {
-  private static final String INIT_STEP_INTERVAL_ARG_NAME = "step_interval";
   private static final String GET_OBJECTIVE_OBJ_NAME_ARG_NAME = "objective_name";
 
   /**
@@ -43,13 +42,6 @@ public class GlobalSkill extends ModelSkill {
    */
   @action( //
       name = ICustomSymbols.CALICOBA_INIT, //
-      args = { //
-          @arg( //
-              name = INIT_STEP_INTERVAL_ARG_NAME, //
-              type = IType.INT, //
-              optional = false, //
-              doc = @doc("The number of GAMA iterations between each step of CALICOBA.") //
-          ) }, //
       doc = @doc("Initializes CALICOBA. Must be called <em>before</em> any other statement.") //
   )
   public void init(final IScope scope) {
@@ -74,7 +66,7 @@ public class GlobalSkill extends ModelSkill {
     super.init();
 
     try {
-      Calicoba.init(scope.getIntArg(INIT_STEP_INTERVAL_ARG_NAME));
+      Calicoba.init();
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }

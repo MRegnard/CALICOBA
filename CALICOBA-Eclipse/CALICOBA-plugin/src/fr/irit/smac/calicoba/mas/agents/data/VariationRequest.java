@@ -1,5 +1,7 @@
 package fr.irit.smac.calicoba.mas.agents.data;
 
+import java.util.Locale;
+
 /**
  * A request is sent by satisfaction agents to measure/parameter agents to ask
  * them to change their value in the given direction.
@@ -36,6 +38,6 @@ public class VariationRequest {
 
   @Override
   public String toString() {
-    return String.format("{%s;%f;%s}", this.senderName, this.criticality, this.way);
+    return String.format(Locale.US, "{%s;%f;%s}", this.senderName, this.criticality, this.way);
   }
 }

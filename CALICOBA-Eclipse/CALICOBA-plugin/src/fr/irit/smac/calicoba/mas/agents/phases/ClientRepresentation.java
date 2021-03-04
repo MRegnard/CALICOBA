@@ -39,7 +39,7 @@ public class ClientRepresentation {
    */
   public int estimateDelay() {
     if (this.previousPreviousPhase == null || this.previousPhase == null) {
-      return 1; // TODO comprendre pourquoi 1 et pas 0
+      return 0;
     }
     return this.previousPhase.getStepForMostExtremeCriticality()
         - this.previousPreviousPhase.getStepForMostExtremeValue();

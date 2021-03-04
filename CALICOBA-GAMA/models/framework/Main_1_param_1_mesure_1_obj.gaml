@@ -6,7 +6,7 @@ global skills: [calicoba] {
   TargetModel target_model;
 
   init {
-    do calicoba_init(step_interval: 5);
+    do calicoba_init();
 
     create TargetModel number: 1 returns: target;
     target_model <- first(target);

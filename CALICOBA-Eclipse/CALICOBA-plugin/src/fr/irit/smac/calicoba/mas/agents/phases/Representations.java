@@ -1,7 +1,6 @@
 package fr.irit.smac.calicoba.mas.agents.phases;
 
 import java.util.HashMap;
-import java.util.Map;
 
 import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
 
@@ -10,14 +9,13 @@ import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
  * 
  * @author Damien Vergnet
  */
-public class Representations {
-  private Map<String, ClientRepresentation> clientRepresentations;
+public class Representations extends HashMap<String, ClientRepresentation> {
+  private static final long serialVersionUID = -1226332934593810290L;
 
   /**
    * Creates an empty representation.
    */
   public Representations() {
-    this.clientRepresentations = new HashMap<>();
   }
 
   /**
@@ -31,10 +29,10 @@ public class Representations {
   public void update(Iterable<VariationRequest> requests, double agentValue, int stepNb) {
     requests.forEach(r -> {
       String id = r.senderName;
-      if (!this.clientRepresentations.containsKey(id)) {
-        this.clientRepresentations.put(id, new ClientRepresentation());
+      if (!this.containsKey(id)) {
+        this.put(id, new ClientRepresentation());
       }
-      this.clientRepresentations.get(id).update(r, agentValue, stepNb);
+      this.get(id).update(r, agentValue, stepNb);
     });
   }
 
@@ -45,6 +43,6 @@ public class Representations {
    * @return The delay.
    */
   public int estimateDelay(String satisfactionAgentName) {
-    return this.clientRepresentations.get(satisfactionAgentName).estimateDelay();
+    return this.get(satisfactionAgentName).estimateDelay();
   }
 }

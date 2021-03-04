@@ -60,10 +60,11 @@ public class Action {
   }
 
   /**
-   * @return True if the wait delay has elapsed, false otherwise.
+   * @return True if the wait delay has elapsed AND the action has been executed,
+   *         false otherwise.
    */
   public boolean isDelayOver() {
-    return this.remainingStepsToWait == 0;
+    return this.executed && this.remainingStepsToWait == 0;
   }
 
   /**

@@ -44,11 +44,9 @@ public class Calicoba {
 
   /**
    * Initializes CALICOBA.
-   *
-   * @param stepInterval The number of GAMA iterations between each step.
    */
-  public static void init(int stepInterval) {
-    instance = new Calicoba(stepInterval);
+  public static void init() {
+    instance = new Calicoba();
   }
 
   /**
@@ -85,12 +83,12 @@ public class Calicoba {
   /** Correlation matrix used to initialise measure agents. */
   private CorrelationMatrix matrix;
 
+  private int steps;
+
   /**
    * Creates a new instance of CALICOBA.
-   *
-   * @param stepInterval The number of GAMA iterations between each step.
    */
-  private Calicoba(int stepInterval) {
+  private Calicoba() {
     this.globalIds = new HashMap<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
@@ -264,17 +262,28 @@ public class Calicoba {
    */
   public void step() {
     Logger.info(String.format("Cycle %d", this.cycle));
-    this.measureAgents.forEach(MeasureAgent::perceive);
-    this.parameterAgents.forEach(ParameterAgent::perceive);
-    this.satisfactionAgents.forEach(SatisfactionAgent::perceive);
+    if (this.steps == 0) {
+      this.measureAgents.forEach(MeasureAgent::perceive);
+      this.parameterAgents.forEach(ParameterAgent::perceive);
+      this.satisfactionAgents.forEach(SatisfactionAgent::perceive);
 
-    this.satisfactionAgents.forEach(SatisfactionAgent::decideAndAct);
-    // Loop until no more requests have been sent
-    do {
-      this.measureAgents.forEach(MeasureAgent::decideAndAct);
-    } while (this.getAgentsForType(MeasureAgent.class).stream().anyMatch(MeasureAgent::hasSentRequest));
-    this.parameterAgents.forEach(ParameterAgent::decideAndAct);
+      this.satisfactionAgents.forEach(SatisfactionAgent::decideAndAct);
+      // Loop until no more requests have been sent
+      do {
+        this.measureAgents.forEach(MeasureAgent::decideAndAct);
+      } while (this.measureAgents.stream().anyMatch(MeasureAgent::hasSentRequest));
+      this.parameterAgents.forEach(ParameterAgent::decideAndAct);
 
-    this.cycle++;
+      this.cycle++;
+      this.steps = 0;
+    } else {
+      this.steps--;
+    }
+  }
+
+  public SatisfactionAgent getMostCritical() {
+    return this.satisfactionAgents.stream() //
+        .max((a1, a2) -> Double.compare(a1.getCriticality(), a2.getCriticality())) //
+        .get();
   }
 }

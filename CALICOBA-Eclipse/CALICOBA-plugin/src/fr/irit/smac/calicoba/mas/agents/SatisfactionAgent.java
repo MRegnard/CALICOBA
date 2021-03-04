@@ -92,8 +92,8 @@ public class SatisfactionAgent extends Agent {
     if (x < p.inf || x >= p.sup) {
       return new Pair<>(100.0, x < p.inf);
     } else {
-      double γ1 = -2 * 100 / (p.ε1 - p.inf); // Fixed Appendix A definition
-      double γ2 = -2 * 100 / (p.sup - p.ε2); // Fixed Appendix A definition
+      double γ1 = -2 * 100 / (p.ε1 - p.inf); // Fixed
+      double γ2 = -2 * 100 / (p.sup - p.ε2); // Fixed
       double δ1 = -γ1 * (p.ε1 - p.η1) / 2;
       double δ2 = -γ2 * (p.η2 - p.ε2) / 2;
 
