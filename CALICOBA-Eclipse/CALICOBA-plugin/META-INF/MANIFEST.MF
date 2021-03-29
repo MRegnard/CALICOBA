@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: CALIbration COopérative à Base d’Agents
 Bundle-SymbolicName: irit.smac.calicoba;singleton:=true
-Bundle-Version: 1.0.0.qualifier
+Bundle-Version: 1.0.0.0
 Automatic-Module-Name: irit.smac.calicoba
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Import-Package: msi.gama.precompiler,
@@ -10,3 +10,5 @@ Import-Package: msi.gama.precompiler,
 Require-Bundle: msi.gama.core;bundle-version="1.7.0",
  msi.gama.ext;bundle-version="1.7.0"
 Export-Package: gaml.additions
+Bundle-ClassPath: libs/CALICOBA.jar,
+ .

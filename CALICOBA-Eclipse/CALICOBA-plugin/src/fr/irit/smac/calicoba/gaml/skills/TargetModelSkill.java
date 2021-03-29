@@ -5,13 +5,13 @@ import java.util.Map;
 
 import org.apache.commons.math3.util.Pair;
 
+import fr.irit.smac.calicoba.gaml.CalicobaSingleton;
 import fr.irit.smac.calicoba.gaml.GamaValueProvider;
 import fr.irit.smac.calicoba.gaml.WritableGamaValueProvider;
 import fr.irit.smac.calicoba.gaml.types.ObjectiveDefinition;
-import fr.irit.smac.calicoba.mas.Calicoba;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
-import fr.irit.smac.calicoba.mas.model_attributes.WritableAgentAttribute;
+import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import msi.gama.metamodel.agent.IAgent;
 import msi.gama.precompiler.GamlAnnotations.action;
 import msi.gama.precompiler.GamlAnnotations.arg;
@@ -67,8 +67,8 @@ public class TargetModelSkill extends ModelSkill {
             throw GamaRuntimeException.error("Parameters should be floats.", scope);
           }
           Pair<Double, Double> minMax = this.getMinMax(agent, attributeName, scope);
-          Calicoba.instance()
-              .addParameter(new WritableAgentAttribute<>(new WritableGamaValueProvider<>(agent, attributeName),
+          CalicobaSingleton.instance()
+              .addParameter(new WritableModelAttribute<>(new WritableGamaValueProvider<>(agent, attributeName),
                   attributeName, minMax.getFirst(), minMax.getSecond()));
 
         } else if (attributeName.startsWith("out_")) {
@@ -76,8 +76,8 @@ public class TargetModelSkill extends ModelSkill {
             throw GamaRuntimeException.error("Measures should be floats.", scope);
           }
           Pair<Double, Double> minMax = this.getMinMax(agent, attributeName, scope);
-          Calicoba.instance().addMeasure(new ReadableModelAttribute<>(new GamaValueProvider<>(agent, attributeName),
-              attributeName, minMax.getFirst(), minMax.getSecond()));
+          CalicobaSingleton.instance().addMeasure(new ReadableModelAttribute<>(
+              new GamaValueProvider<>(agent, attributeName), attributeName, minMax.getFirst(), minMax.getSecond()));
 
         } else if (attributeName.startsWith("obj_")) {
           if (attributeType != ObjectiveDefinition.class) {
@@ -87,15 +87,15 @@ public class TargetModelSkill extends ModelSkill {
         }
       }
 
-      objDefs.entrySet().forEach(e -> Calicoba.instance().addObjective(e.getKey(), e.getValue().getParameters(),
-          e.getValue().getRelativeAgentName()));
+      objDefs.entrySet().forEach(e -> CalicobaSingleton.instance().addObjective(e.getKey(),
+          e.getValue().getParameters(), e.getValue().getRelativeAgentName()));
 
       Object correlationMatrix = attributes.get("corr_matrix");
       if (correlationMatrix != null) {
         if (!(correlationMatrix instanceof GamaMap)) {
           throw GamaRuntimeException.error("Correlation matrix must be a map.", scope);
         }
-        Calicoba.instance().setCorrelationMatrix((Map<String, Map<String, Number>>) correlationMatrix);
+        CalicobaSingleton.instance().setCorrelationMatrix((Map<String, Map<String, Number>>) correlationMatrix);
       }
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
@@ -146,15 +146,11 @@ public class TargetModelSkill extends ModelSkill {
   public int getParameterAction(final IScope scope) {
     final String paramName = scope.getStringArg(PARAMETER_NAME);
     final ParameterAgent agent = this.getParameterAgent(paramName, scope);
-    Boolean action = agent.getLastAction();
-    if (action == null) {
-      return 0;
-    }
-    return action ? 1 : -1;
+    return agent.getLastAction();
   }
 
   private ParameterAgent getParameterAgent(final String paramName, final IScope scope) {
-    return Calicoba.instance().getAgentsForType(ParameterAgent.class).stream()
+    return CalicobaSingleton.instance().getAgentsForType(ParameterAgent.class).stream()
         .filter(a -> a.getAttributeName().equals(paramName)).findFirst().orElseThrow(
             () -> GamaRuntimeException.error(String.format("No agent for parameter name \"%s\"", paramName), scope));
   }

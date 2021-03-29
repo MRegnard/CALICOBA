@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import fr.irit.smac.calicoba.gaml.CalicobaSingleton;
 import fr.irit.smac.calicoba.mas.Calicoba;
 import fr.irit.smac.calicoba.mas.agents.SatisfactionAgent;
 import fr.irit.smac.util.Logger;
@@ -66,7 +67,7 @@ public class GlobalSkill extends ModelSkill {
     super.init();
 
     try {
-      Calicoba.init();
+      CalicobaSingleton.init();
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
@@ -84,7 +85,7 @@ public class GlobalSkill extends ModelSkill {
   )
   public void setup(final IScope scope) {
     try {
-      Calicoba.instance().setup();
+      CalicobaSingleton.instance().setup();
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
@@ -101,7 +102,7 @@ public class GlobalSkill extends ModelSkill {
   )
   public void step(final IScope scope) {
     try {
-      Calicoba.instance().step();
+      CalicobaSingleton.instance().step();
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
@@ -121,7 +122,7 @@ public class GlobalSkill extends ModelSkill {
     Map<String, Double> objectives;
 
     try {
-      objectives = Calicoba.instance().getAgentsForType(SatisfactionAgent.class).stream()
+      objectives = CalicobaSingleton.instance().getAgentsForType(SatisfactionAgent.class).stream()
           .collect(Collectors.toMap(SatisfactionAgent::getName, SatisfactionAgent::getCriticality));
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
@@ -154,7 +155,7 @@ public class GlobalSkill extends ModelSkill {
     SatisfactionAgent agent;
 
     try {
-      agent = Calicoba.instance().getAgentsForType(SatisfactionAgent.class).stream() //
+      agent = CalicobaSingleton.instance().getAgentsForType(SatisfactionAgent.class).stream() //
           .filter(a -> a.getName().equals(objectiveName)) //
           .findFirst() //
           .orElseThrow(

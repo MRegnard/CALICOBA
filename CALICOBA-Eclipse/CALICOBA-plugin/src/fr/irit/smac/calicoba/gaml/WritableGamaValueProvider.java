@@ -1,6 +1,7 @@
 package fr.irit.smac.calicoba.gaml;
 
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
+import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import msi.gama.metamodel.agent.IAgent;
 
 /**
@@ -11,7 +12,7 @@ import msi.gama.metamodel.agent.IAgent;
  *
  * @param <T> Type of agent’s attribute.
  */
-public class WritableGamaValueProvider<T> extends GamaValueProvider<T> {
+public class WritableGamaValueProvider<T> extends GamaValueProvider<T> implements IValueProviderSetter<T> {
   /**
    * Creates a writable provider for the given GAMA agent.
    * 
