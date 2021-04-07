@@ -8,6 +8,17 @@ package fr.irit.smac.calicoba.mas.agents.data;
 public enum Direction {
   INCREASE('+', 1), DECREASE('-', -1), STAY('0', 0);
 
+  public static Direction fromAction(int action) {
+    switch (action) {
+      case 1:
+        return INCREASE;
+      case -1:
+        return DECREASE;
+      default:
+        return STAY;
+    }
+  }
+
   private final char c;
   private final int action;
 

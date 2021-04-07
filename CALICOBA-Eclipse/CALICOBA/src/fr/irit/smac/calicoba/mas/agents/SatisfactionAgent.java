@@ -1,7 +1,6 @@
 package fr.irit.smac.calicoba.mas.agents;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Optional;
 
 import fr.irit.smac.calicoba.mas.Calicoba;
@@ -32,6 +31,8 @@ public class SatisfactionAgent extends Agent {
   /** Parameters of the criticality function. */
   private final CriticalityFunctionParameters critFunctionParams;
 
+  private CsvFileWriter fw;
+
   /**
    * Creates a new satisfaction agent.
    * 
@@ -45,33 +46,20 @@ public class SatisfactionAgent extends Agent {
     this.name = name;
     this.relativeAgent = relativeAgent;
     this.critFunctionParams = critFunctionParams;
-
-    // Disable dump when unit testing.
-    if (!Arrays.stream(Thread.currentThread().getStackTrace()).anyMatch(ste -> ste.getClassName().contains("junit"))) {
-      // TEMP
-      String fname = name + "_" + critFunctionParams.toString();
-      try (CsvFileWriter fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fname + ".csv", false, true, "x",
-          "crit(x)")) {
-        double o = 0.1 * (critFunctionParams.sup - critFunctionParams.inf);
-        for (this.relativeValue = critFunctionParams.inf - o; this.relativeValue < critFunctionParams.sup
-            + o; this.relativeValue += 0.01) {
-          fw.writeLine(this.relativeValue, this.computeCriticality().getFirst());
-        }
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-    }
   }
 
   @Override
   public void perceive() {
     super.perceive();
     this.relativeValue = this.relativeAgent.getAttributeValue();
+    // DEBUG
+    System.out.println(this.relativeValue);
   }
 
   @Override
   public void decideAndAct() {
     super.decideAndAct();
+
     Pair<Double, Boolean> res = this.computeCriticality();
     this.criticality = res.getFirst();
     this.belowObjective = Optional.ofNullable(res.getSecond()).orElse(false);
@@ -84,6 +72,40 @@ public class SatisfactionAgent extends Agent {
     }
 
     this.relativeAgent.onRequest(new VariationRequest(this.name, this.criticality, direction));
+
+    // TEST
+    if (this.getWorld().canDumpData()) {
+      if (this.getWorld().getCycle() == 0) {
+        String fName = this.name + "_" + this.critFunctionParams;
+        try (CsvFileWriter fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fName + ".csv", false, true, "x",
+            "crit(x)")) {
+          double init = this.relativeValue;
+          double o = 0.1 * Math.abs(this.critFunctionParams.sup - this.critFunctionParams.inf);
+          for (this.relativeValue = this.critFunctionParams.inf - o; this.relativeValue < this.critFunctionParams.sup
+              + o; this.relativeValue += 0.01) {
+            fw.writeLine(this.relativeValue, this.computeCriticality().getFirst());
+          }
+          this.relativeValue = init;
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+
+        String fname = this.getName();
+        try {
+          this.fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fname + ".csv", false, true, "cycle", "measure",
+              "crit");
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+
+      try {
+        this.fw.writeLine(new Number[] { this.getWorld().getCycle(), this.relativeValue, this.criticality });
+        this.fw.flush();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }
   }
 
   /**

@@ -44,7 +44,7 @@ public class ReadableModelAttribute<T, P extends IValueProvider<T>> {
    * @return This attribute’s value.
    */
   public T getValue() {
-    return this.valueProvider.getValue();
+    return this.valueProvider.get();
   }
 
   /**

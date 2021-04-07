@@ -14,5 +14,5 @@ public interface IValueProviderSetter<T> extends IValueProvider<T> {
    * 
    * @param value The new value.
    */
-  void setValue(T value);
+  void set(T value);
 }

@@ -1,9 +1,9 @@
 package fr.irit.smac.calicoba.mas.agents;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Scanner;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -16,6 +16,7 @@ import fr.irit.smac.calicoba.mas.agents.phases.Representations;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import fr.irit.smac.util.CsvFileWriter;
+import fr.irit.smac.util.Logger;
 
 /**
  * This type of agent represents a float input of the target model. Parameter
@@ -38,6 +39,10 @@ public class ParameterAgent extends
   private final double deltaMax;
   private Representations representations;
   private CsvFileWriter fw;
+  // TEST
+  private State state;
+
+  private Scanner scanner = new Scanner(System.in);
 
   /**
    * Creates a new parameter agent for a given model input.
@@ -52,6 +57,8 @@ public class ParameterAgent extends
     this.deltaMax = 0.001 * attributeRange;
     this.lastDirection = Optional.empty();
     this.currentAction = Optional.empty();
+    // TEST
+    this.state = State.NOMIMAL;
   }
 
   /**
@@ -68,57 +75,68 @@ public class ParameterAgent extends
   @Override
   public void decideAndAct() {
     super.decideAndAct();
+    // TEST
+    this.state = State.NOMIMAL;
+    double oldValue = this.getAttributeValue();
+    int action = 0;
+    int delay = 0;
+    double crit = 0;
 
     if (!this.requests.isEmpty()) {
+      // TEST
+      if (this.requests.stream().anyMatch(r -> r.direction == Direction.INCREASE)
+          && this.requests.stream().anyMatch(r -> r.direction == Direction.DECREASE)) {
+        this.state = State.DIFFERENT_DIRECTIONS;
+      }
+
       this.representations.update(this.requests, this.getAttributeValue(), this.getWorld().getCycle());
       VariationRequest mostCriticalRequest = this.selectRequest();
+      crit = mostCriticalRequest.criticality;
 
       if (!this.currentAction.isPresent() || this.currentAction.get().isDelayOver()) {
-        // TEMP
-//        int d = 6;
-//        if (this.getAttributeName().equals("param_preys_birth_rate")
-//            || this.getAttributeName().equals("param_predation_efficiency")) {
-//          d = 1;
-//        }
-        this.currentAction = Optional.of(new Action(mostCriticalRequest.senderName, mostCriticalRequest.direction, // d));
+        this.currentAction = Optional.of(new Action(mostCriticalRequest.senderName, mostCriticalRequest.direction,
             this.representations.estimateDelay(mostCriticalRequest.senderName)));
+        delay = this.representations.estimateDelay(mostCriticalRequest.senderName);
+        System.out.println("Delay for " + mostCriticalRequest.senderName + ": " + delay);
       }
 
       if (this.currentAction.isPresent() && !this.currentAction.get().isDelayOver()) {
         if (!this.currentAction.get().isExecuted()) {
-          this.updateValue(this.currentAction.get().getDirection());
+          // TEMP désactivé pour trace
+//          this.updateValue(this.currentAction.get().getDirection());
+          Logger.debug(this.getAttributeName() + ": action executed");
           this.currentAction.get().setExecuted();
         } else {
           this.currentAction.get().decreaseRemainingSteps();
         }
       }
 
+      // TEST manual action input
+      System.out.println("Action:");
+      action = this.scanner.nextInt();
+      this.updateValue(Direction.fromAction(action));
+
       this.requests.clear();
     }
 
-    // TEMP
-    if (this.getWorld().getCycle() == 0) {
-      String fname = this.getAttributeName();
+    // TEST
+    if (this.getWorld().canDumpData()) {
+      if (this.getWorld().getCycle() == 0) {
+        String fname = this.getAttributeName();
+        try {
+          this.fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fname + ".csv", false, true, "cycle", "value", "crit",
+              "action", "delay");
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+
       try {
-        String[] objs = this.representations.keySet().stream().sorted().toArray(String[]::new);
-        objs = Arrays.copyOf(objs, objs.length + 1);
-        objs[objs.length - 1] = "cycle";
-        this.fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fname + ".csv", false, true, objs);
+        this.fw.writeLine(new Number[] { this.getWorld().getCycle(), oldValue, crit, action, delay });
+        this.fw.flush();
       } catch (IOException e) {
         e.printStackTrace();
       }
-    }
-    try {
-      Object[] values = this.representations.entrySet().stream() //
-          .sorted((e1, e2) -> e1.getKey().compareTo(e2.getKey())) //
-          .map(e -> e.getValue().estimateDelay()) //
-          .toArray(Object[]::new);
-      values = Arrays.copyOf(values, values.length + 1);
-      values[values.length - 1] = this.getWorld().getCycle();
-      this.fw.writeLine(values);
-      this.fw.flush();
-    } catch (IOException e) {
-      e.printStackTrace();
     }
   }
 
@@ -146,6 +164,8 @@ public class ParameterAgent extends
       // -> return one of these requests
       if (l.stream().allMatch(r -> r.direction.equals(l.get(0).direction))) {
         return l.get(0);
+      } else { // TEST
+        this.state = State.SAME_CRIT_DIFF_DIRECTIONS;
       }
     }
 
@@ -200,7 +220,7 @@ public class ParameterAgent extends
       return Math.max(this.deltaMin, Math.min(this.deltaMax, delta));
     }).orElse(this.deltaMin);
 
-    this.delta = 0.05; // TEMP
+    this.delta = 1; // TEMP AVT désactivé pour les tests
     this.addToParameterValue(this.delta * direction.getAction());
     this.lastDirection = Optional.of(direction);
   }
@@ -216,5 +236,14 @@ public class ParameterAgent extends
     newValue = Math.min(this.getAttributeMaxValue(), newValue);
     newValue = Math.max(this.getAttributeMinValue(), newValue);
     this.getAttribute().setValue(newValue);
+  }
+
+  // TEST
+  public State getState() {
+    return this.state;
+  }
+
+  enum State {
+    NOMIMAL, DIFFERENT_DIRECTIONS, SAME_CRIT_DIFF_DIRECTIONS;
   }
 }

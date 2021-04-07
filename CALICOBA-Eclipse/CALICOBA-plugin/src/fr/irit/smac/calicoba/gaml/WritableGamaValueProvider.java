@@ -24,7 +24,7 @@ public class WritableGamaValueProvider<T> extends GamaValueProvider<T> implement
   }
 
   @Override
-  public void setValue(T value) {
+  public void set(T value) {
     this.agent.setAttribute(this.attributeName, value);
   }
 }

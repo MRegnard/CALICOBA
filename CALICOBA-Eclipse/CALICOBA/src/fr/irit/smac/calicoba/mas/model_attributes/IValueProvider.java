@@ -11,5 +11,5 @@ public interface IValueProvider<T> {
   /**
    * @return A value.
    */
-  T getValue();
+  T get();
 }

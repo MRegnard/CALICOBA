@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
+import fr.irit.smac.calicoba.test_util.DummyValueProvider;
 
 class ParameterAgentTest {
   private static WritableModelAttribute<Double, IValueProviderSetter<Double>> attr;
@@ -17,19 +18,7 @@ class ParameterAgentTest {
 
   @BeforeAll
   static void setUpBeforeClass() throws Exception {
-    attr = new WritableModelAttribute<>(new IValueProviderSetter<Double>() {
-      private Double value = VALUE;
-
-      @Override
-      public Double getValue() {
-        return this.value;
-      }
-
-      @Override
-      public void setValue(Double value) {
-        this.value = value;
-      }
-    }, NAME, MIN, MAX);
+    attr = new WritableModelAttribute<>(new DummyValueProvider(VALUE), NAME, MIN, MAX);
   }
 
   private ParameterAgent agent;

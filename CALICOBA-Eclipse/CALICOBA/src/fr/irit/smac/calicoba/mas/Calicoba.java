@@ -1,6 +1,10 @@
 package fr.irit.smac.calicoba.mas;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -56,14 +60,31 @@ public class Calicoba {
 
   private final Random rng;
 
+  private final boolean dumpCSV;
+
   /**
    * Creates a new instance of CALICOBA.
+   * 
+   * @param dump If true, agents will dump data to CSV files.
    */
-  public Calicoba() {
+  public Calicoba(boolean dump) {
     this.globalIds = new HashMap<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
     this.rng = new Random();
+    this.dumpCSV = dump;
+
+    // TEST
+    if (dump) {
+      Path path = Paths.get(Calicoba.OUTPUT_DIR);
+      if (!Files.exists(path)) {
+        try {
+          Files.createDirectories(path);
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
   }
 
   /**
@@ -78,6 +99,13 @@ public class Calicoba {
    */
   public Random getRNG() {
     return this.rng;
+  }
+
+  /**
+   * @return True if the system can dump data to files.
+   */
+  public boolean canDumpData() {
+    return this.dumpCSV;
   }
 
   /**

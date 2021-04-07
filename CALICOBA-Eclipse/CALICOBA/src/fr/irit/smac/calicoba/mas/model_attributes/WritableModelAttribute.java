@@ -27,7 +27,7 @@ public class WritableModelAttribute<T, P extends IValueProviderSetter<T>> extend
    * @param value The new value.
    */
   public void setValue(T value) {
-    this.valueProvider.setValue(value);
+    this.valueProvider.set(value);
   }
 
   @Override

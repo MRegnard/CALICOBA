@@ -79,7 +79,7 @@ class AgentWithGamaAttributeTest {
     public Double value;
 
     @Override
-    public Double getValue() {
+    public Double get() {
       return this.value;
     }
   }
