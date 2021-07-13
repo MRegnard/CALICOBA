@@ -28,7 +28,7 @@ public class CsvFileWriter extends FileWriter {
     this.writeLine(Arrays.stream(values).mapToObj(String::valueOf).toArray(String[]::new));
   }
 
-  public <T> void writeLine(T[] values) throws IOException {
+  public void writeLine(Object... values) throws IOException {
     this.writeLine(Arrays.stream(values).map(String::valueOf).toArray(String[]::new));
   }
 

@@ -5,12 +5,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import fr.irit.smac.calicoba.mas.agents.data.CriticalityFunctionParameters;
+import fr.irit.smac.calicoba.mas.Calicoba;
+import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunctionParameters;
+import fr.irit.smac.calicoba.mas.agents.criticality.DefaultCriticalityFunction;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 import fr.irit.smac.calicoba.test_util.DummyValueProvider;
 
-class SatisfactionAgentTest {
+class ObjectiveAgentTest {
   private static IValueProviderSetter<Double> provider;
   private static final String NAME = "obj";
   private static final double INF = 0;
@@ -21,7 +23,7 @@ class SatisfactionAgentTest {
   private static final double SUP = 5;
   private static CriticalityFunctionParameters params;
 
-  private SatisfactionAgent agent;
+  private ObjectiveAgent agent;
   private MeasureAgent mAgent;
 
   @BeforeAll
@@ -33,16 +35,11 @@ class SatisfactionAgentTest {
   @BeforeEach
   void setUp() throws Exception {
     provider.set(0.0);
-    this.mAgent = new MeasureAgent(new ReadableModelAttribute<>(provider, "measure", INF, SUP));
-    this.agent = new SatisfactionAgent(NAME, this.mAgent, params);
-  }
-
-  @Test
-  void testPerceive() {
-    provider.set(1.0);
-    this.mAgent.perceive();
-    this.agent.perceive();
-    Assertions.assertEquals(1.0, this.agent.getRelativeValue());
+    Calicoba calicoba = new Calicoba(false, null, false, 0);
+    calicoba.addMeasure(new ReadableModelAttribute<>(provider, "measure", INF, SUP));
+    calicoba.addObjective(NAME, new DefaultCriticalityFunction("measure", params));
+    this.mAgent = (MeasureAgent) calicoba.getAgent(a -> a.getId().equals("MeasureAgent_1")).get();
+    this.agent = (ObjectiveAgent) calicoba.getAgent(a -> a.getId().equals("ObjectiveAgent_1")).get();
   }
 
   @Test
@@ -79,7 +76,7 @@ class SatisfactionAgentTest {
     this.mAgent.perceive();
     this.agent.perceive();
     this.agent.decideAndAct();
-    Assertions.assertEquals(100.0, this.agent.getCriticality());
+    Assertions.assertEquals(-1.0, this.agent.getCriticality());
   }
 
   @Test
@@ -88,6 +85,6 @@ class SatisfactionAgentTest {
     this.mAgent.perceive();
     this.agent.perceive();
     this.agent.decideAndAct();
-    Assertions.assertEquals(100.0, this.agent.getCriticality());
+    Assertions.assertEquals(1.0, this.agent.getCriticality());
   }
 }

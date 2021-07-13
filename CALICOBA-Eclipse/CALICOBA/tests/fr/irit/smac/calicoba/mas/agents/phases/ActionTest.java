@@ -4,7 +4,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import fr.irit.smac.calicoba.mas.agents.data.Direction;
+import fr.irit.smac.calicoba.mas.agents.actions.Action;
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 
 class ActionTest {
   private static final String NAME = "sender";

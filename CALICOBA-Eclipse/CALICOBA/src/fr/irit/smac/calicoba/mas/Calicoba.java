@@ -14,19 +14,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import fr.irit.smac.calicoba.mas.agents.Agent;
-import fr.irit.smac.calicoba.mas.agents.AgentWithGamaAttribute;
 import fr.irit.smac.calicoba.mas.agents.MeasureAgent;
+import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
 import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
-import fr.irit.smac.calicoba.mas.agents.SatisfactionAgent;
-import fr.irit.smac.calicoba.mas.agents.data.CorrelationMatrix;
-import fr.irit.smac.calicoba.mas.agents.data.CriticalityFunctionParameters;
+import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunction;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import fr.irit.smac.util.Logger;
+import fr.irit.smac.util.QuadFunction;
 
 /**
  * Main class of CALICOBA.
@@ -34,7 +34,7 @@ import fr.irit.smac.util.Logger;
  * @author Damien Vergnet
  */
 public class Calicoba {
-  public static final String OUTPUT_DIR = System.getProperty("user.dir") + File.separator + "calicoba_output"
+  public static final String ROOT_OUTPUT_DIR = System.getProperty("user.dir") + File.separator + "calicoba_output"
       + File.separator;
 
   /** The list of last attributed IDs for each agent type. */
@@ -51,32 +51,43 @@ public class Calicoba {
   /** Parameter agents list for easier access. */
   private List<ParameterAgent> parameterAgents;
   /** Satisfaction agents list for easier access. */
-  private List<SatisfactionAgent> satisfactionAgents;
-
-  /** Correlation matrix used to initialise measure agents. */
-  private CorrelationMatrix matrix;
+  private List<ObjectiveAgent> objectiveAgents;
 
   private int steps;
 
   private final Random rng;
 
+  private final String dumpDirectory;
   private final boolean dumpCSV;
+
+  private final boolean learnInfluences;
+  private final double alpha;
+
+  private int actingAgentIndex;
+
+  private QuadFunction<String, Double, String, Double, Double> getInfluenceForParamAndObj;
 
   /**
    * Creates a new instance of CALICOBA.
    * 
    * @param dump If true, agents will dump data to CSV files.
    */
-  public Calicoba(boolean dump) {
+  public Calicoba(final boolean dump, final String dumpDir, final boolean learnInfluences, final double alpha) {
     this.globalIds = new HashMap<>();
     this.agentsRegistry = new HashMap<>();
     this.agentsIdsRegistry = new HashMap<>();
     this.rng = new Random();
     this.dumpCSV = dump;
+    this.dumpDirectory = dumpDir;
+    this.learnInfluences = learnInfluences;
+    if (alpha < 0 || alpha > 1) {
+      throw new IllegalArgumentException("alpha must be in [0, 1]");
+    }
+    this.alpha = alpha;
+    this.actingAgentIndex = 0;
 
-    // TEST
     if (dump) {
-      Path path = Paths.get(Calicoba.OUTPUT_DIR);
+      Path path = Paths.get(this.dumpDirectory());
       if (!Files.exists(path)) {
         try {
           Files.createDirectories(path);
@@ -85,6 +96,36 @@ public class Calicoba {
         }
       }
     }
+  }
+
+  public void setRNGSeed(long seed) {
+    this.rng.setSeed(seed);
+  }
+
+  public QuadFunction<String, Double, String, Double, Double> getInfluenceFunction() {
+    return this.getInfluenceForParamAndObj;
+  }
+
+  /**
+   * The passed function will be used by each parameter agent to get their true
+   * influence on each objective. Its first two parameter are the parameter
+   * agent’s name and current value; the two last are the objective agent’s name
+   * and current criticality.
+   */
+  public void setInfluenceFunction(QuadFunction<String, Double, String, Double, Double> f) {
+    this.getInfluenceForParamAndObj = f;
+  }
+
+  public boolean learnsInfluences() {
+    return this.learnInfluences;
+  }
+
+  public double getAlpha() {
+    return this.alpha;
+  }
+
+  public String dumpDirectory() {
+    return ROOT_OUTPUT_DIR + (this.dumpDirectory != null ? this.dumpDirectory + File.separator : "");
   }
 
   /**
@@ -129,61 +170,22 @@ public class Calicoba {
   }
 
   /**
-   * Creates a new satisfaction agent.
+   * Creates a new satisfaction agent. The function’s parameter names must
+   * correspond to measure agents names.
    * 
-   * @param name                          Name of the new agent.
-   * @param criticalityFunctionParameters Parameters of the agent’s criticality
-   *                                      function.
-   * @param relativeAgentName             Name of the parameter/measure agent the
-   *                                      new agent will send requests to.
+   * @param name     Name of the new agent.
+   * @param function The criticality function.
    */
-  public void addObjective(final String name, final CriticalityFunctionParameters criticalityFunctionParameters,
-      final String relativeAgentName) {
+  public void addObjective(final String name, final CriticalityFunction function) {
     Logger.info(String.format("Creating objective \"%s\".", name));
 
-    AgentWithGamaAttribute<?, ?> relativeAgent = this
-        .<AgentWithGamaAttribute<?, ?>>getAgent(a -> a instanceof AgentWithGamaAttribute
-            && ((AgentWithGamaAttribute<?, ?>) a).getAttributeName().equals(relativeAgentName))
-        .orElseThrow(
-            () -> new RuntimeException(String.format("agent with name '%s' does not exist", relativeAgentName)));
+    List<MeasureAgent> relativeAgent = function.getParameterNames().stream() //
+        .map(n -> (MeasureAgent) this
+            .getAgent(a -> a instanceof MeasureAgent && ((MeasureAgent) a).getAttributeName().equals(n))
+            .orElseThrow(() -> new RuntimeException(String.format("agent with name '%s' does not exist", n)))) //
+        .collect(Collectors.toList());
 
-    this.addAgent(new SatisfactionAgent(name, relativeAgent, criticalityFunctionParameters));
-  }
-
-  /**
-   * Defines the correlation matrix for measures and parameters.
-   * 
-   * @param matrix A map associating measure names to pairs of measure/parameter
-   *               names and their corresponding variation direction (> 0 for +, <
-   *               0 for -).
-   */
-  public void setCorrelationMatrix(Map<String, Map<String, Number>> matrix) {
-    Map<MeasureAgent, Map<AgentWithGamaAttribute<?, ?>, Boolean>> columns = new HashMap<>();
-
-    for (Map.Entry<String, Map<String, Number>> e : matrix.entrySet()) {
-      Map<AgentWithGamaAttribute<?, ?>, Boolean> m = new HashMap<>();
-
-      for (Map.Entry<String, Number> e2 : e.getValue().entrySet()) {
-        Optional<AgentWithGamaAttribute<?, ?>> agent = this.getAgent( //
-            a -> a instanceof AgentWithGamaAttribute
-                && ((AgentWithGamaAttribute<?, ?>) a).getAttributeName().equals(e2.getKey()) //
-        );
-        double n = e2.getValue().doubleValue();
-
-        if (agent != null && n != 0) {
-          agent.ifPresent(a -> m.put(a, n > 0));
-        }
-      }
-
-      if (!m.isEmpty()) {
-        this.getAgentsForType(MeasureAgent.class).stream() //
-            .filter(a -> a.getAttributeName().equals(e.getKey())) //
-            .findFirst() //
-            .ifPresent(a -> columns.put(a, m));
-      }
-    }
-
-    this.matrix = new CorrelationMatrix(columns);
+    this.addAgent(new ObjectiveAgent(name, function, relativeAgent.toArray(new MeasureAgent[relativeAgent.size()])));
   }
 
   /**
@@ -195,9 +197,7 @@ public class Calicoba {
     this.measureAgents = this.getAgentsForType(MeasureAgent.class);
     this.parameterAgents = this.getAgentsForType(ParameterAgent.class);
 
-    this.measureAgents.forEach(a -> a.init(this.matrix));
-
-    this.satisfactionAgents = this.getAgentsForType(SatisfactionAgent.class);
+    this.objectiveAgents = this.getAgentsForType(ObjectiveAgent.class);
 
     this.cycle = 0;
 
@@ -270,15 +270,25 @@ public class Calicoba {
   public void step() {
     Logger.info(String.format("Cycle %d", this.cycle));
     if (this.steps == 0) {
+      List<ParameterAgent> params = this.getAgentsForType(ParameterAgent.class);
+      params.forEach(p -> {
+        boolean canAct = p.getAttributeName().equals(params.get(this.actingAgentIndex).getAttributeName());
+        p.setCanAct(canAct);
+      });
+      this.actingAgentIndex = (this.actingAgentIndex + 1) % params.size();
+
       this.measureAgents.forEach(MeasureAgent::perceive);
       this.parameterAgents.forEach(ParameterAgent::perceive);
-      this.satisfactionAgents.forEach(SatisfactionAgent::perceive);
+      this.objectiveAgents.forEach(ObjectiveAgent::perceive);
 
-      this.satisfactionAgents.forEach(SatisfactionAgent::decideAndAct);
-      // Loop until no more requests have been sent
-      do {
-        this.measureAgents.forEach(MeasureAgent::decideAndAct);
-      } while (this.measureAgents.stream().anyMatch(MeasureAgent::hasSentRequest));
+      this.objectiveAgents.forEach(ObjectiveAgent::decideAndAct);
+      this.measureAgents.forEach(MeasureAgent::decideAndAct);
+
+      // DEBUG
+      this.parameterAgents
+          .forEach(pa -> Logger.debug(String.format("Param %s: %f", pa.getAttributeName(), pa.getAttributeValue())));
+      this.objectiveAgents.forEach(oa -> Logger.debug(String.format("Obj %s: %f", oa.getName(), oa.getCriticality())));
+
       this.parameterAgents.forEach(ParameterAgent::decideAndAct);
 
       this.cycle++;
@@ -286,11 +296,5 @@ public class Calicoba {
     } else {
       this.steps--;
     }
-  }
-
-  public SatisfactionAgent getMostCritical() {
-    return this.satisfactionAgents.stream() //
-        .max((a1, a2) -> Double.compare(a1.getCriticality(), a2.getCriticality())) //
-        .get();
   }
 }

@@ -7,22 +7,22 @@ import org.apache.commons.math3.util.Pair;
 
 import fr.irit.smac.calicoba.gaml.CalicobaSingleton;
 import fr.irit.smac.calicoba.gaml.GamaValueProvider;
+import fr.irit.smac.calicoba.gaml.Utils;
 import fr.irit.smac.calicoba.gaml.WritableGamaValueProvider;
 import fr.irit.smac.calicoba.gaml.types.ObjectiveDefinition;
-import fr.irit.smac.calicoba.mas.agents.ParameterAgent;
+import fr.irit.smac.calicoba.mas.Calicoba;
+import fr.irit.smac.calicoba.mas.agents.criticality.BaseCriticalityFunction;
+import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunction;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import msi.gama.metamodel.agent.IAgent;
 import msi.gama.precompiler.GamlAnnotations.action;
-import msi.gama.precompiler.GamlAnnotations.arg;
 import msi.gama.precompiler.GamlAnnotations.doc;
 import msi.gama.precompiler.GamlAnnotations.skill;
 import msi.gama.runtime.IScope;
 import msi.gama.runtime.exceptions.GamaRuntimeException;
-import msi.gama.util.GamaMap;
 import msi.gama.util.IMap;
 import msi.gaml.descriptions.IExpressionDescription;
-import msi.gaml.types.IType;
 
 /**
  * Skill that defines an agent as a target model. There should be only one
@@ -36,22 +36,20 @@ import msi.gaml.types.IType;
     doc = @doc("Skill for the CALICOBA target model.") //
 )
 public class TargetModelSkill extends ModelSkill {
-  private static final String PARAMETER_NAME = "parameter_name";
-
   /**
    * Initializes this skill. Gets all attributes of the current GAMA agent whose
-   * name start with <code>out_</code> or <code>param_</code> and adds them as
-   * measure or parameter attributes respectively into CALICOBA.
+   * name start with <code>out_</code>, <code>param_</code> or <code>obj_</code>
+   * and adds them as measure, parameter or objective agents respectively into
+   * CALICOBA.
    *
    * @param scope The current scope.
    */
-  @SuppressWarnings("unchecked")
   @action( //
       name = ICustomSymbols.TARGET_MODEL_INIT, //
       doc = @doc("Initializes the <code>" + ICustomSymbols.TARGET_MODEL_SKILL + "</code> skill.") //
   )
   public void init(final IScope scope) {
-    super.init();
+    Calicoba calicoba = CalicobaSingleton.instance();
 
     final IAgent agent = this.getCurrentAgent(scope);
     final IMap<String, Object> attributes = agent.getOrCreateAttributes();
@@ -67,17 +65,16 @@ public class TargetModelSkill extends ModelSkill {
             throw GamaRuntimeException.error("Parameters should be floats.", scope);
           }
           Pair<Double, Double> minMax = this.getMinMax(agent, attributeName, scope);
-          CalicobaSingleton.instance()
-              .addParameter(new WritableModelAttribute<>(new WritableGamaValueProvider<>(agent, attributeName),
-                  attributeName, minMax.getFirst(), minMax.getSecond()));
+          calicoba.addParameter(new WritableModelAttribute<>(new WritableGamaValueProvider<>(agent, attributeName),
+              attributeName, minMax.getFirst(), minMax.getSecond()));
 
         } else if (attributeName.startsWith("out_")) {
           if (attributeType != Double.class) {
             throw GamaRuntimeException.error("Measures should be floats.", scope);
           }
           Pair<Double, Double> minMax = this.getMinMax(agent, attributeName, scope);
-          CalicobaSingleton.instance().addMeasure(new ReadableModelAttribute<>(
-              new GamaValueProvider<>(agent, attributeName), attributeName, minMax.getFirst(), minMax.getSecond()));
+          calicoba.addMeasure(new ReadableModelAttribute<>(new GamaValueProvider<>(agent, attributeName), attributeName,
+              minMax.getFirst(), minMax.getSecond()));
 
         } else if (attributeName.startsWith("obj_")) {
           if (attributeType != ObjectiveDefinition.class) {
@@ -87,19 +84,35 @@ public class TargetModelSkill extends ModelSkill {
         }
       }
 
-      objDefs.entrySet().forEach(e -> CalicobaSingleton.instance().addObjective(e.getKey(),
-          e.getValue().getParameters(), e.getValue().getRelativeAgentName()));
+      objDefs.entrySet().forEach(e -> {
+        ObjectiveDefinition od = e.getValue();
+        CriticalityFunction critFunction = new BaseCriticalityFunction(od.getParameterNames()) {
+          @Override
+          protected double getImpl(final Map<String, Double> parameterValues) {
+            // Objective actions parameter names must be the name of an output followed by a
+            // single _
+            return Utils.callAction(od.getFunctionName(), agent, parameterValues, p -> p + "_");
+          }
+        };
+        calicoba.addObjective(e.getKey(), critFunction);
+      });
 
-      Object correlationMatrix = attributes.get("corr_matrix");
-      if (correlationMatrix != null) {
-        if (!(correlationMatrix instanceof GamaMap)) {
-          throw GamaRuntimeException.error("Correlation matrix must be a map.", scope);
-        }
-        CalicobaSingleton.instance().setCorrelationMatrix((Map<String, Map<String, Number>>) correlationMatrix);
-      }
+      calicoba.setInfluenceFunction((pName, pValue, objName, objCrit) -> {
+        Map<String, Object> params = new HashMap<>(4);
+        params.put("param_name", pName);
+        params.put("param_value", pValue);
+        params.put("obj_name", objName);
+        params.put("obj_value", objCrit);
+        // Because agent’s fields cannot be accessed from within the action for some
+        // reason…
+        params.put("this", agent);
+        return Utils.callAction("get_parameter_influence", agent, params);
+      });
     } catch (RuntimeException e) {
       throw GamaRuntimeException.create(e, scope);
     }
+
+    super.setInitialized();
   }
 
   private Pair<Double, Double> getMinMax(IAgent agent, String attributeName, IScope scope) {
@@ -119,39 +132,5 @@ public class TargetModelSkill extends ModelSkill {
     }
 
     return defaultValue;
-  }
-
-  /**
-   * Returns the latest performed action of the agent associated to the given
-   * parameter.
-   *
-   * @param scope The current scope.
-   * @return The action.
-   * @throws GamaRuntimeException If the given attribute name is not a parameter
-   *                              of the target model.
-   */
-  @action( //
-      name = ICustomSymbols.TARGET_MODEL_GET_PARAM_ACTION, //
-      doc = @doc("Returns the action performed by the given parameter of the <code>" + ICustomSymbols.TARGET_MODEL_SKILL
-          + "</code>."), //
-      args = { //
-          @arg( //
-              name = PARAMETER_NAME, //
-              type = IType.STRING, //
-              optional = false, //
-              doc = @doc("Name of the parameter.") //
-          ), //
-      } //
-  )
-  public int getParameterAction(final IScope scope) {
-    final String paramName = scope.getStringArg(PARAMETER_NAME);
-    final ParameterAgent agent = this.getParameterAgent(paramName, scope);
-    return agent.getLastAction();
-  }
-
-  private ParameterAgent getParameterAgent(final String paramName, final IScope scope) {
-    return CalicobaSingleton.instance().getAgentsForType(ParameterAgent.class).stream()
-        .filter(a -> a.getAttributeName().equals(paramName)).findFirst().orElseThrow(
-            () -> GamaRuntimeException.error(String.format("No agent for parameter name \"%s\"", paramName), scope));
   }
 }

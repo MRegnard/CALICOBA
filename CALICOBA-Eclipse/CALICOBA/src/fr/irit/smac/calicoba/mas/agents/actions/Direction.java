@@ -1,4 +1,4 @@
-package fr.irit.smac.calicoba.mas.agents.data;
+package fr.irit.smac.calicoba.mas.agents.actions;
 
 /**
  * This enumeration represents variation directions.

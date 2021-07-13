@@ -22,7 +22,7 @@ public abstract class ModelSkill extends Skill {
   /**
    * Initializes this skill and CALICOBA if it is not already.
    */
-  public void init() {
+  public void setInitialized() {
     this.initialized = true;
   }
 

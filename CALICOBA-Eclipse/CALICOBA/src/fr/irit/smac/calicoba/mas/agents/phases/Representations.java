@@ -2,7 +2,7 @@ package fr.irit.smac.calicoba.mas.agents.phases;
 
 import java.util.HashMap;
 
-import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
+import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
 
 /**
  * This class abstracts the representations of satisfaction agents phases.
@@ -26,9 +26,9 @@ public class Representations extends HashMap<String, ClientRepresentation> {
    * @param agentValue The parameter agent’s current value.
    * @param worldCycle The current simulation step.
    */
-  public void update(Iterable<VariationRequest> requests, double agentValue, int worldCycle) {
+  public void update(Iterable<CriticalityMessage> requests, double agentValue, int worldCycle) {
     requests.forEach(r -> {
-      String id = r.senderName;
+      String id = r.getSenderName();
       if (!this.containsKey(id)) {
         this.put(id, new ClientRepresentation());
       }

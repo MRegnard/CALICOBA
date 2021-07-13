@@ -1,18 +1,19 @@
 package fr.irit.smac.calicoba.mas.agents;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Scanner;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-import fr.irit.smac.calicoba.mas.Calicoba;
-import fr.irit.smac.calicoba.mas.agents.data.Direction;
-import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
-import fr.irit.smac.calicoba.mas.agents.phases.Action;
-import fr.irit.smac.calicoba.mas.agents.phases.Representations;
+import fr.irit.smac.calicoba.mas.agents.actions.Action;
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
+import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
+import fr.irit.smac.calicoba.mas.agents.messages.OscillationDetectedMessage;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import fr.irit.smac.util.CsvFileWriter;
@@ -37,12 +38,13 @@ public class ParameterAgent extends
   private final double deltaMin;
   /** Highest allowed AVT delta. */
   private final double deltaMax;
-  private Representations representations;
-  private CsvFileWriter fw;
-  // TEST
-  private State state;
+//  private Representations representations;
 
-  private Scanner scanner = new Scanner(System.in);
+  private Map<String, Double> influences;
+
+  private CsvFileWriter fw;
+
+  private boolean canAct;
 
   /**
    * Creates a new parameter agent for a given model input.
@@ -51,14 +53,17 @@ public class ParameterAgent extends
    */
   public ParameterAgent(WritableModelAttribute<Double, IValueProviderSetter<Double>> parameter) {
     super(parameter);
-    this.representations = new Representations();
+//    this.representations = new Representations();
+    this.influences = new HashMap<>();
     double attributeRange = parameter.getMax() - parameter.getMin();
-    this.deltaMin = 0.0001 * attributeRange;
-    this.deltaMax = 0.001 * attributeRange;
+    this.deltaMin = 1e-5 * attributeRange;
+    this.deltaMax = 1e-3 * attributeRange;
     this.lastDirection = Optional.empty();
     this.currentAction = Optional.empty();
-    // TEST
-    this.state = State.NOMIMAL;
+  }
+
+  public void setCanAct(boolean canAct) {
+    this.canAct = canAct;
   }
 
   /**
@@ -71,68 +76,93 @@ public class ParameterAgent extends
     return this.lastDirection.map(Direction::getAction).orElse(0);
   }
 
-  // TODO prendre en compte la direction STAY
+  /**
+   * Returns the influence of this parameter on the given objective.
+   * 
+   * @param objectiveName Objective’s name.
+   * @return The influence coefficient.
+   * @throws IllegalArgumentException If no objective with the given name exists.
+   */
+  public double getInfluence(final String objectiveName) {
+    if (!this.influences.containsKey(objectiveName)) {
+      throw new IllegalArgumentException(String.format("No objective with name \"%s\".", objectiveName));
+    }
+    return this.influences.get(objectiveName);
+  }
+
+  @Override
+  public void perceive() {
+    super.perceive();
+
+    if (this.influences.isEmpty()) {
+      this.getWorld().getAgentsForType(ObjectiveAgent.class).forEach(oa -> this.influences.put(oa.getName(), 0.5));
+    }
+  }
+
   @Override
   public void decideAndAct() {
     super.decideAndAct();
-    // TEST
-    this.state = State.NOMIMAL;
+    Logger.debug(this.getAttributeName() + ": " + this.canAct); // DEBUG
     double oldValue = this.getAttributeValue();
     int action = 0;
     int delay = 0;
-    double crit = 0;
+    String obj = "";
 
-    if (!this.requests.isEmpty()) {
-      // TEST
-      if (this.requests.stream().anyMatch(r -> r.direction == Direction.INCREASE)
-          && this.requests.stream().anyMatch(r -> r.direction == Direction.DECREASE)) {
-        this.state = State.DIFFERENT_DIRECTIONS;
-      }
+    this.updateInfluences();
 
-      this.representations.update(this.requests, this.getAttributeValue(), this.getWorld().getCycle());
-      VariationRequest mostCriticalRequest = this.selectRequest();
-      crit = mostCriticalRequest.criticality;
+    Set<OscillationDetectedMessage> oscilMessages = this.getMessageForType(OscillationDetectedMessage.class);
+    Set<String> cyclingObjNames = oscilMessages.stream().map(m -> m.getSenderName())
+        .filter(n -> this.influences.get(n) != 0).collect(Collectors.toSet());
+    Logger.debug(cyclingObjNames);
+
+    Set<CriticalityMessage> critMessages = this.getMessageForType(CriticalityMessage.class);
+    if (!critMessages.isEmpty()) {
+      // TEMP phases désactivées pour le moment
+//      this.representations.update(this.requests, this.getAttributeValue(), this.getWorld().getCycle());
 
       if (!this.currentAction.isPresent() || this.currentAction.get().isDelayOver()) {
-        this.currentAction = Optional.of(new Action(mostCriticalRequest.senderName, mostCriticalRequest.direction,
-            this.representations.estimateDelay(mostCriticalRequest.senderName)));
-        delay = this.representations.estimateDelay(mostCriticalRequest.senderName);
-        System.out.println("Delay for " + mostCriticalRequest.senderName + ": " + delay);
+        CriticalityMessage mostCriticalRequest = this.selectRequest();
+        double influence = this.influences.get(mostCriticalRequest.getSenderName());
+        Direction direction;
+        if (cyclingObjNames.isEmpty() && mostCriticalRequest.criticality != 0 && influence != 0 /* && this.canAct */) {
+          direction = influence > 0 ? Direction.DECREASE : Direction.INCREASE;
+        } else {
+          direction = Direction.STAY;
+        }
+        // TEMP phases désactivées pour le moment
+        this.currentAction = Optional.of(new Action(mostCriticalRequest.getSenderName(), direction, 0));
+//            this.representations.estimateDelay(mostCriticalRequest.getSenderName())));
+        obj = mostCriticalRequest.getSenderName();
+        Logger.debug(String.format("%s helped %s", this.getAttributeName(), obj)); // DEBUG
       }
 
       if (this.currentAction.isPresent() && !this.currentAction.get().isDelayOver()) {
         if (!this.currentAction.get().isExecuted()) {
-          // TEMP désactivé pour trace
-//          this.updateValue(this.currentAction.get().getDirection());
-          Logger.debug(this.getAttributeName() + ": action executed");
+          this.updateValue(this.currentAction.get().getDirection());
+          // DEBUG
+          action = this.currentAction.get().getDirection().getAction();
           this.currentAction.get().setExecuted();
         } else {
           this.currentAction.get().decreaseRemainingSteps();
         }
       }
-
-      // TEST manual action input
-      System.out.println("Action:");
-      action = this.scanner.nextInt();
-      this.updateValue(Direction.fromAction(action));
-
-      this.requests.clear();
     }
 
-    // TEST
+    this.messages.clear();
+
     if (this.getWorld().canDumpData()) {
       if (this.getWorld().getCycle() == 0) {
         String fname = this.getAttributeName();
         try {
-          this.fw = new CsvFileWriter(Calicoba.OUTPUT_DIR + "/" + fname + ".csv", false, true, "cycle", "value", "crit",
-              "action", "delay");
+          this.fw = new CsvFileWriter(this.getWorld().dumpDirectory() + fname + ".csv", false, true, "cycle", "value",
+              "action", "obj", "delay");
         } catch (IOException e) {
           e.printStackTrace();
         }
       }
 
       try {
-        this.fw.writeLine(new Number[] { this.getWorld().getCycle(), oldValue, crit, action, delay });
+        this.fw.writeLine(new Object[] { this.getWorld().getCycle(), oldValue, action, obj, delay });
         this.fw.flush();
       } catch (IOException e) {
         e.printStackTrace();
@@ -147,30 +177,68 @@ public class ParameterAgent extends
    * group each request by their criticality
    * sort the generated pairs (criticality, requests) by descending criticality
    * for each pair (criticality, requests):
-   *   if all requests have the same direction:
-   *     return one of these requests
+   *   if there is only one request:
+   *     return this request
    * return one request from the most critical ones
    * </pre>
    * 
    * @return The selected request.
    */
-  private VariationRequest selectRequest() {
-    SortedMap<Double, List<VariationRequest>> freq = this.requests.stream()
-        // Sorted by decreasing criticalities
-        .collect(Collectors.groupingBy(r -> -r.criticality, TreeMap::new, Collectors.toList()));
+  private CriticalityMessage selectRequest() {
+    SortedMap<Double, List<CriticalityMessage>> freq = this.messages.stream()
+        .filter(m -> m instanceof CriticalityMessage) //
+        .map(m -> (CriticalityMessage) m)
+        // Sorted by decreasing absolute criticalities
+        .collect(Collectors.groupingBy(r -> -Math.abs(r.criticality), TreeMap::new, Collectors.toList()));
 
-    for (List<VariationRequest> l : freq.values()) {
-      // All requested directions for the current criticality are the same
-      // -> return one of these requests
-      if (l.stream().allMatch(r -> r.direction.equals(l.get(0).direction))) {
+    for (List<CriticalityMessage> l : freq.values()) {
+      // There is only one request for the current criticality, select it.
+      if (l.size() == 1) {
         return l.get(0);
-      } else { // TEST
-        this.state = State.SAME_CRIT_DIFF_DIRECTIONS;
       }
     }
 
-    List<VariationRequest> l = freq.get(freq.firstKey());
+    List<CriticalityMessage> l = freq.get(freq.firstKey());
     return l.get(this.getWorld().getRNG().nextInt(l.size()));
+  }
+
+  private void updateInfluences() {
+    final double epsilon = 1e-5; // Precision around 0
+
+    if (this.lastDirection.isPresent() && this.lastDirection.get() != Direction.STAY) {
+      Map<String, Double> infl = new HashMap<>();
+      for (Map.Entry<String, Double> e : this.influences.entrySet()) {
+        final String objName = e.getKey();
+        final Double inflValue = e.getValue();
+        final ObjectiveAgent objAgent = ((ObjectiveAgent) this.getWorld()
+            .getAgent(a -> a instanceof ObjectiveAgent && ((ObjectiveAgent) a).getName().equals(objName)).get());
+
+        double newInfl;
+        if (this.getWorld().learnsInfluences()) {
+          final double critVar = objAgent.getCriticalityVariation();
+          if (critVar == 0) {
+            newInfl = 0;
+          } else if (Math.signum(critVar) == Math.signum(this.lastDirection.get().getAction())) {
+            newInfl = 1;
+          } else {
+            newInfl = -1;
+          }
+          final double alpha = this.getWorld().getAlpha();
+          newInfl = alpha * inflValue + (1 - alpha) * newInfl;
+          if (Math.abs(newInfl) < epsilon) {
+            newInfl = 0;
+          }
+        } else {
+          final double objValue = objAgent.getCriticality();
+          newInfl = this.getWorld().getInfluenceFunction().apply(this.getAttributeName(), this.getAttributeValue(),
+              objName, objValue);
+        }
+
+        infl.put(objName, newInfl);
+      }
+      this.influences = infl;
+      Logger.debug(this.influences); // DEBUG
+    }
   }
 
   /**
@@ -220,7 +288,7 @@ public class ParameterAgent extends
       return Math.max(this.deltaMin, Math.min(this.deltaMax, delta));
     }).orElse(this.deltaMin);
 
-    this.delta = 1; // TEMP AVT désactivé pour les tests
+    this.delta = direction.getAction() < 0 ? 1.1 : 1; // TEMP AVT désactivé pour les tests
     this.addToParameterValue(this.delta * direction.getAction());
     this.lastDirection = Optional.of(direction);
   }
@@ -236,14 +304,5 @@ public class ParameterAgent extends
     newValue = Math.min(this.getAttributeMaxValue(), newValue);
     newValue = Math.max(this.getAttributeMinValue(), newValue);
     this.getAttribute().setValue(newValue);
-  }
-
-  // TEST
-  public State getState() {
-    return this.state;
-  }
-
-  enum State {
-    NOMIMAL, DIFFERENT_DIRECTIONS, SAME_CRIT_DIFF_DIRECTIONS;
   }
 }

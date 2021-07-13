@@ -1,6 +1,6 @@
 package fr.irit.smac.calicoba.mas.agents.phases;
 
-import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
+import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
 
 /**
  * This class represents the current and two last phases for a given
@@ -23,12 +23,13 @@ public class ClientRepresentation {
    *                   belongs to.
    * @param worldCycle Current simulation step.
    */
-  public void update(VariationRequest request, double agentValue, int worldCycle) {
-    if (this.currentPhase == null || !this.currentPhase.getDirection().equals(request.direction)) {
-      this.previousPreviousPhase = this.previousPhase;
-      this.previousPhase = this.currentPhase;
-      this.currentPhase = new Phase(request.direction);
-    }
+  public void update(CriticalityMessage request, double agentValue, int worldCycle) {
+    // TEMP
+//    if (this.currentPhase == null || !this.currentPhase.getDirection().equals(request.direction)) {
+//      this.previousPreviousPhase = this.previousPhase;
+//      this.previousPhase = this.currentPhase;
+//      this.currentPhase = new Phase(request.direction);
+//    }
     this.currentPhase.update(request.criticality, agentValue, worldCycle);
   }
 

@@ -1,5 +1,8 @@
 package fr.irit.smac.calicoba.gaml.types;
 
+import java.util.Collections;
+import java.util.List;
+
 import msi.gama.precompiler.GamlAnnotations.doc;
 import msi.gama.precompiler.GamlAnnotations.type;
 import msi.gama.precompiler.ISymbolKind;
@@ -18,7 +21,7 @@ import msi.gaml.types.GamaType;
 public class ObjectiveDefinitionType extends GamaType<ObjectiveDefinition> {
   @Override
   public ObjectiveDefinition getDefault() {
-    return new ObjectiveDefinition(null, 0, 0, 0, 0, 0, 0);
+    return new ObjectiveDefinition(Collections.emptyList(), "");
   }
 
   @Override
@@ -26,6 +29,7 @@ public class ObjectiveDefinitionType extends GamaType<ObjectiveDefinition> {
     return true;
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   @doc("Casts an array to an obj_def value.")
   public ObjectiveDefinition cast(IScope scope, Object obj, Object param, boolean copy) throws GamaRuntimeException {
@@ -34,19 +38,17 @@ public class ObjectiveDefinitionType extends GamaType<ObjectiveDefinition> {
     } else if (obj instanceof GamaList) {
       GamaList<?> l = (GamaList<?>) obj;
 
-      if (l.size() == 7) {
-        return new ObjectiveDefinition((String) l.get(0), (Double) l.get(1), (Double) l.get(2), (Double) l.get(3),
-            (Double) l.get(4), (Double) l.get(5), (Double) l.get(6));
-      } else if (l.size() == 5) {
-        return new ObjectiveDefinition((String) l.get(0), (Double) l.get(1), (Double) l.get(2), (Double) l.get(3),
-            (Double) l.get(4));
-      } else if (l.size() == 4) {
-        return new ObjectiveDefinition((String) l.get(0), (Double) l.get(1), (Double) l.get(2), (Double) l.get(3));
+      if (l.size() == 2) {
+        try {
+          return new ObjectiveDefinition((List<String>) l.get(0), (String) l.get(1));
+        } catch (ClassCastException e) {
+          throw GamaRuntimeException.create(e, scope);
+        }
       } else {
-        throw GamaRuntimeException.error("Invalid number of criticality function parameters.", scope);
+        throw GamaRuntimeException.error("List must have length of 2.", scope);
       }
     }
-    throw GamaRuntimeException.error(String.format("Can only cast \"%s\" objects and lists.", ICustomTypes.OBJ_DEF),
+    throw GamaRuntimeException.error(String.format("Can only cast lists and \"%s\" objects.", ICustomTypes.OBJ_DEF),
         scope);
   }
 }

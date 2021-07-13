@@ -3,7 +3,7 @@ package fr.irit.smac.calicoba.mas.agents.phases;
 import java.util.HashMap;
 import java.util.Map;
 
-import fr.irit.smac.calicoba.mas.agents.data.Direction;
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 
 /**
  * A phase is a succession of contiguous steps during which the value of a

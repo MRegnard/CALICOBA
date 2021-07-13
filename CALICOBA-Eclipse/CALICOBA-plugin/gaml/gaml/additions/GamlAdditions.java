@@ -59,15 +59,14 @@ public class GamlAdditions extends AbstractGamlAdditions {
 	initializeAction();
 	initializeSkill();
 }public void initializeAction() throws SecurityException, NoSuchMethodException {
-_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).setup(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_setup",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("setup",SC));
-_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("init",SC));
-_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).step(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_step",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("step",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).getInfluence(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE),desc(ARG,NAME,"objective_name",TYPE,"4","optional",FALSE)),NAME,"get_influence",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("getInfluence",SC));
 _action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).getObjective(s),desc(PRIM,new Children(desc(ARG,NAME,"objective_name",TYPE,"4","optional",FALSE)),NAME,"get_objective",TYPE,Ti(D),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("getObjective",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).setup(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_setup",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("setup",SC));
+_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(I),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("getParameterAction",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).step(s);return null;},desc(PRIM,new Children(),NAME,"calicoba_step",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("step",SC));
+_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).init(s);return null;},desc(PRIM,new Children(desc(ARG,NAME,"learn",TYPE,"3","optional",FALSE),desc(ARG,NAME,"alpha",TYPE,"2","optional",FALSE)),NAME,"calicoba_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("init",SC));
 _action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.skills.GlobalSkill) t).getObjectives(s),desc(PRIM,new Children(),NAME,"get_objectives",TYPE,Ti(GM),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class.getMethod("getObjectives",SC));
-_action((s,a,t,v)->{((fr.irit.smac.calicoba.gaml.skills.TargetModelSkill) t).init(s);return null;},desc(PRIM,new Children(),NAME,"model_init",TYPE,Ti(void.class),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.TargetModelSkill.class.getMethod("init",SC));
-_action((s,a,t,v)->((fr.irit.smac.calicoba.gaml.skills.TargetModelSkill) t).getParameterAction(s),desc(PRIM,new Children(desc(ARG,NAME,"parameter_name",TYPE,"4","optional",FALSE)),NAME,"get_parameter_action",TYPE,Ti(I),VIRTUAL,FALSE),fr.irit.smac.calicoba.gaml.skills.TargetModelSkill.class.getMethod("getParameterAction",SC));
 }public void initializeSkill()  {
 _skill("calicoba",fr.irit.smac.calicoba.gaml.skills.GlobalSkill.class,AS);
-_skill("calicoba_target_model",fr.irit.smac.calicoba.gaml.skills.TargetModelSkill.class,AS);
 }
 }

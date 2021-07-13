@@ -35,6 +35,6 @@ public class TripletType extends GamaType<Triplet<?, ?, ?>> {
       GamaList<?> l = (GamaList<?>) obj;
       return new Triplet<>(l.get(0), l.get(1), l.get(2));
     }
-    throw GamaRuntimeException.error("Can only cast \"" + ICustomTypes.TRIPLET + "\" objects.", scope);
+    throw GamaRuntimeException.error(String.format("Can only cast \"%s\" objects.", ICustomTypes.TRIPLET), scope);
   }
 }

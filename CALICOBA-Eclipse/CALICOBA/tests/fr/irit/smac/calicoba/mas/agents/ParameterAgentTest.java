@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import fr.irit.smac.calicoba.mas.Calicoba;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProviderSetter;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import fr.irit.smac.calicoba.test_util.DummyValueProvider;
@@ -26,6 +27,7 @@ class ParameterAgentTest {
   @BeforeEach
   void setUp() throws Exception {
     this.agent = new ParameterAgent(attr);
+    this.agent.setWorld(new Calicoba(false, null, false, 0));
   }
 
   @Test

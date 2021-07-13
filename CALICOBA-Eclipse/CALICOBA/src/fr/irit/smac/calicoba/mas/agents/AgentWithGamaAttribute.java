@@ -1,17 +1,15 @@
 package fr.irit.smac.calicoba.mas.agents;
 
-import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
 
-import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
+import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 
 /**
  * Base class for agents associated to an attribute of the target model. This
  * type of agents can receive messages through its
- * {@link #onRequest(VariationRequest)} method.
+ * {@link #onMessage(CriticalityMessage)} method.
  *
  * @author Damien Vergnet
  * 
@@ -26,8 +24,6 @@ public abstract class AgentWithGamaAttribute<T extends ReadableModelAttribute<Do
    * perceive and act phases.
    */
   private double cachedAttributeValue;
-  /** The set of received variation requests. */
-  protected final Set<VariationRequest> requests;
 
   /**
    * Creates a new agent for the given model attribute.
@@ -36,7 +32,6 @@ public abstract class AgentWithGamaAttribute<T extends ReadableModelAttribute<Do
    */
   public AgentWithGamaAttribute(T attribute) {
     this.attribute = Objects.requireNonNull(attribute);
-    this.requests = new HashSet<>();
   }
 
   /**
@@ -46,15 +41,6 @@ public abstract class AgentWithGamaAttribute<T extends ReadableModelAttribute<Do
   public void perceive() {
     super.perceive();
     this.cachedAttributeValue = this.getAttribute().getValue();
-  }
-
-  /**
-   * This method is called whenever this agent receives a variation request.
-   * 
-   * @param request The variation request.
-   */
-  public void onRequest(VariationRequest request) {
-    this.requests.add(request);
   }
 
   /**

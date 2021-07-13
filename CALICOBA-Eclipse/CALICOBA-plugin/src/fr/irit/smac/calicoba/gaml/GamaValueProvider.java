@@ -28,7 +28,7 @@ public class GamaValueProvider<T> implements IValueProvider<T> {
 
   @Override
   @SuppressWarnings("unchecked")
-  public T getValue() {
+  public T get() {
     return (T) this.agent.getAttribute(this.attributeName);
   }
 }

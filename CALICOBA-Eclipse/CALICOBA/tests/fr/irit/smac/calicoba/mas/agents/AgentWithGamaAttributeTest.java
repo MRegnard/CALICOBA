@@ -1,12 +1,16 @@
 package fr.irit.smac.calicoba.mas.agents;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import fr.irit.smac.calicoba.mas.agents.data.Direction;
-import fr.irit.smac.calicoba.mas.agents.data.VariationRequest;
+import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunction;
+import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 
@@ -43,10 +47,20 @@ class AgentWithGamaAttributeTest {
 
   @Test
   void testOnRequest() {
-    VariationRequest r = new VariationRequest("sender", 1.0, Direction.INCREASE);
-    this.agent.onRequest(r);
-    Assertions.assertEquals(1, this.agent.requests.size());
-    Assertions.assertEquals(r, this.agent.requests.stream().findFirst().get());
+    CriticalityMessage r = new CriticalityMessage(new ObjectiveAgent("obj", new CriticalityFunction() {
+      @Override
+      public List<String> getParameterNames() {
+        return Collections.emptyList();
+      }
+
+      @Override
+      public double get(Map<String, Double> parameterValues) {
+        return 0;
+      }
+    }), 1.0);
+    this.agent.onMessage(r);
+    Assertions.assertEquals(1, this.agent.messages.size());
+    Assertions.assertEquals(r, this.agent.messages.stream().findFirst().get());
   }
 
   @Test

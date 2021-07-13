@@ -151,31 +151,7 @@
         <category id="Iterator operators"/>
     </operatorsCategories>
     <operators/>
-    <skills>
-        <skill class="fr.irit.smac.calicoba.gaml.skills.TargetModelSkill" extends="fr.irit.smac.calicoba.gaml.skills.ModelSkill" id="calicoba_target_model" name="calicoba_target_model">
-            <actions>
-                <action name="model_init" returnType="void">
-                    <args/>
-                    <documentation>
-                        <result>Initializes the &lt;code&gt;calicoba_target_model&lt;/code&gt; skill.</result>
-                    </documentation>
-                </action>
-                <action name="get_parameter_action" returnType="int">
-                    <args>
-                        <arg name="parameter_name" optional="false" type="string">
-                            <documentation>
-                                <result>Name of the parameter.</result>
-                            </documentation>
-                        </arg>
-                    </args>
-                    <documentation>
-                        <result>Returns the action performed by the given parameter of the &lt;code&gt;calicoba_target_model&lt;/code&gt;.</result>
-                    </documentation>
-                </action>
-            </actions>
-            <concepts/>
-        </skill>
-    </skills>
+    <skills/>
     <architectures/>
     <speciess/>
     <insideStatementKinds/>

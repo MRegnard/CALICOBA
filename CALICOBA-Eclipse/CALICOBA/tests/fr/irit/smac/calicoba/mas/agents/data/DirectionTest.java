@@ -3,6 +3,8 @@ package fr.irit.smac.calicoba.mas.agents.data;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
+
 class DirectionTest {
   @Test
   void testGetActionIncrease() {

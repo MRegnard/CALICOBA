@@ -1,6 +1,4 @@
-package fr.irit.smac.calicoba.mas.agents.phases;
-
-import fr.irit.smac.calicoba.mas.agents.data.Direction;
+package fr.irit.smac.calicoba.mas.agents.actions;
 
 /**
  * This class is an abstracion of an action that will be executed by a parameter
