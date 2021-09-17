@@ -63,6 +63,11 @@ for param_name in PARAM_NAMES:
         'values': values,
         'actions': actions,
     }
+    last_values = values[-10:]
+    mini = min(last_values)
+    maxi = max(last_values)
+    est_value = (maxi + mini) / 2
+    print(param_name, est_value)
 
 
 rows = 2
@@ -78,7 +83,7 @@ x_limits = {
     'xmin': x_min - margin,
     'xmax': x_max + margin,
 }
-p1, p2 = dirname.split('_', maxsplit=1)
+p1, p2, *_ = pathlib.Path(dirname).stem.split('_')
 title = f'$p_1 = {p1}, p_2 = {p2}$'
 
 fig, axes = plt.subplots(2, 2, constrained_layout=True)

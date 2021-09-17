@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunction;
 import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
@@ -57,7 +58,7 @@ class AgentWithGamaAttributeTest {
       public double get(Map<String, Double> parameterValues) {
         return 0;
       }
-    }), 1.0);
+    }), 1.0, Direction.INCREASE);
     this.agent.onMessage(r);
     Assertions.assertEquals(1, this.agent.messages.size());
     Assertions.assertEquals(r, this.agent.messages.stream().findFirst().get());

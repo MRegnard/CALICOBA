@@ -12,7 +12,7 @@ import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 import fr.irit.smac.calicoba.mas.model_attributes.WritableModelAttribute;
 import fr.irit.smac.util.CsvFileWriter;
 
-public class TraceTestSIR {
+public class SIRTest {
   public static void main(String[] args) throws IOException {
     final int initS = 997;
     final int initI = 3;
@@ -23,7 +23,7 @@ public class TraceTestSIR {
     SIRModel model = new SIRModel(initS, initI, initR, initB, initG);
 
     Calicoba calicoba = new Calicoba(true,
-        String.format(Locale.ENGLISH, "SIR_%d_%d_%d_%f_%f", initS, initI, initR, initB, initG), false, 0);
+        String.format(Locale.ENGLISH, "SIR_%d_%d_%d_%f_%f", initS, initI, initR, initB, initG), false, 0, false);
     calicoba.addParameter(new WritableModelAttribute<>(new IValueProviderSetter<Double>() {
       @Override
       public Double get() {
@@ -46,9 +46,9 @@ public class TraceTestSIR {
         model.setRecoveryProbability(value);
       }
     }, "γ", 0, 1));
-    calicoba.addMeasure(new ReadableModelAttribute<>(model::getSusceptible, "S", 0, total));
-    calicoba.addMeasure(new ReadableModelAttribute<>(model::getInfected, "I", 0, total));
-    calicoba.addMeasure(new ReadableModelAttribute<>(model::getRecovered, "R", 0, total));
+    calicoba.addOutput(new ReadableModelAttribute<>(model::getSusceptible, "S", 0, total));
+    calicoba.addOutput(new ReadableModelAttribute<>(model::getInfected, "I", 0, total));
+    calicoba.addOutput(new ReadableModelAttribute<>(model::getRecovered, "R", 0, total));
     calicoba.addObjective("obj1", new BaseCriticalityFunction(Arrays.asList("I")) {
       @Override
       protected double getImpl(final Map<String, Double> parameterValues) {

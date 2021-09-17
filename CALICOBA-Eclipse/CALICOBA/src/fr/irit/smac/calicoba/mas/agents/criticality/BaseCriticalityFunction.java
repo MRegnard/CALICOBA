@@ -56,8 +56,8 @@ public abstract class BaseCriticalityFunction implements CriticalityFunction {
   public final double get(final Map<String, Double> parameterValues) {
     if (!parameterValues.keySet().equals(this.parameterSet)) {
       throw new IllegalArgumentException(
-          String.format("Invalid argument(s) for criticality function, expected %s, got %s.", this.parameterNames,
-              parameterValues.size()));
+          String.format("Invalid argument(s) for criticality function, expected %s, got %s.", this.parameterSet,
+              parameterValues.keySet()));
     }
     return this.optimize ? OPT_CRIT : this.getImpl(parameterValues);
   }

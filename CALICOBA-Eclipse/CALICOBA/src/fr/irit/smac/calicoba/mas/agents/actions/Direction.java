@@ -6,7 +6,7 @@ package fr.irit.smac.calicoba.mas.agents.actions;
  * @author Damien Vergnet
  */
 public enum Direction {
-  INCREASE('+', 1), DECREASE('-', -1), STAY('0', 0);
+  INCREASE('+', 1), DECREASE('-', -1), NONE('0', 0);
 
   public static Direction fromAction(int action) {
     switch (action) {
@@ -15,7 +15,7 @@ public enum Direction {
       case -1:
         return DECREASE;
       default:
-        return STAY;
+        return NONE;
     }
   }
 
@@ -37,8 +37,8 @@ public enum Direction {
         return DECREASE;
       case DECREASE:
         return INCREASE;
-      case STAY:
-        return STAY;
+      case NONE:
+        return NONE;
     }
     // Should never happen
     throw new Error("invalid enum value");

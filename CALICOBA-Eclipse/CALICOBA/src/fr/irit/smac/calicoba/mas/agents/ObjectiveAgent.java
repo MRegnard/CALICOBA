@@ -6,19 +6,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 import fr.irit.smac.calicoba.mas.agents.criticality.AllTimeAbsoluteNormalizer;
 import fr.irit.smac.calicoba.mas.agents.criticality.CriticalityFunction;
 import fr.irit.smac.calicoba.mas.agents.criticality.Normalizer;
 import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
-import fr.irit.smac.calicoba.mas.agents.messages.OscillationDetectedMessage;
 import fr.irit.smac.util.CsvFileWriter;
-import fr.irit.smac.util.FixedCapacityQueue;
-import fr.irit.smac.util.Logger;
-import fr.irit.smac.util.Utilities;
 
 /**
- * This type of agent represents an objective or constraint on a measure or
- * parameter respectively.
+ * This type of agent represents an objective or constraint on a set of model
+ * outputs.
  *
  * @author Damien Vergnet
  */
@@ -27,24 +24,17 @@ public class ObjectiveAgent extends Agent {
   private final String name;
 
   private List<ParameterAgent> parameterAgents;
-  /** The agent this agent monitors and will send requests to. */
-  private List<MeasureAgent> measureAgents;
-  /** Current value of the relative measures. */
-  private Map<String, Double> measureValues;
+  private List<OutputAgent> outputAgents;
+  /** Current value of the monitored outputs. */
+  private Map<String, Double> outputValues;
 
   private CriticalityFunction function;
   /** Raw value returned by the objective function. */
   private double objectiveValue;
   /** Current normalized criticality. */
   private double criticality;
-  private double criticalityVariation;
 
   private Normalizer critNormalizer;
-
-  /** Maximum queue length for cycles detection. */
-  private static final int MAX_QUEUE_LENGTH = 10;
-  // Lists used to detect criticality cycles
-  private FixedCapacityQueue<Double> lastCriticalities;
 
   private CsvFileWriter fw;
 
@@ -53,15 +43,14 @@ public class ObjectiveAgent extends Agent {
    * 
    * @param name          This agent’s name.
    * @param function      The criticality function.
-   * @param relativeAgent The list of measure agents this agent uses in its
+   * @param relativeAgent The list of output agents this agent uses in its
    *                      criticality function.
    */
-  public ObjectiveAgent(final String name, CriticalityFunction function, MeasureAgent... measureAgents) {
+  public ObjectiveAgent(final String name, CriticalityFunction function, OutputAgent... outputAgents) {
     this.name = name;
     this.function = function;
-    this.measureAgents = Arrays.asList(measureAgents);
+    this.outputAgents = Arrays.asList(outputAgents);
     this.critNormalizer = new AllTimeAbsoluteNormalizer();
-    this.lastCriticalities = new FixedCapacityQueue<>(MAX_QUEUE_LENGTH);
   }
 
   @Override
@@ -72,41 +61,38 @@ public class ObjectiveAgent extends Agent {
       this.parameterAgents = this.getWorld().getAgentsForType(ParameterAgent.class);
     }
 
-    this.measureValues = this.measureAgents.stream()
-        .collect(Collectors.toMap(MeasureAgent::getAttributeName, MeasureAgent::getAttributeValue));
+    this.outputValues = this.outputAgents.stream()
+        .collect(Collectors.toMap(OutputAgent::getAttributeName, OutputAgent::getAttributeValue));
   }
 
   @Override
   public void decideAndAct() {
     super.decideAndAct();
 
-    double oldCrit = this.criticality;
-    this.objectiveValue = this.function.get(this.measureValues);
+    double oldValue = this.objectiveValue;
+    this.objectiveValue = this.function.get(this.outputValues);
     // Normalize new objective value
     this.criticality = this.critNormalizer.normalize(this.objectiveValue);
-    this.criticalityVariation = Math.abs(this.criticality) - Math.abs(oldCrit);
-
-    // Update queue
-    this.lastCriticalities.add(this.criticality);
-    Logger.debug(this.lastCriticalities);
-    Logger.debug(Arrays.toString(Utilities.getCycle(this.lastCriticalities).orElse(new Number[0])));
-
-    if (Utilities.hasCycle(this.lastCriticalities)) {
-      this.parameterAgents.forEach(pa -> pa.onMessage(new OscillationDetectedMessage(this)));
+    final Direction variation;
+    if (oldValue < this.objectiveValue) {
+      variation = Direction.INCREASE;
+    } else if (oldValue > this.objectiveValue) {
+      variation = Direction.DECREASE;
+    } else {
+      variation = Direction.NONE;
     }
 
-    this.parameterAgents.forEach(pa -> pa.onMessage(new CriticalityMessage(this, this.criticality)));
+    this.parameterAgents.forEach(pa -> pa.onMessage(new CriticalityMessage(this, this.criticality, variation)));
 
-    // TEST
     if (this.getWorld().canDumpData()) {
       if (this.getWorld().getCycle() == 0) {
-        int measuresNb = this.measureValues.size();
+        int outputsNb = this.outputValues.size();
 
         String fname = this.getName();
-        String[] header = new String[3 + measuresNb];
+        String[] header = new String[3 + outputsNb];
         header[0] = "cycle";
         int i = 0;
-        for (Map.Entry<String, Double> e : this.measureValues.entrySet()) {
+        for (Map.Entry<String, Double> e : this.outputValues.entrySet()) {
           header[i + 1] = e.getKey();
           i++;
         }
@@ -119,10 +105,10 @@ public class ObjectiveAgent extends Agent {
         }
       }
 
-      Number[] values = new Number[3 + this.measureAgents.size()];
+      Number[] values = new Number[3 + this.outputAgents.size()];
       values[0] = this.getWorld().getCycle();
       int i = 0;
-      for (Map.Entry<String, Double> e : this.measureValues.entrySet()) {
+      for (Map.Entry<String, Double> e : this.outputValues.entrySet()) {
         values[i + 1] = e.getValue();
         i++;
       }
@@ -149,10 +135,6 @@ public class ObjectiveAgent extends Agent {
    */
   public double getCriticality() {
     return this.criticality;
-  }
-
-  public double getCriticalityVariation() {
-    return this.criticalityVariation;
   }
 
   @Override

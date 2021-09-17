@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
-import java.util.Arrays;
+import java.util.Iterator;
 import java.util.StringTokenizer;
 
 /**
@@ -37,12 +37,6 @@ import java.util.StringTokenizer;
  * <a href="http://web.maths.unsw.edu.au/~fkuo/sobol/">Stephen Joe and Frances
  * Kuo</a>.
  * <p>
- * The generator supports two modes:
- * <ul>
- * <li>sequential generation of points: {@link #nextVector()}</li>
- * <li>random access to the i-th point in the sequence:
- * {@link #skipTo(int)}</li>
- * </ul>
  *
  * @see <a href="http://en.wikipedia.org/wiki/Sobol_sequence">Sobol sequence
  *      (Wikipedia)</a>
@@ -52,7 +46,7 @@ import java.util.StringTokenizer;
  * @version $Id: SobolSequenceGenerator.html 908881 2014-05-15 07:10:28Z luc $
  * @since 3.3
  */
-public class SobolSequenceGenerator {
+public class SobolSequenceGenerator implements Iterable<double[]> {
   /** The number of bits to use. */
   private static final int BITS = 52;
 
@@ -71,8 +65,11 @@ public class SobolSequenceGenerator {
   /** Space dimension. */
   private final int dimension;
 
+  /** Maximum number of values to generate. */
+  private final int nb;
+
   /** The current index in the sequence. */
-  private int count = 0;
+  private int count;
 
   /** The direction vector for each component. */
   private final long[][] direction;
@@ -83,11 +80,12 @@ public class SobolSequenceGenerator {
   /**
    * Construct a new Sobol sequence generator for the given space dimension.
    *
-   * @param dimension the space dimension
-   * @throws OutOfRangeException if the space dimension is outside the allowed
-   *                             range of [1, 1000]
+   * @param dimension The space dimension.
+   * @param nb        The maximum number of vectors to generate.
+   * @throws OutOfRangeException If the space dimension is outside the allowed
+   *                             range of [1, 1000].
    */
-  public SobolSequenceGenerator(final int dimension) {
+  public SobolSequenceGenerator(final int dimension, final int nb) {
     if (dimension < 1 || dimension > MAX_DIMENSION) {
       throw new IllegalArgumentException(String.format("dimension should be in [1, %d]", MAX_DIMENSION));
     }
@@ -99,6 +97,7 @@ public class SobolSequenceGenerator {
     }
 
     this.dimension = dimension;
+    this.nb = nb;
 
     // init data structures
     this.direction = new long[dimension][BITS + 1];
@@ -114,61 +113,6 @@ public class SobolSequenceGenerator {
       } catch (IOException e) {
         // ignore
       }
-    }
-  }
-
-  /**
-   * Construct a new Sobol sequence generator for the given space dimension with
-   * direction vectors loaded from the given stream.
-   * <p>
-   * The expected format is identical to the files available from
-   * <a href="http://web.maths.unsw.edu.au/~fkuo/sobol/">Stephen Joe and Frances
-   * Kuo</a>. The first line will be ignored as it is assumed to contain only the
-   * column headers. The columns are:
-   * <ul>
-   * <li>d: the dimension</li>
-   * <li>s: the degree of the primitive polynomial</li>
-   * <li>a: the number representing the coefficients</li>
-   * <li>m: the list of initial direction numbers</li>
-   * </ul>
-   * Example:
-   * 
-   * <pre>
-   * d       s       a       m_i
-   * 2       1       0       1
-   * 3       2       1       1 3
-   * </pre>
-   * <p>
-   * The input stream <i>must</i> be an ASCII text containing one valid direction
-   * vector per line.
-   *
-   * @param dimension the space dimension
-   * @param is        the stream to read the direction vectors from
-   * @throws NotStrictlyPositiveException if the space dimension is &lt; 1
-   * @throws OutOfRangeException          if the space dimension is outside the
-   *                                      range [1, max], where max refers to the
-   *                                      maximum dimension found in the input
-   *                                      stream
-   * @throws MathParseException           if the content in the stream could not
-   *                                      be parsed successfully
-   * @throws IOException                  if an error occurs while reading from
-   *                                      the input stream
-   */
-  public SobolSequenceGenerator(final int dimension, final InputStream is) throws IOException {
-    if (dimension < 1) {
-      throw new IllegalArgumentException(String.format("dimension should be in [1, %d]", MAX_DIMENSION));
-    }
-
-    this.dimension = dimension;
-
-    // init data structures
-    this.direction = new long[dimension][BITS + 1];
-    this.x = new long[dimension];
-
-    // initialize the other dimensions with direction numbers from the stream
-    int lastDimension = this.initFromStream(is);
-    if (lastDimension < dimension) {
-      throw new IllegalArgumentException(String.format("dimension should be in [1, %d]", MAX_DIMENSION));
     }
   }
 
@@ -244,8 +188,17 @@ public class SobolSequenceGenerator {
     }
   }
 
-  /** {@inheritDoc} */
-  public double[] nextVector() {
+  /**
+   * Calculates then returns the next vector.
+   * 
+   * @return An array of doubles containing {@code dimension} values.
+   * @throws IllegalStateException If the sequence limit has been reached.
+   */
+  private double[] nextVector() {
+    if (this.count == this.nb) {
+      throw new IllegalStateException("reached end of values");
+    }
+
     final double[] v = new double[this.dimension];
     if (this.count == 0) {
       this.count++;
@@ -268,46 +221,18 @@ public class SobolSequenceGenerator {
     return v;
   }
 
-  /**
-   * Skip to the i-th point in the Sobol sequence. This operation can be performed
-   * in O(1).
-   *
-   * @param index the index in the sequence to skip to
-   * @return the i-th point in the Sobol sequence
-   */
-  public double[] skipTo(final int index) {
-    if (index == 0) {
-      // reset x vector
-      Arrays.fill(this.x, 0);
-    } else {
-      final int i = index - 1;
-      final long grayCode = i ^ (i >> 1); // compute the gray code of i = i XOR floor(i / 2)
-      for (int j = 0; j < this.dimension; j++) {
-        long result = 0;
-        for (int k = 1; k <= BITS; k++) {
-          final long shift = grayCode >> (k - 1);
-          if (shift == 0) {
-            // stop, as all remaining bits will be zero
-            break;
-          }
-          // the k-th bit of i
-          final long ik = shift & 1;
-          result ^= ik * this.direction[j][k];
-        }
-        this.x[j] = result;
+  @Override
+  public Iterator<double[]> iterator() {
+    return new Iterator<double[]>() {
+      @Override
+      public boolean hasNext() {
+        return SobolSequenceGenerator.this.count < SobolSequenceGenerator.this.nb;
       }
-    }
-    this.count = index;
-    return this.nextVector();
-  }
 
-  /**
-   * Returns the index i of the next point in the Sobol sequence that will be
-   * returned by calling {@link #nextVector()}.
-   *
-   * @return the index of the next point
-   */
-  public int getNextIndex() {
-    return this.count;
+      @Override
+      public double[] next() {
+        return SobolSequenceGenerator.this.nextVector();
+      }
+    };
   }
 }

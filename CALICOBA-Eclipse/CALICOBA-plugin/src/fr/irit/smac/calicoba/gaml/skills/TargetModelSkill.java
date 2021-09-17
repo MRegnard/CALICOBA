@@ -73,7 +73,7 @@ public class TargetModelSkill extends ModelSkill {
             throw GamaRuntimeException.error("Measures should be floats.", scope);
           }
           Pair<Double, Double> minMax = this.getMinMax(agent, attributeName, scope);
-          calicoba.addMeasure(new ReadableModelAttribute<>(new GamaValueProvider<>(agent, attributeName), attributeName,
+          calicoba.addOutput(new ReadableModelAttribute<>(new GamaValueProvider<>(agent, attributeName), attributeName,
               minMax.getFirst(), minMax.getSecond()));
 
         } else if (attributeName.startsWith("obj_")) {

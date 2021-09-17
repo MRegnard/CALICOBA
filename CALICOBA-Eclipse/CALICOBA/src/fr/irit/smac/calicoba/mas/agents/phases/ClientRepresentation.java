@@ -30,7 +30,7 @@ public class ClientRepresentation {
 //      this.previousPhase = this.currentPhase;
 //      this.currentPhase = new Phase(request.direction);
 //    }
-    this.currentPhase.update(request.criticality, agentValue, worldCycle);
+    this.currentPhase.update(request.getCriticality(), agentValue, worldCycle);
   }
 
   /**

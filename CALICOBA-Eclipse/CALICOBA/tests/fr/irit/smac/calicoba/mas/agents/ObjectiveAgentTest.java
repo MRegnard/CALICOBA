@@ -24,7 +24,7 @@ class ObjectiveAgentTest {
   private static CriticalityFunctionParameters params;
 
   private ObjectiveAgent agent;
-  private MeasureAgent mAgent;
+  private OutputAgent mAgent;
 
   @BeforeAll
   static void setUpBeforeClass() throws Exception {
@@ -35,10 +35,10 @@ class ObjectiveAgentTest {
   @BeforeEach
   void setUp() throws Exception {
     provider.set(0.0);
-    Calicoba calicoba = new Calicoba(false, null, false, 0);
-    calicoba.addMeasure(new ReadableModelAttribute<>(provider, "measure", INF, SUP));
-    calicoba.addObjective(NAME, new DefaultCriticalityFunction("measure", params));
-    this.mAgent = (MeasureAgent) calicoba.getAgent(a -> a.getId().equals("MeasureAgent_1")).get();
+    Calicoba calicoba = new Calicoba(false, null, false, 0, false);
+    calicoba.addOutput(new ReadableModelAttribute<>(provider, "output", INF, SUP));
+    calicoba.addObjective(NAME, new DefaultCriticalityFunction("output", params));
+    this.mAgent = (OutputAgent) calicoba.getAgent(a -> a.getId().equals("OutputAgent_1")).get();
     this.agent = (ObjectiveAgent) calicoba.getAgent(a -> a.getId().equals("ObjectiveAgent_1")).get();
   }
 

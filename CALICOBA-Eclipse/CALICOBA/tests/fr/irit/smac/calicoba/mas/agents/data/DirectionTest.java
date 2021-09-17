@@ -18,7 +18,7 @@ class DirectionTest {
 
   @Test
   void testGetActionStay() {
-    Assertions.assertEquals(0, Direction.STAY.getAction());
+    Assertions.assertEquals(0, Direction.NONE.getAction());
   }
 
   @Test
@@ -33,6 +33,6 @@ class DirectionTest {
 
   @Test
   void testGetOppositeStay() {
-    Assertions.assertEquals(Direction.STAY, Direction.STAY.getOpposite());
+    Assertions.assertEquals(Direction.NONE, Direction.NONE.getOpposite());
   }
 }

@@ -14,7 +14,7 @@ public final class CalicobaSingleton {
    * Initializes the singleton instance.
    */
   public static void init(boolean learnInfluences, double alpha) {
-    instance = new Calicoba(false, null, learnInfluences, alpha);
+    instance = new Calicoba(false, null, learnInfluences, alpha, false);
   }
 
   /**

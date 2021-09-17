@@ -6,7 +6,8 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib._color_data as mcd
 
-alpha = float(sys.argv[1]) if len(sys.argv) != 1 else None
+DIR_NAME = sys.argv[1]
+alpha = float(sys.argv[2]) if len(sys.argv) == 3 else None
 
 OBJ_NAMES = ['obj_1', 'obj_2']
 
@@ -14,15 +15,14 @@ OBJ_NAMES = ['obj_1', 'obj_2']
 
 obj_data = {}
 
-for dirname in sorted(os.listdir()):
-    if os.path.isdir('./' + dirname) and (
+for dirname in sorted(os.listdir(os.path.join('.', DIR_NAME))):
+    if os.path.isdir(os.path.join('.', DIR_NAME, dirname)) and (
             alpha is None and not dirname.startswith('learning_')
             or alpha is not None and dirname.startswith(f'learning_{alpha:.3f}_')):
-        print(dirname)
         obj_data[dirname] = {}
         
         for obj_name in OBJ_NAMES:
-          with open(os.path.join('.', dirname, obj_name.replace('_', '') + '.csv')) as f:
+          with open(os.path.join('.', DIR_NAME, dirname, obj_name.replace('_', '') + '.csv')) as f:
               cycles = []
               criticalities = []
               criticalities_abs = []
@@ -86,7 +86,6 @@ for i, obj_name in enumerate(OBJ_NAMES):
 
       axes[i].plot(
           obj['cycles'], obj['criticalities_abs'],
-          drawstyle='steps-post',
           marker=marker,
           linestyle=line_style,
           color=COLORS[j],

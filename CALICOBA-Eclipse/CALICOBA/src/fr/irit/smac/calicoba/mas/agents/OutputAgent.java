@@ -8,15 +8,15 @@ import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
  * 
  * @author Damien Vergnet
  */
-public class MeasureAgent
+public class OutputAgent
     extends AgentWithGamaAttribute<ReadableModelAttribute<Double, IValueProvider<Double>>, IValueProvider<Double>> {
 
   /**
-   * Creates new a measure agent for a given model output.
+   * Creates new a output agent for a given model output.
    * 
    * @param attribute The associated model attribute.
    */
-  public MeasureAgent(final ReadableModelAttribute<Double, IValueProvider<Double>> attribute) {
+  public OutputAgent(final ReadableModelAttribute<Double, IValueProvider<Double>> attribute) {
     super(attribute);
   }
 }

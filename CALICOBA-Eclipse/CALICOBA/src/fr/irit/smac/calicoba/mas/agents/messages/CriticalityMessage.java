@@ -3,6 +3,7 @@ package fr.irit.smac.calicoba.mas.agents.messages;
 import java.util.Locale;
 
 import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
+import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 
 /**
  * A message containing the criticality of a given objective agent.
@@ -11,7 +12,8 @@ import fr.irit.smac.calicoba.mas.agents.ObjectiveAgent;
  */
 public class CriticalityMessage extends Message<ObjectiveAgent> {
   /** Current criticality of the objective agent. */
-  public final double criticality;
+  private final double criticality;
+  private final Direction variationDirection;
 
   /**
    * Creates a new request.
@@ -19,18 +21,28 @@ public class CriticalityMessage extends Message<ObjectiveAgent> {
    * @param sender      Sender agent.
    * @param criticality Sender agent’s criticality.
    */
-  public CriticalityMessage(final ObjectiveAgent sender, final double criticality) {
+  public CriticalityMessage(final ObjectiveAgent sender, final double criticality, final Direction variationDirection) {
     super(sender);
     this.criticality = criticality;
+    this.variationDirection = variationDirection;
+  }
+
+  public double getCriticality() {
+    return this.criticality;
+  }
+
+  public Direction getVariationDirection() {
+    return this.variationDirection;
   }
 
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    long temp = Double.doubleToLongBits(this.criticality);
+    long temp;
+    temp = Double.doubleToLongBits(this.criticality);
     result = prime * result + (int) (temp ^ (temp >>> 32));
-    result = prime * result + this.getSender().hashCode();
+    result = prime * result + this.variationDirection.hashCode();
     return result;
   }
 
@@ -43,7 +55,7 @@ public class CriticalityMessage extends Message<ObjectiveAgent> {
       return false;
     }
     CriticalityMessage other = (CriticalityMessage) obj;
-    return Double.doubleToLongBits(this.criticality) == Double.doubleToLongBits(other.criticality)
+    return this.criticality == other.criticality && this.variationDirection == other.variationDirection
         && this.getSender() == other.getSender();
   }
 

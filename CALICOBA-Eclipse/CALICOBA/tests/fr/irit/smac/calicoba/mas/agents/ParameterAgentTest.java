@@ -27,7 +27,7 @@ class ParameterAgentTest {
   @BeforeEach
   void setUp() throws Exception {
     this.agent = new ParameterAgent(attr);
-    this.agent.setWorld(new Calicoba(false, null, false, 0));
+    this.agent.setWorld(new Calicoba(false, null, false, 0, false));
   }
 
   @Test

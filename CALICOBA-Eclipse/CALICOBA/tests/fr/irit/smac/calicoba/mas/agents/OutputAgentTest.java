@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import fr.irit.smac.calicoba.mas.model_attributes.IValueProvider;
 import fr.irit.smac.calicoba.mas.model_attributes.ReadableModelAttribute;
 
-class MeasureAgentTest {
+class OutputAgentTest {
   private static ReadableModelAttribute<Double, IValueProvider<Double>> attr;
   private static final double VALUE = 3;
   private static final double MIN = 0;
@@ -20,11 +20,11 @@ class MeasureAgentTest {
     attr = new ReadableModelAttribute<>(() -> VALUE, NAME, MIN, MAX);
   }
 
-  private MeasureAgent agent;
+  private OutputAgent agent;
 
   @BeforeEach
   void setUp() throws Exception {
-    this.agent = new MeasureAgent(attr);
+    this.agent = new OutputAgent(attr);
   }
 
   @Test
