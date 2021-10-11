@@ -9,7 +9,6 @@ import java.util.LinkedList;
  * @author Damien Vergnet
  */
 public class SlidingNormalizer implements Normalizer {
-  private double max;
   private Deque<Double> previousValues;
   private final int windowSize;
 
@@ -24,7 +23,7 @@ public class SlidingNormalizer implements Normalizer {
     if (this.previousValues.size() > this.windowSize) {
       this.previousValues.removeLast();
     }
-    this.max = this.previousValues.stream().mapToDouble(v -> v).max().getAsDouble();
-    return this.max == 0 ? value : value / this.max;
+    double max = this.previousValues.stream().mapToDouble(v -> v).max().getAsDouble();
+    return max == 0 ? value : value / max;
   }
 }

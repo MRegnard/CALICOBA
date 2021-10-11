@@ -75,7 +75,7 @@ public abstract class Agent {
    * @param messageType The class to check for.
    * @return All messages for the type.
    */
-  public <T extends Message<? extends Agent>> Set<T> getMessageForType(Class<T> messageType) {
+  public <T extends Message<? extends Agent>> Set<T> getMessagesForType(Class<T> messageType) {
     return this.messages.stream() //
         .filter(m -> messageType.isInstance(m)) //
         .map(m -> messageType.cast(m)) //

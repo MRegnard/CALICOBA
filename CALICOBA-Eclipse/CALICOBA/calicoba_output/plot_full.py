@@ -6,7 +6,7 @@ import typing as typ
 
 import matplotlib.pyplot as plt
 
-OBJ_NAMES = ['obj1', 'obj2']
+OBJ_NAMES = ['obj_o1', 'obj_o2']
 PARAM_NAMES = ['p1', 'p2']
 
 dirname = sys.argv[1]
@@ -39,7 +39,10 @@ for obj_name in OBJ_NAMES:
                 crit_variations_abs.append(None)
             prev = criticalities[-1]
             prev_abs = criticalities_abs[-1]
-    obj_data[obj_name.replace('bj', '_')] = {
+    s1, s2 = obj_name.split('_', maxsplit=1)
+    s2 = s2.replace('o', 'o_')
+    key = f'{s1}_{{{s2}}}'
+    obj_data[key] = {
         'cycles': cycles,
         'raw_values': raw_values,
         'criticalities': criticalities,
@@ -83,7 +86,9 @@ x_limits = {
     'xmin': x_min - margin,
     'xmax': x_max + margin,
 }
-p1, p2, *_ = pathlib.Path(dirname).stem.split('_')
+p1, p2, *_ = pathlib.Path(dirname).stem.split(';')
+p1 = float(p1.split('=')[1])
+p2 = float(p2.split('=')[1])
 title = f'$p_1 = {p1}, p_2 = {p2}$'
 
 fig, axes = plt.subplots(2, 2, constrained_layout=True)

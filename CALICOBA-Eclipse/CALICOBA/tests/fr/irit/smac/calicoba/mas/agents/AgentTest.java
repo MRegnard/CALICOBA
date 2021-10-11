@@ -19,7 +19,7 @@ class AgentTest {
   void testGetAndSetWorld() {
     Calicoba w = new Calicoba(false, null, false, 0, false);
     this.agent.setWorld(w);
-    Assertions.assertTrue(w == this.agent.getWorld());
+    Assertions.assertSame(w, this.agent.getWorld());
   }
 
   @Test

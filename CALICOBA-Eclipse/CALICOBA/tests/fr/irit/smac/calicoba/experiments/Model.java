@@ -1,4 +1,4 @@
-package fr.irit.smac.calicoba.experimentations;
+package fr.irit.smac.calicoba.experiments;
 
 import java.util.Map;
 import java.util.Set;

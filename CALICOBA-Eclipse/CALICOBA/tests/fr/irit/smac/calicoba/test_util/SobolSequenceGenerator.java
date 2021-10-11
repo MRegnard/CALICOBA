@@ -154,7 +154,8 @@ public class SobolSequenceGenerator implements Iterable<double[]> {
           for (int i = 1; i <= s; i++) {
             m[i] = Integer.parseInt(st.nextToken());
           }
-          this.initDirectionVector(index++, a, m);
+          this.initDirectionVector(index, a, m);
+          index++;
         }
 
         if (dim > this.dimension) {
@@ -182,8 +183,8 @@ public class SobolSequenceGenerator implements Iterable<double[]> {
     }
     for (int i = s + 1; i <= BITS; i++) {
       this.direction[d][i] = this.direction[d][i - s] ^ (this.direction[d][i - s] >> s);
-      for (int k = 1; k <= s - 1; k++) {
-        this.direction[d][i] ^= ((a >> (s - 1 - k)) & 1) * this.direction[d][i - k];
+      for (int j = 1; j < s; j++) {
+        this.direction[d][i] ^= ((a >> (s - 1 - j)) & 1) * this.direction[d][i - j];
       }
     }
   }

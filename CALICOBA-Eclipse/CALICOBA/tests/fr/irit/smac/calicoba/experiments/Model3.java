@@ -1,4 +1,4 @@
-package fr.irit.smac.calicoba.experimentations;
+package fr.irit.smac.calicoba.experiments;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,14 +23,14 @@ public class Model3 extends Model {
     super("model_3", PARAMETERS, OUTPUTS);
   }
 
-  // o₁ = p₁² - p₂ - 16
+  // o₁ = p₁² + p₂ - 16
   // o₂ = p₂ - 12
   @Override
   protected Map<String, Double> evaluateImpl(Map<String, Double> parameters) {
     final double p1 = parameters.get("p1");
     final double p2 = parameters.get("p2");
     Map<String, Double> output = new HashMap<>();
-    output.put("o1", p1 * p1 - p2 - 16);
+    output.put("o1", p1 * p1 + p2 - 16);
     output.put("o2", p2 - 12);
     return output;
   }

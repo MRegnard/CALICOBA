@@ -11,6 +11,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import fr.irit.smac.calicoba.experiments.ExperimentsConfig;
 import fr.irit.smac.calicoba.mas.agents.actions.Action;
 import fr.irit.smac.calicoba.mas.agents.actions.Direction;
 import fr.irit.smac.calicoba.mas.agents.messages.CriticalityMessage;
@@ -43,8 +44,6 @@ public class ParameterAgent extends
 
   private CsvFileWriter fw;
 
-  private boolean canAct;
-
   private Scanner sc;
 
   /**
@@ -61,10 +60,6 @@ public class ParameterAgent extends
     this.lastDirection = Optional.empty();
     this.currentAction = Optional.empty();
     this.sc = new Scanner(System.in);
-  }
-
-  public void setCanAct(boolean canAct) {
-    this.canAct = canAct;
   }
 
   /**
@@ -103,7 +98,7 @@ public class ParameterAgent extends
   @Override
   public void decideAndAct() {
     super.decideAndAct();
-    Logger.debug(this.getAttributeName() + ": " + this.canAct);
+    Logger.debug(this.getAttributeName());
     double oldValue = this.getAttributeValue();
     int action = 0;
     int delay = 0;
@@ -111,20 +106,17 @@ public class ParameterAgent extends
 
     this.updateInfluences();
 
-//    Set<OscillationDetectedMessage> oscilMessages = this.getMessageForType(OscillationDetectedMessage.class);
-//    Set<String> cyclingObjNames = oscilMessages.stream().map(m -> m.getSenderName())
-//        .filter(n -> this.influences.get(n) != 0).collect(Collectors.toSet());
-//    Logger.debug(cyclingObjNames);
-
-    Set<CriticalityMessage> critMessages = this.getMessageForType(CriticalityMessage.class);
+    Set<CriticalityMessage> critMessages = this.getMessagesForType(CriticalityMessage.class);
+    if (ExperimentsConfig.FREE_PARAM.map(p -> !this.getAttributeName().equals(p)).orElse(false)) { // TEST
+      critMessages.clear();
+    }
     if (!critMessages.isEmpty()) {
       if (!this.currentAction.isPresent() || this.currentAction.get().isDelayOver()) {
         CriticalityMessage selectedMessage = this.selectRequest();
         double influence = this.influences.get(selectedMessage.getSenderName());
         Direction direction;
 
-        if (/* (cyclingObjNames.isEmpty() || Math.random() < 0.5) && */ selectedMessage.getCriticality() != 0
-            && influence != 0 /* && this.canAct */) {
+        if (selectedMessage.getCriticality() != 0 && influence != 0) {
           direction = influence > 0 ? Direction.DECREASE : Direction.INCREASE;
         } else {
           direction = Direction.NONE;
@@ -215,7 +207,7 @@ public class ParameterAgent extends
   private void updateInfluences() {
     final double epsilon = 1e-5; // Precision around 0
 
-    if (this.lastDirection.isPresent() && this.lastDirection.get() != Direction.NONE) {
+    if (this.lastDirection.isPresent()) {
       Map<String, Double> infl = new HashMap<>();
       for (Map.Entry<String, Double> e : this.influences.entrySet()) {
         final String objName = e.getKey();
@@ -225,7 +217,7 @@ public class ParameterAgent extends
 
         double newInfl;
         if (this.getWorld().learnsInfluences()) {
-          final Direction critVar = this.getMessageForType(CriticalityMessage.class).stream()
+          final Direction critVar = this.getMessagesForType(CriticalityMessage.class).stream()
               .filter(m -> m.getSender() == objAgent) //
               .findFirst() //
               .map(CriticalityMessage::getVariationDirection) //
@@ -275,7 +267,7 @@ public class ParameterAgent extends
             case DECREASE:
               delta = this.delta / 3;
               break;
-            default: // STAY
+            default: // NONE
               delta = this.delta;
               break;
           }
@@ -289,13 +281,13 @@ public class ParameterAgent extends
             case DECREASE:
               delta = 2 * this.delta;
               break;
-            default: // STAY
+            default: // NONE
               delta = this.delta;
               break;
           }
           break;
 
-        default:
+        default: // NONE
           delta = this.delta;
           break;
       }

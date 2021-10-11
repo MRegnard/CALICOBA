@@ -1,4 +1,4 @@
-package fr.irit.smac.calicoba.experimentations;
+package fr.irit.smac.calicoba.experiments;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -12,10 +12,10 @@ public class Model1 extends Model {
 
   static {
     PARAMETERS = new HashMap<>();
-    PARAMETERS.put("p", new Pair<>(-1500.0, 1500.0));
+    PARAMETERS.put("p1", new Pair<>(-1500.0, 1500.0));
 
     OUTPUTS = new HashMap<>();
-    OUTPUTS.put("o", new Pair<>(0.0, 1512.0));
+    OUTPUTS.put("o1", new Pair<>(0.0, 1512.0));
   }
 
   public Model1() {
@@ -25,6 +25,6 @@ public class Model1 extends Model {
   // o = |p - 12|
   @Override
   protected Map<String, Double> evaluateImpl(Map<String, Double> parameters) {
-    return Collections.singletonMap("o", Math.abs(parameters.get("p") - 12));
+    return Collections.singletonMap("o1", Math.abs(parameters.get("p1") - 12));
   }
 }

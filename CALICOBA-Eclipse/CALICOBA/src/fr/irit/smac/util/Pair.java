@@ -25,4 +25,9 @@ public class Pair<K, V> {
   public V getSecond() {
     return this.value;
   }
+
+  @Override
+  public String toString() {
+    return String.format("{%s: %s}", this.key, this.value);
+  }
 }

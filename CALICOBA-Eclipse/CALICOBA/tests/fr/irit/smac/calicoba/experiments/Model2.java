@@ -1,11 +1,11 @@
-package fr.irit.smac.calicoba.experimentations;
+package fr.irit.smac.calicoba.experiments;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import fr.irit.smac.util.Pair;
 
-public class Model4 extends Model {
+public class Model2 extends Model {
   private static final Map<String, Pair<Double, Double>> PARAMETERS;
   private static final Map<String, Pair<Double, Double>> OUTPUTS;
 
@@ -15,26 +15,21 @@ public class Model4 extends Model {
     PARAMETERS.put("p2", new Pair<>(-1500.0, 1500.0));
 
     OUTPUTS = new HashMap<>();
-    OUTPUTS.put("o1", new Pair<>(-2999.0, 3001.0));
-    OUTPUTS.put("o2", new Pair<>(-3001.0, 2999.0));
-    OUTPUTS.put("o3", new Pair<>(-1520.0, 1580.0));
+    OUTPUTS.put("o1", new Pair<>(-23.0, 2977.0));
+    OUTPUTS.put("o2", new Pair<>(-1512.0, 1488.0));
   }
 
-  public Model4() {
-    super("model_4", PARAMETERS, OUTPUTS);
+  public Model2() {
+    super("model_2", PARAMETERS, OUTPUTS);
   }
 
-  // o₁ = p₁ + p₂ + 1
-  // o₂ = p₁ + p₂ - 1
-  // o₃ = p₂ - 50
+  // o₁ = |p₁ - p₂| - 23
+  // o₂ = p₂ - 12
   @Override
   protected Map<String, Double> evaluateImpl(Map<String, Double> parameters) {
-    final double p1 = parameters.get("p1");
-    final double p2 = parameters.get("p2");
     Map<String, Double> output = new HashMap<>();
-    output.put("o1", p1 + p2 + 1);
-    output.put("o2", p1 + p2 - 1);
-    output.put("o3", p2 - 20);
+    output.put("o1", Math.abs(parameters.get("p1") - parameters.get("p2")) - 23);
+    output.put("o2", parameters.get("p2") - 12);
     return output;
   }
 }

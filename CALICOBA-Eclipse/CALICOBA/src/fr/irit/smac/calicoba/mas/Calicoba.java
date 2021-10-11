@@ -65,8 +65,6 @@ public class Calicoba {
 
   private final boolean manualActions;
 
-  private int actingAgentIndex;
-
   private QuadFunction<String, Double, String, Double, Double> getInfluenceForParamAndObj;
 
   /**
@@ -87,7 +85,6 @@ public class Calicoba {
       throw new IllegalArgumentException("alpha must be in [0, 1]");
     }
     this.alpha = alpha;
-    this.actingAgentIndex = 0;
     this.manualActions = manualActions;
 
     if (dump) {
@@ -278,13 +275,6 @@ public class Calicoba {
   public void step() {
     Logger.info(String.format("Cycle %d", this.cycle));
     if (this.steps == 0) {
-      List<ParameterAgent> params = this.getAgentsForType(ParameterAgent.class);
-      params.forEach(p -> {
-        boolean canAct = p.getAttributeName().equals(params.get(this.actingAgentIndex).getAttributeName());
-        p.setCanAct(canAct);
-      });
-      this.actingAgentIndex = (this.actingAgentIndex + 1) % params.size();
-
       this.outputAgents.forEach(OutputAgent::perceive);
       this.parameterAgents.forEach(ParameterAgent::perceive);
       this.objectiveAgents.forEach(ObjectiveAgent::perceive);
