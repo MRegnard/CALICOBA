@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import abc
 import dataclasses
-import itertools
 import typing as typ
 
 from . import _messages, _normalizers
@@ -106,7 +105,8 @@ class ObjectiveAgent(Agent):
         self.__parameters: typ.Sequence[ParameterAgent] = []
         self.__objective_value = 0
         self.__criticality = 0
-        self.__normalizer = _normalizers.AllTimeAbsoluteNormalizer()
+        # TEMP ne fonctionne que pour une seule sortie
+        self.__normalizer = _normalizers.BoundNormalizer(0, max(output_agents[0].inf, output_agents[0].sup))
         self.__file = None
 
     @property
@@ -154,61 +154,73 @@ class ObjectiveAgent(Agent):
 @dataclasses.dataclass(frozen=True)
 class Action:
     target_name: str
-    direction: int
+    value: float
 
 
 class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
     def __init__(self, source: data_sources.DataInput):
         super().__init__(source)
-        self.__last_direction: typ.Optional[int] = None
-        self.__current_action: typ.Optional[Action] = None
-        self.__delta = 0
+        self.__direction: typ.Optional[int] = None
         source_range = source.sup - source.inf
-        self.__delta_min = 1e-5 * source_range
-        self.__delta_max = 1e-2 * source_range
-        self.__influences = {}
+        self.__delta = 0.01 * source_range
         self.__file = None
+        self.__check_next = [DIR_INCREASE, DIR_DECREASE]
+        self.__ref_crit = 0
+        self.__crit_below = 0
+        self.__crit_above = 0
 
     @property
     def last_direction(self) -> typ.Optional[int]:
-        return self.__last_direction
-
-    def perceive(self):
-        super().perceive()
-        if not self.__influences:
-            self.__influences = {a.name: 0.5 for a in self.world.get_agents_for_type(ObjectiveAgent)}
+        return self.__direction
 
     def decide_and_act(self):
         super().decide_and_act()
         self.world.logger.debug(self.name)
         old_value = self.value
-        self.__current_action = None
+        action = None
         obj_to_help = ''
-
-        self.__update_influences()
+        proportion = 0.5
 
         messages = self.get_messages_for_type(_messages.CriticalityMessage)
         if self.world.config.free_parameter and self.world.config.free_parameter != self.name:
             messages.clear()
 
         if messages:
-            message = self.__select_message(messages)
-            influence = self.__influences[message.sender.name]
+            crit = messages[0].criticality
+            obj_to_help = messages[0].sender.name
 
-            if message.criticality != 0 and influence != 0:
-                direction = DIR_DECREASE if influence > 0 else DIR_INCREASE
+            if len(self.__check_next) == 2:
+                self.__ref_crit = abs(crit)
+                self.__direction = self.__check_next.pop(0)
+                action = Action(obj_to_help, self.__delta * self.__direction)
+            elif len(self.__check_next) == 1:
+                if self.__direction == DIR_INCREASE:
+                    self.__crit_above = abs(crit)
+                else:
+                    self.__crit_below = abs(crit)
+                self.__direction = self.__check_next.pop(0)
+                action = Action(obj_to_help, self.__delta * self.__direction * 2)
             else:
-                direction = DIR_NONE
+                if self.__direction == DIR_INCREASE:
+                    self.__crit_above = abs(crit)
+                else:
+                    self.__crit_below = abs(crit)
+                if self.__crit_below < self.__ref_crit or self.__crit_above < self.__ref_crit:
+                    if self.__crit_above < self.__crit_below:
+                        self.__direction = DIR_INCREASE
+                        c = self.__crit_above
+                    else:
+                        self.__direction = DIR_DECREASE
+                        c = self.__crit_below
+                    action = Action(obj_to_help, (self.__direction * self.__delta / proportion) * (self.__ref_crit / c))
+                    self.__check_next = [self.__direction, -self.__direction]
+                else:
+                    pass  # TODO explorer le coté le plus prometteur
 
-            if self.world.config.manual_actions:
-                direction = int(input(f'Action for {self.name}: '))
-            self.__current_action = Action(message.sender.name, direction)
-            obj_to_help = message.sender.name
-            if not self.world.config.manual_actions:
-                self.world.logger.debug(f'{self.name} chose to help {obj_to_help}')
-
-        if self.__current_action:
-            self.__update_value(self.__current_action.direction)
+        if action:
+            v = action.value
+            self._data_source.set_data(self.value + v)
+            self.world.logger.debug(f'δ = {v}')
 
         self._messages.clear()
 
@@ -216,65 +228,10 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
             if not self.__file:
                 self.__file = (self.world.config.dump_directory / (self.name + '.csv')).open(mode='w', encoding='UTF-8')
                 self.__file.write('cycle,value,action,helped obj\n')
-            action = self.__current_action.direction if self.__current_action else 0
+            action = action.value if action else 0
             self.__file.write(
                 ','.join(map(str, [self.world.cycle, old_value, action, obj_to_help])) + '\n')
             self.__file.flush()
-
-    def __select_message(self, messages: typ.List[_messages.CriticalityMessage]) -> _messages.CriticalityMessage:
-        """Selects a request from all received requests using the following algorithm:
-
-        - group each request by their criticality
-        - sort the generated pairs (criticality, requests) by descending criticality
-        - for each pair (criticality, requests):
-        -   if there is only one request:
-        -     return this request
-        - return one request from the most critical ones
-
-        :param messages: The list of messages to choose from.
-        :return: The selected message.
-        """
-        crits_messages = itertools.groupby(sorted(messages, key=lambda m: abs(m.criticality), reverse=True),
-                                           key=lambda m: abs(m.criticality))
-        max_crit_messages = []
-        for crit, messages_ in crits_messages:
-            messages_ = [m for m in messages_]
-            if not max_crit_messages:
-                max_crit_messages = messages_
-            if len(messages_) == 0:
-                return messages_[0]
-        return max_crit_messages[self.world.rng.randint(0, len(max_crit_messages) - 1)]
-
-    def __update_influences(self):
-        for objective_name, influence in self.__influences.items():
-            # noinspection PyTypeChecker
-            obj_agent: ObjectiveAgent = self.world.get_agent(
-                lambda a: isinstance(a, ObjectiveAgent) and a.name == objective_name)
-            if self.world.config.learn_influences:
-                raise NotImplementedError('Influences learning is not available yet')
-            else:
-                crit = obj_agent.criticality
-                new_influence = self.world.config.influence_function(self.name, self.value,
-                                                                     objective_name, crit)
-            self.__influences[objective_name] = new_influence
-
-        self.world.logger.debug(self.__influences)
-
-    def __update_value(self, new_direction: int):
-        if self.world.config.manual_actions:
-            self.__delta = -1.1 if new_direction == DIR_DECREASE else 1
-        else:
-            delta = self.__delta
-            last_direction = self.__last_direction
-            if last_direction and new_direction != DIR_NONE and last_direction != DIR_NONE:
-                if new_direction == last_direction:
-                    delta = 2 * self.__delta
-                elif new_direction != last_direction:
-                    delta = self.__delta / 3
-            self.__delta = max(self.__delta_min, min(self.__delta_max, delta))
-        self._data_source.set_data(self.value + self.__delta * new_direction)
-        self.__last_direction = new_direction
-        self.world.logger.debug(f'δ = {self.__delta}')
 
     def __del__(self):
         if self.__file:

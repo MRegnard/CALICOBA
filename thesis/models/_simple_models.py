@@ -97,7 +97,7 @@ class Model5(_model.Model):
 
     def _evaluate(self, p1: float):
         return {
-            'o1': -p1 ** 5 + 10 * p1 ** 3 - 30 * p1,
+            'o1': -30 * p1 + 10 * p1 ** 3 - p1 ** 5,
         }
 
 

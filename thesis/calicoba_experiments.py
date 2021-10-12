@@ -14,8 +14,12 @@ import test_utils
 Map = typ.Dict[str, float]
 
 
-def solution(*values: float) -> Map:
+def desired_parameters(*values: float) -> Map:
     return {f'p{i + 1}': v for i, v in enumerate(values)}
+
+
+def desired_outputs(*values: float) -> Map:
+    return {f'o{i + 1}': v for i, v in enumerate(values)}
 
 
 DEFAULT_DIR = pathlib.Path('calicoba_output/experiments')
@@ -91,12 +95,14 @@ def main():
         p_output_dir.mkdir(parents=True)
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
     solutions = {
-        'model_1': (solution(-12), solution(12)),
-        'model_2': (solution(-11, 12), solution(35, 12)),
-        'model_3': (solution(2, 12), solution(-2, 12)),
-        'model_4': (solution(-21, 20), solution(-19, 20)),  # Partial solutions
-        'model_5': (solution(math.sqrt(3 - math.sqrt(3))),),
-        'gramacy_and_lee_2012': (solution(-0.869011),),
+        'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
+        'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
+        'model_3': ([desired_parameters(2, 12), desired_parameters(-2, 12)], desired_outputs(0, 0)),
+        # Partial solutions
+        'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
+        'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
+                    desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
+        'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
     }
     models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
     if p_model_id:
@@ -104,7 +110,7 @@ def main():
     else:
         models_ = models_
     global_results = {}
-    for model, solutions in models_.values():
+    for model, (solutions, target_outputs) in models_.values():
         logger.info(f'Testing model "{model.id}"')
         global_results[model.id] = []
         param_names = list(model.parameters_names)
@@ -127,6 +133,7 @@ def main():
                 model,
                 p_init,
                 solutions,
+                target_outputs,
                 free_param=p_free_param,
                 max_steps=p_max_steps,
                 threshold=p_threshold,
@@ -159,10 +166,11 @@ def main():
                         f.write(','.join(values) + '\n')
 
 
-def evaluate_model(model: models.Model, p_init: Map, solutions: typ.Sequence[Map], *, free_param: str = None,
-                   max_steps: int = DEFAULT_MAX_STEPS_NB, threshold: int = DEFAULT_CALIBRATION_THRESHOLD,
-                   seed: int = None, output_dir: pathlib.Path = None, logger: logging.Logger = None,
-                   logging_level: int = logging.INFO) -> typ.Tuple[Map, int, typ.List[float]]:
+def evaluate_model(model: models.Model, p_init: Map, solutions: typ.Sequence[Map], target_outputs: Map, *,
+                   free_param: str = None, max_steps: int = DEFAULT_MAX_STEPS_NB,
+                   threshold: int = DEFAULT_CALIBRATION_THRESHOLD, seed: int = None, output_dir: pathlib.Path = None,
+                   logger: logging.Logger = None, logging_level: int = logging.INFO) \
+        -> typ.Tuple[Map, int, typ.List[float]]:
     def get_influence(p_name: str, p_value: float, obj_name: str, _: float) -> float:
         delta = 1e-6
         current_params = {name: model.get_parameter(name) for name in model.parameters_names}
@@ -208,7 +216,7 @@ def evaluate_model(model: models.Model, p_init: Map, solutions: typ.Sequence[Map
         inf, sup = model.get_output_domain(output_name)
         system.add_output(ModelOutput(inf, sup, output_name, model))
         objective_name = 'obj_' + output_name
-        crit_functions[objective_name] = SimpleCriticalityFunction(0, output_name)
+        crit_functions[objective_name] = SimpleCriticalityFunction(target_outputs[output_name], output_name)
         system.add_objective(objective_name, crit_functions[objective_name])
 
     param_agents: typ.Dict[str, calicoba.agents.ParameterAgent] = {

@@ -1,23 +1,27 @@
 #!/usr/bin/python3
 import argparse
 import pathlib
+import typing as typ
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 import models
+import plot
 
 arg_parser = argparse.ArgumentParser(description='Plot the path of a parameter on a 1D function.')
-arg_parser.add_argument(dest='model_id', type=str, help='The model to display the function of')
+arg_parser.add_argument(dest='model_id', type=str, help='model to display the function of')
 arg_parser.add_argument(dest='path', type=pathlib.Path,
-                        help='Path to the directory containing the parameter’s CSV file')
+                        help='path to the directory containing the parameter’s CSV file')
 arg_parser.add_argument('-b', '--bounds', dest='bounds', metavar='BOUND', nargs=2, type=float,
-                        help='The lower and upper bounds for the parameter’s domain', default=None)
+                        help='the lower and upper bounds for the parameter’s domain', default=None)
+arg_parser.add_argument('--split', dest='split', action='store_true', help='create one figure per step')
 
 args = arg_parser.parse_args()
-model_id = args.model_id
-bounds = args.bounds
-path = args.path
+model_id: str = args.model_id
+bounds: typ.Tuple[float, float] = args.bounds
+path: pathlib.Path = args.path
+split_figures: bool = args.split
 
 model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
 if len(model.parameters_names) != 1:
@@ -41,13 +45,32 @@ with (path / f'{param_name}.csv').open(encoding='utf8') as f:
         p_xs.append(value)
         p_ys.append(model.evaluate(**{param_name: value})[out_name])
 
-plt.title(f'Comportement de CALICOBA avec un minimum local pour $p(0) = {p_xs[0]}$')
-plt.xlabel('$p$')
-plt.ylabel('$f(p)$')
-plt.plot(xs, ys)
 if p_xs:
-    plt.scatter(p_xs, p_ys, marker='x', color='r', label='$p(t)$')
-    plt.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')
-    plt.vlines(p_xs[-1], min(ys), max(ys), color='limegreen', linestyles='--', label=f'$p({len(p_xs) - 1})$')
-plt.legend()
-plt.show()
+    if split_figures:
+        dest_path = path / 'figures'
+        if not dest_path.exists():
+            dest_path.mkdir()
+        else:
+            for file in dest_path.glob('*.png'):
+                if file.is_file():
+                    file.unlink()
+
+        for i, (x, y) in enumerate(zip(p_xs, p_ys)):
+            print(f'Generating plot {i + 1}/{len(p_xs)}')
+            fig, subplot = plot.plot_model_function(model, bounds)
+            fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id}\n'
+                         f'pour $p(0) = {p_xs[0]}$ (itération {i + 1}/{len(p_xs)})')
+            subplot.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')
+            subplot.scatter(p_xs[:i], p_ys[:i], marker='x', color='r', label='$p(t)$')
+            subplot.scatter(p_xs[i], p_ys[i], marker='o', color='g', label='Dernier point')
+            subplot.legend()
+            fig.savefig(dest_path / f'fig_{i}.png', dpi=200)
+            plt.close(fig)
+    else:
+        fig, subplot = plot.plot_model_function(model, bounds)
+        fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id} pour $p(0) = {p_xs[0]}$')
+        subplot.scatter(p_xs, p_ys, marker='x', color='r', label='$p(t)$')
+        subplot.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')
+        subplot.vlines(p_xs[-1], min(ys), max(ys), color='limegreen', linestyles='--', label=f'$p({len(p_xs) - 1})$')
+        subplot.legend()
+        plt.show()
