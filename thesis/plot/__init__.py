@@ -1,19 +1,20 @@
 import typing as typ
 
-import matplotlib.pyplot as plt
 import matplotlib.figure as fig
+import matplotlib.pyplot as plt
 import numpy as np
 
 import models
 
 
-def plot_model_function(model: models.Model, bounds: typ.Tuple[float, float]) -> typ.Tuple[fig.Figure, fig.Axes]:
+def plot_model_function(model: models.Model, bounds: typ.Tuple[float, float], precision: int = 200) \
+        -> typ.Tuple[fig.Figure, fig.Axes]:
     param_name = 'p1'
     out_name = 'o1'
     p_min, p_max = bounds or model.get_parameter_domain(param_name)
     xs = []
     ys = []
-    for x in np.linspace(p_min, p_max, num=200):
+    for x in np.linspace(p_min, p_max, num=precision):
         xs.append(x)
         ys.append(model.evaluate(**{param_name: x})[out_name])
     figure: fig.Figure = plt.figure()

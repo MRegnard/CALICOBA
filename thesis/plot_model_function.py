@@ -16,12 +16,15 @@ arg_parser.add_argument(dest='path', type=pathlib.Path,
 arg_parser.add_argument('-b', '--bounds', dest='bounds', metavar='BOUND', nargs=2, type=float,
                         help='the lower and upper bounds for the parameter’s domain', default=None)
 arg_parser.add_argument('--split', dest='split', action='store_true', help='create one figure per step')
+arg_parser.add_argument('-p', '--precision', dest='sampling_precision', metavar='PRECISION', type=int, default=200,
+                        help='sampling precision when plotting the function')
 
 args = arg_parser.parse_args()
 model_id: str = args.model_id
 bounds: typ.Tuple[float, float] = args.bounds
 path: pathlib.Path = args.path
 split_figures: bool = args.split
+sampling_precision: int = args.sampling_precision
 
 model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
 if len(model.parameters_names) != 1:
@@ -30,10 +33,8 @@ if len(model.parameters_names) != 1:
 param_name = 'p1'
 out_name = 'o1'
 p_min, p_max = bounds or model.get_parameter_domain(param_name)
-xs = []
-ys = []
-for x in np.linspace(p_min, p_max, num=200):
-    xs.append(x)
+ys = []  # TODO supprimer
+for x in np.linspace(p_min, p_max, num=sampling_precision):
     ys.append(model.evaluate(**{param_name: x})[out_name])
 
 p_xs = []
@@ -57,7 +58,7 @@ if p_xs:
 
         for i, (x, y) in enumerate(zip(p_xs, p_ys)):
             print(f'Generating plot {i + 1}/{len(p_xs)}')
-            fig, subplot = plot.plot_model_function(model, bounds)
+            fig, subplot = plot.plot_model_function(model, bounds, precision=sampling_precision)
             fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id}\n'
                          f'pour $p(0) = {p_xs[0]}$ (itération {i + 1}/{len(p_xs)})')
             subplot.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')
@@ -67,7 +68,7 @@ if p_xs:
             fig.savefig(dest_path / f'fig_{i}.png', dpi=200)
             plt.close(fig)
     else:
-        fig, subplot = plot.plot_model_function(model, bounds)
+        fig, subplot = plot.plot_model_function(model, bounds, precision=sampling_precision)
         fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id} pour $p(0) = {p_xs[0]}$')
         subplot.scatter(p_xs, p_ys, marker='x', color='r', label='$p(t)$')
         subplot.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')

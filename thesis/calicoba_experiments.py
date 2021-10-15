@@ -103,6 +103,7 @@ def main():
         'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
                     desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
         'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
+        'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
     }
     models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
     if p_model_id:

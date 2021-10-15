@@ -189,22 +189,23 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
             crit = messages[0].criticality
             obj_to_help = messages[0].sender.name
 
-            if len(self.__check_next) == 2:
+            if len(self.__check_next) == 2:  # Exploration d’un coté
                 self.__ref_crit = abs(crit)
                 self.__direction = self.__check_next.pop(0)
                 action = Action(obj_to_help, self.__delta * self.__direction)
-            elif len(self.__check_next) == 1:
+            elif len(self.__check_next) == 1:  # Exploration de l’autre coté
                 if self.__direction == DIR_INCREASE:
                     self.__crit_above = abs(crit)
                 else:
                     self.__crit_below = abs(crit)
                 self.__direction = self.__check_next.pop(0)
                 action = Action(obj_to_help, self.__delta * self.__direction * 2)
-            else:
+            else:  # Comparaison des criticités des deux cotés
                 if self.__direction == DIR_INCREASE:
                     self.__crit_above = abs(crit)
                 else:
                     self.__crit_below = abs(crit)
+                # Déplacement du meilleur coté
                 if self.__crit_below < self.__ref_crit or self.__crit_above < self.__ref_crit:
                     if self.__crit_above < self.__crit_below:
                         self.__direction = DIR_INCREASE
@@ -214,8 +215,8 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
                         c = self.__crit_below
                     action = Action(obj_to_help, (self.__direction * self.__delta / proportion) * (self.__ref_crit / c))
                     self.__check_next = [self.__direction, -self.__direction]
-                else:
-                    pass  # TODO explorer le coté le plus prometteur
+                else:  # Aucun coté n’améliore la situation, explorer
+                    pass  # TODO explorer
 
         if action:
             v = action.value
