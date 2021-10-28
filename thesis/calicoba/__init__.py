@@ -38,6 +38,7 @@ class Calicoba:
         self.__agents_registry: typ.List[agents.Agent] = []
         self.__agents_id_registry: typ.Dict[int, agents.Agent] = {}
         self.__output_agents: typ.List[agents.OutputAgent] = []
+        self.__point_agents: typ.List[agents.PointAgent] = []
         self.__parameter_agents: typ.List[agents.ParameterAgent] = []
         self.__objective_agents: typ.List[agents.ObjectiveAgent] = []
 
@@ -68,19 +69,19 @@ class Calicoba:
 
     def add_parameter(self, source: data_sources.DataInput):
         self.__logger.info(f'Creating parameter "{source.name}".')
-        self.__add_agent(agents.ParameterAgent(source))
+        self.add_agent(agents.ParameterAgent(source))
 
     def add_output(self, source: data_sources.DataOutput):
         self.__logger.info(f'Creating output "{source.name}".')
-        self.__add_agent(agents.OutputAgent(source))
+        self.add_agent(agents.OutputAgent(source))
 
     def add_objective(self, name: str, function: agents.CriticalityFunction):
         self.__logger.info(f'Creating output "{name}".')
         output_agents = filter(lambda a: a.name in function.parameter_names,
                                self.get_agents_for_type(agents.OutputAgent))
-        self.__add_agent(agents.ObjectiveAgent(name, function, *output_agents))
+        self.add_agent(agents.ObjectiveAgent(name, function, *output_agents))
 
-    def __add_agent(self, agent: agents.Agent):
+    def add_agent(self, agent: agents.Agent):
         if not agent.world:
             self.__agents_registry.append(agent)
             c = agent.__class__
@@ -89,6 +90,10 @@ class Calicoba:
             self.__agents_id_registry[self.__global_ids[c]] = agent
             self.__global_ids[c] += 1
             agent.world = self
+
+    def remove_agent(self, agent: agents.Agent):
+        self.__agents_registry.remove(agent)
+        del self.__agents_id_registry[agent.id]
 
     def setup(self):
         self.__logger.info('Setting up CALICOBA…')
@@ -103,6 +108,8 @@ class Calicoba:
 
         for oa in self.__output_agents:
             oa.perceive()
+        for po in self.__point_agents:
+            po.perceive()
         for pa in self.__parameter_agents:
             pa.perceive()
         for ob in self.__objective_agents:
@@ -111,9 +118,20 @@ class Calicoba:
         for ob in self.__objective_agents:
             ob.decide_and_act()
             self.__logger.debug(f'Obj {ob.name}: {ob.criticality}')
+            if ob.dead:
+                self.__objective_agents.remove(ob)
+                self.remove_agent(ob)
+        for po in self.__point_agents:
+            po.decide_and_act()
+            if po.dead:
+                self.__point_agents.remove(po)
+                self.remove_agent(po)
         for pa in self.__parameter_agents:
             self.__logger.debug(f'Param {pa.name}: {pa.value}')
             pa.decide_and_act()
+            if pa.dead:
+                self.__parameter_agents.remove(pa)
+                self.remove_agent(pa)
 
         self.__cycle += 1
 

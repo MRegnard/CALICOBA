@@ -23,6 +23,7 @@ class Agent(abc.ABC):
         # noinspection PyTypeChecker
         self.__world: Calicoba = None
         self._messages: typ.List[_messages.Message] = []
+        self._dead = False
 
     @property
     def id(self) -> int:
@@ -60,6 +61,13 @@ class Agent(abc.ABC):
 
     def decide_and_act(self):
         pass
+
+    def die(self):
+        self._dead = True
+
+    @property
+    def dead(self):
+        return self._dead
 
     def __str__(self):
         return f'agent {self.id}'
@@ -160,18 +168,31 @@ class Action:
 class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
     def __init__(self, source: data_sources.DataInput):
         super().__init__(source)
-        self.__direction: typ.Optional[int] = None
+        self._direction: typ.Optional[int] = None
         source_range = source.sup - source.inf
-        self.__delta = 0.01 * source_range
-        self.__file = None
-        self.__check_next = [DIR_INCREASE, DIR_DECREASE]
-        self.__ref_crit = 0
-        self.__crit_below = 0
-        self.__crit_above = 0
+        self._max_step = 0.01 * source_range
+        self._file = None
+        self._memory: typ.List[PointAgent] = []
+        self._last_memory_id = 0
 
     @property
     def last_direction(self) -> typ.Optional[int]:
-        return self.__direction
+        return self._direction
+
+    @property
+    def max_step(self) -> float:
+        return self._max_step
+
+    @property
+    def memory(self) -> typ.List[PointAgent]:
+        return list(self._memory)
+
+    def perceive(self):
+        crits = {a.name: a.criticality for a in self.world.get_agents_for_type(ObjectiveAgent)}
+        point = PointAgent(f'point_{self._last_memory_id}', self, crits, self.world.cycle)
+        self._last_memory_id += 1
+        self.world.add_agent(point)
+        self._memory.append(point)
 
     def decide_and_act(self):
         super().decide_and_act()
@@ -179,44 +200,18 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         old_value = self.value
         action = None
         obj_to_help = ''
-        proportion = 0.5
 
-        messages = self.get_messages_for_type(_messages.CriticalityMessage)
+        crit_messages = self.get_messages_for_type(_messages.CriticalityMessage)
+        variation_messages = self.get_messages_for_type(_messages.VariationSuggestionMessage)
         if self.world.config.free_parameter and self.world.config.free_parameter != self.name:
-            messages.clear()
+            crit_messages.clear()
 
-        if messages:
-            crit = messages[0].criticality
-            obj_to_help = messages[0].sender.name
-
-            if len(self.__check_next) == 2:  # Exploration d’un coté
-                self.__ref_crit = abs(crit)
-                self.__direction = self.__check_next.pop(0)
-                action = Action(obj_to_help, self.__delta * self.__direction)
-            elif len(self.__check_next) == 1:  # Exploration de l’autre coté
-                if self.__direction == DIR_INCREASE:
-                    self.__crit_above = abs(crit)
-                else:
-                    self.__crit_below = abs(crit)
-                self.__direction = self.__check_next.pop(0)
-                action = Action(obj_to_help, self.__delta * self.__direction * 2)
-            else:  # Comparaison des criticités des deux cotés
-                if self.__direction == DIR_INCREASE:
-                    self.__crit_above = abs(crit)
-                else:
-                    self.__crit_below = abs(crit)
-                # Déplacement du meilleur coté
-                if self.__crit_below < self.__ref_crit or self.__crit_above < self.__ref_crit:
-                    if self.__crit_above < self.__crit_below:
-                        self.__direction = DIR_INCREASE
-                        c = self.__crit_above
-                    else:
-                        self.__direction = DIR_DECREASE
-                        c = self.__crit_below
-                    action = Action(obj_to_help, (self.__direction * self.__delta / proportion) * (self.__ref_crit / c))
-                    self.__check_next = [self.__direction, -self.__direction]
-                else:  # Aucun coté n’améliore la situation, explorer
-                    pass  # TODO explorer
+        if crit_messages:
+            crit = crit_messages[0].criticality
+            obj_to_help = crit_messages[0].sender.name
+            variation_message = max(variation_messages, key=lambda m: m.sender.creation_cycle)
+            variation_message.sender.chosen = True
+            action = Action(obj_to_help, min(variation_message.variation, self._max_step))
 
         if action:
             v = action.value
@@ -226,17 +221,99 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         self._messages.clear()
 
         if self.world.config.dump_directory:
-            if not self.__file:
-                self.__file = (self.world.config.dump_directory / (self.name + '.csv')).open(mode='w', encoding='UTF-8')
-                self.__file.write('cycle,value,action,helped obj\n')
+            if not self._file:
+                self._file = (self.world.config.dump_directory / (self.name + '.csv')).open(mode='w', encoding='utf8')
+                self._file.write('cycle,value,action,helped obj\n')
             action = action.value if action else 0
-            self.__file.write(
-                ','.join(map(str, [self.world.cycle, old_value, action, obj_to_help])) + '\n')
-            self.__file.flush()
+            self._file.write(','.join(map(str, [self.world.cycle, old_value, action, obj_to_help])) + '\n')
+            self._file.flush()
 
     def __del__(self):
-        if self.__file:
-            self.__file.close()
+        if self._file:
+            self._file.close()
+
+
+class PointAgent(Agent):
+    MAX_LIFESPAN = 20
+
+    def __init__(self, name: str, parameter_agent: ParameterAgent, objective_criticalities: typ.Dict[str, float],
+                 cycle: int):
+        super().__init__(name)
+        self._closest_above: typ.Optional[PointAgent] = None
+        self._closest_below: typ.Optional[PointAgent] = None
+        self._parameter_value = parameter_agent.value
+        self._parameter_agent = parameter_agent
+        self._objective_criticalities = objective_criticalities
+        self._creation_cycle = cycle
+        self._chosen = False
+        self._variation_suggestion = 0
+        self._helped_objective = ''
+        self._expected_criticality = 0
+
+    def perceive(self):
+        for point in self._parameter_agent.memory:
+            if point is not self:
+                if (self._closest_above is None
+                        or self._closest_above.parameter_value > point.parameter_value > self._parameter_value):
+                    self._closest_above = point
+                elif (self._closest_below is None
+                      or self._parameter_value < point.parameter_value < self._closest_below.parameter_value):
+                    self._closest_below = point
+
+    def decide_and_act(self):
+        if self.world.cycle - self._creation_cycle >= self.MAX_LIFESPAN:
+            self.die()
+        else:
+            variation = 0
+            if (self._chosen and ((self._variation_suggestion == DIR_INCREASE
+                                   and self._closest_above.objective_criticalities[
+                                       self._helped_objective] > self._expected_criticality)
+                                  or (self._variation_suggestion == DIR_DECREASE
+                                      and self._closest_below.objective_criticalities[
+                                          self._helped_objective] > self._expected_criticality))):
+                if self._variation_suggestion == DIR_INCREASE:
+                    v = self._closest_above.parameter_value
+                else:
+                    v = self._closest_below.parameter_value
+                variation = (v - self._parameter_value) / 2
+                self._chosen = False
+            else:
+                crit_messages = self.get_messages_for_type(_messages.CriticalityMessage)
+                crit = crit_messages[0].criticality
+                obj_to_help = crit_messages[0].sender.name
+
+                above = self._closest_above
+                below = self._closest_below
+                if above is None and below is None:
+                    variation = self._parameter_agent.max_step
+                elif (above is None) != (below is None):
+                    if above is not None:
+                        if above.objective_criticalities[obj_to_help] < self._objective_criticalities[obj_to_help]:
+                            pass  # TODO suivre pente
+                    elif below is not None:
+                        if below.objective_criticalities[obj_to_help] < self._objective_criticalities[obj_to_help]:
+                            pass  # TODO suivre pente
+
+                    if not variation:
+                        pass  # TODO explorer coté opposé
+
+                self._helped_objective = obj_to_help
+
+            if variation:
+                self._parameter_agent.on_message(_messages.VariationSuggestionMessage(self, variation))
+                self._expected_criticality = 0
+
+    @property
+    def parameter_value(self) -> float:
+        return self._parameter_value
+
+    @property
+    def objective_criticalities(self) -> typ.Dict[str, float]:
+        return dict(self._objective_criticalities)
+
+    @property
+    def creation_cycle(self) -> int:
+        return self._creation_cycle
 
 
 class CriticalityFunction(abc.ABC):

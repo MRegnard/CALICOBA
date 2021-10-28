@@ -26,3 +26,16 @@ class CriticalityMessage(Message):
 
     def __str__(self):
         return f'{{{self.sender.name};{self.criticality}}}'
+
+
+class VariationSuggestionMessage(Message):
+    def __init__(self, sender, variation: float):
+        super().__init__(sender)
+        self.__variation = variation
+
+    @property
+    def variation(self):
+        return self.__variation
+
+    def __str__(self):
+        return f'{{{self.sender.name};{self.variation}}}'
