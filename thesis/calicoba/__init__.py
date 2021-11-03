@@ -38,7 +38,6 @@ class Calicoba:
         self.__agents_registry: typ.List[agents.Agent] = []
         self.__agents_id_registry: typ.Dict[int, agents.Agent] = {}
         self.__output_agents: typ.List[agents.OutputAgent] = []
-        self.__point_agents: typ.List[agents.PointAgent] = []
         self.__parameter_agents: typ.List[agents.ParameterAgent] = []
         self.__objective_agents: typ.List[agents.ObjectiveAgent] = []
 
@@ -100,6 +99,8 @@ class Calicoba:
         self.__output_agents = self.get_agents_for_type(agents.OutputAgent)
         self.__parameter_agents = self.get_agents_for_type(agents.ParameterAgent)
         self.__objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
+        for ob in self.__objective_agents:
+            ob.init()
         self.__cycle = 0
         self.__logger.info('CALICOBA setup finished.')
 
@@ -108,30 +109,25 @@ class Calicoba:
 
         for oa in self.__output_agents:
             oa.perceive()
-        for po in self.__point_agents:
-            po.perceive()
-        for pa in self.__parameter_agents:
-            pa.perceive()
         for ob in self.__objective_agents:
             ob.perceive()
-
         for ob in self.__objective_agents:
             ob.decide_and_act()
             self.__logger.debug(f'Obj {ob.name}: {ob.criticality}')
-            if ob.dead:
-                self.__objective_agents.remove(ob)
-                self.remove_agent(ob)
-        for po in self.__point_agents:
+        for pa in self.__parameter_agents:
+            pa.perceive()
+
+        point_agents = self.get_agents_for_type(agents.PointAgent)
+
+        for po in point_agents:
             po.decide_and_act()
             if po.dead:
-                self.__point_agents.remove(po)
                 self.remove_agent(po)
         for pa in self.__parameter_agents:
             self.__logger.debug(f'Param {pa.name}: {pa.value}')
             pa.decide_and_act()
-            if pa.dead:
-                self.__parameter_agents.remove(pa)
-                self.remove_agent(pa)
+
+        input('Paused')
 
         self.__cycle += 1
 

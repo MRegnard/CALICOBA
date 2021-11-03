@@ -104,6 +104,7 @@ def main():
                     desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
         'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
         'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
+        'square': ([desired_parameters(0)], desired_outputs(0)),
     }
     models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
     if p_model_id:
@@ -111,7 +112,7 @@ def main():
     else:
         models_ = models_
     global_results = {}
-    for model, (solutions, target_outputs) in models_.values():
+    for model, (target_parameters, target_outputs) in models_.values():
         logger.info(f'Testing model "{model.id}"')
         global_results[model.id] = []
         param_names = list(model.parameters_names)
@@ -133,7 +134,7 @@ def main():
             param_values, calibration_speed, distances_to_solutions = evaluate_model(
                 model,
                 p_init,
-                solutions,
+                target_parameters,
                 target_outputs,
                 free_param=p_free_param,
                 max_steps=p_max_steps,
@@ -147,7 +148,7 @@ def main():
             global_results[model.id].append({
                 'p_init': p_init,
                 'result': param_values,
-                'closest_solution': solutions[solution_index],
+                'closest_solution': target_parameters[solution_index],
                 'distance': distances_to_solutions[solution_index],
                 'speed': calibration_speed,
             })

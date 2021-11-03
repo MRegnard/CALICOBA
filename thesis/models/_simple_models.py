@@ -130,6 +130,20 @@ class AckleyFunction(_model.Model):
         }
 
 
+class SquareFunction(_model.Model):
+    def __init__(self):
+        super().__init__(
+            'square',
+            {'p1': (-100, 100)},
+            {'o1': (0, 10_000)}
+        )
+
+    def _evaluate(self, p1: float):
+        return {
+            'o1': p1 ** 2
+        }
+
+
 class SimpleModelsFactory(_model.ModelFactory):
     __models = {
         'model_1': Model1,
@@ -139,6 +153,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         'model_5': Model5,
         'gramacy_and_lee_2012': ModelGramacyAndLee2012,
         'ackley_function': AckleyFunction,
+        'square': SquareFunction,
     }
 
     def generate_model(self, model_id: str, *args, **kwargs):

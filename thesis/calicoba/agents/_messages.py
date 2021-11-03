@@ -9,6 +9,9 @@ class Message(abc.ABC):
     def sender(self):
         return self.__sender
 
+    def __str__(self):
+        return f'{self.__class__.__name__}{{}}'
+
 
 class CriticalityMessage(Message):
     def __init__(self, sender, criticality: float, variation_direction: int):
@@ -25,17 +28,55 @@ class CriticalityMessage(Message):
         return self.__var_dir
 
     def __str__(self):
-        return f'{{{self.sender.name};{self.criticality}}}'
+        return f'{self.__class__.__name__}{{sender="{self.sender.name}", criticality={self.criticality}}}'
 
 
-class VariationSuggestionMessage(Message):
-    def __init__(self, sender, variation: float):
+class PointMessage(Message):
+    pass
+
+
+class VariationSuggestionMessage(PointMessage):
+    def __init__(self, sender, direction: int, steps_number: int):
         super().__init__(sender)
-        self.__variation = variation
+        self.__direction = direction
+        self.__steps_number = steps_number
 
     @property
-    def variation(self):
-        return self.__variation
+    def direction(self) -> int:
+        return self.__direction
+
+    @property
+    def steps_number(self) -> int:
+        return self.__steps_number
 
     def __str__(self):
-        return f'{{{self.sender.name};{self.variation}}}'
+        return f'{self.__class__.__name__}{{sender="{self.sender.name}", direction={self.direction},' \
+               f' steps number={self.steps_number}}}'
+
+
+class NewValueSuggestionMessage(PointMessage):
+    def __init__(self, sender, new_parameter_value: float, climbing: bool, expected_criticality: int):
+        super().__init__(sender)
+        self.__new_value = new_parameter_value
+        self.__climbing = climbing
+        self.__expected_crit = expected_criticality
+
+    @property
+    def new_parameter_value(self) -> float:
+        return self.__new_value
+
+    @property
+    def climbing(self) -> bool:
+        return self.__climbing
+
+    @property
+    def expected_criticality(self) -> int:
+        return self.__expected_crit
+
+    def __str__(self):
+        return f'{self.__class__.__name__}{{sender="{self.sender.name}", new parameter value={self.__new_value}, ' \
+               f'climbing={self.__climbing}, expected criticality={self.expected_criticality}}}'
+
+
+class RequestOtherWayMessage(Message):
+    pass
