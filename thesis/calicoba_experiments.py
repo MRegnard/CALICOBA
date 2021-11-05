@@ -234,7 +234,7 @@ def evaluate_model(model: models.Model, p_init: Map, solutions: typ.Sequence[Map
             detector.append(param_agents[param_name].value)
         calibration_speed = i
         # Have the model’s parameters converged?
-        if all([d.is_full and d.has_converged for d in period_detectors.values()]):
+        if system.stopped or all([d.is_full and d.has_converged for d in period_detectors.values()]):
             break
 
     # Get average of N last values for each parameter to get the tendency

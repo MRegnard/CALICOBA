@@ -9,8 +9,8 @@ class Message(abc.ABC):
     def sender(self):
         return self.__sender
 
-    def __str__(self):
-        return f'{self.__class__.__name__}{{}}'
+    def __repr__(self):
+        return f'{self.__class__.__name__}{{sender="{self.sender}"}}'
 
 
 class CriticalityMessage(Message):
@@ -27,8 +27,8 @@ class CriticalityMessage(Message):
     def variation_direction(self) -> int:
         return self.__var_dir
 
-    def __str__(self):
-        return f'{self.__class__.__name__}{{sender="{self.sender.name}", criticality={self.criticality}}}'
+    def __repr__(self):
+        return f'{self.__class__.__name__}{{sender="{self.sender}", criticality={self.criticality}}}'
 
 
 class PointMessage(Message):
@@ -49,8 +49,8 @@ class VariationSuggestionMessage(PointMessage):
     def steps_number(self) -> int:
         return self.__steps_number
 
-    def __str__(self):
-        return f'{self.__class__.__name__}{{sender="{self.sender.name}", direction={self.direction},' \
+    def __repr__(self):
+        return f'{self.__class__.__name__}{{sender="{self.sender}", direction={self.direction},' \
                f' steps number={self.steps_number}}}'
 
 
@@ -73,10 +73,14 @@ class NewValueSuggestionMessage(PointMessage):
     def expected_criticality(self) -> int:
         return self.__expected_crit
 
-    def __str__(self):
-        return f'{self.__class__.__name__}{{sender="{self.sender.name}", new parameter value={self.__new_value}, ' \
+    def __repr__(self):
+        return f'{self.__class__.__name__}{{sender="{self.sender}", new parameter value={self.__new_value}, ' \
                f'climbing={self.__climbing}, expected criticality={self.expected_criticality}}}'
 
 
 class RequestOtherWayMessage(Message):
+    pass
+
+
+class NewSlopeFoundMessage(Message):
     pass

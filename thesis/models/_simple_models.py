@@ -114,7 +114,7 @@ class AckleyFunction(_model.Model):
     def __init__(self, dimensions: int = 1, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
         super().__init__(
             'ackley_function',
-            {f'p{i + 1}': (-40, 40) for i in range(dimensions)},
+            {f'p{i + 1}': (-32, 32) for i in range(dimensions)},
             {'o1': (0, 25)}
         )
         self._a = a

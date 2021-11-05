@@ -34,6 +34,7 @@ class Calicoba:
         if self.__config.dump_directory and not self.__config.dump_directory.exists():
             self.__config.dump_directory.mkdir(parents=True)
         self.__cycle = 0
+        self.__stop = False
         self.__global_ids: typ.Dict[typ.Type[agents.Agent], int] = {}
         self.__agents_registry: typ.List[agents.Agent] = []
         self.__agents_id_registry: typ.Dict[int, agents.Agent] = {}
@@ -105,6 +106,9 @@ class Calicoba:
         self.__logger.info('CALICOBA setup finished.')
 
     def step(self):
+        if self.__stop:
+            return
+
         self.__logger.info(f'Cycle {self.__cycle}')
 
         for oa in self.__output_agents:
@@ -130,6 +134,13 @@ class Calicoba:
         input('Paused')
 
         self.__cycle += 1
+
+    def stop(self):
+        self.__stop = True
+
+    @property
+    def stopped(self) -> bool:
+        return self.__stop
 
 
 __all__ = [

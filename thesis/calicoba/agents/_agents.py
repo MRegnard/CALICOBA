@@ -70,8 +70,8 @@ class Agent(abc.ABC):
     def dead(self):
         return self._dead
 
-    def __str__(self):
-        return f'agent {self.id}'
+    def __repr__(self):
+        return f'{self.name}'
 
 
 _T2 = typ.TypeVar('_T2', bound=data_sources.DataOutput)
@@ -174,6 +174,7 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         self._max_step_number = 5
         self._init_step = source_range / 100
         self._step = self._init_step
+        # FIXME attention, doivent dépendre des plages de variation des criticités
         self._local_minimum_threshold = 1E-4
         self._null_criticality_threshold = 1E-4
 
@@ -183,12 +184,21 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         self._current_point: PointAgent = None
         self._climbing = False
         self._expected_criticality = -1
+        self._wait_for_response = False
 
         self._file = None
 
     @property
     def last_direction(self) -> int:
         return self._direction
+
+    @property
+    def is_climbing_slope(self) -> bool:
+        return self._climbing
+
+    @is_climbing_slope.setter
+    def is_climbing_slope(self, value: bool):
+        self._climbing = value
 
     @property
     def current_chain(self) -> PointAgent:
@@ -203,7 +213,8 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         crits = {a.name: a.criticality for a in self.world.get_agents_for_type(ObjectiveAgent)}
         if (not self._current_point or (self._current_point.objective_criticalities != crits
                                         and self.value != self._current_point.parameter_value)):
-            self._current_point = PointAgent(f'point_{self._last_point_id}', self, self._current_point, crits)
+            prev_point = self._chains[-1]
+            self._current_point = PointAgent(f'point_{self._last_point_id}', self, prev_point, crits)
             self._chains[-1] = self._current_point
             self._last_point_id += 1
             self.world.add_agent(self._current_point)
@@ -220,11 +231,20 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
             obj_to_help = crit_messages[0].sender.name
             crit = self._current_point.objective_criticalities[obj_to_help]
 
-            if self._climbing:
-                if crit > self._expected_criticality:
-                    # Get minimum from previous chain as we created a new one when the minimum was found
-                    minimum = self._chains[-2].get_minimum()
-                    minimum.on_message(_messages.RequestOtherWayMessage(self))
+            variation_messages = self.get_messages_for_type(_messages.VariationSuggestionMessage)
+
+            if self.get_messages_for_type(_messages.NewSlopeFoundMessage):
+                self._climbing = False
+
+            if (self._climbing and all(map(lambda m_: not m_.sender.local_minimum, variation_messages))
+                    and crit > self._expected_criticality):
+                self.world.logger.debug('crit higher, sending request for other direction')
+                # Get minimum from previous chain as we created a new one when the minimum was found
+                minimum = self._chains[-2].get_minimum()
+                minimum.active = True
+                minimum.on_message(_messages.RequestOtherWayMessage(self))
+                self._chains.append(None)  # Archive chain as we abandon it for a new one
+                self._wait_for_response = True
 
             elif (self._current_point.previous_point is not None
                   and abs(crit - self._current_point.previous_point.objective_criticalities[obj_to_help])
@@ -233,39 +253,52 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
                 self.world.logger.debug('local minimum found')
                 self._current_point.local_minimum = True
                 self._current_point.active = True
+                self._step = self._init_step
                 if crit < self._null_criticality_threshold:
                     self.world.logger.info(
                         f'Found global minimum for objective {obj_to_help}: {self.name} = {self.value}')
+                    self.world.stop()
                 elif len(self._chains) > 1 and self._chains[-1] is not None:
-                    self.world.logger.debug('follow minima slope')
-                    self.world.logger.debug(self._chains)
-                    minima = [p.get_minimum() for p in self._chains]
-                    m1 = min(minima, key=lambda p: p.objective_criticalities[obj_to_help])
-                    # TEST tester aussi second plus récent
-                    m2 = max(minima, key=lambda p: p.objective_criticalities[obj_to_help])
-                    self._direction = DIR_INCREASE if m1.parameter_value > m2.parameter_value else DIR_DECREASE
-                    action = Action(obj_to_help, self.value + self._step * self._max_step_number * self._direction)
-                # noinspection PyTypeChecker
-                self._chains.append(None)  # Archive previous point chain
-                self._step = self._init_step
+                    minima = list(filter(lambda p: p is not None,
+                                         [p.get_minimum() for p in self._chains if p is not None]))
+                    if len(minima) >= 2:
+                        self.world.logger.debug('follow minima slope')
+                        self.world.logger.debug(minima)
+                        m1 = min(minima, key=lambda p: p.objective_criticalities[obj_to_help])
+                        # TEST tester aussi second plus récent
+                        m2 = max(minima, key=lambda p: p.objective_criticalities[obj_to_help])
+                        self._direction = DIR_INCREASE if m1.parameter_value > m2.parameter_value else DIR_DECREASE
+                        action = Action(obj_to_help,
+                                        self.value + abs(m1.parameter_value - m2.parameter_value) * self._direction)
+                self._chains.append(None)  # Archive chain
 
             else:
                 self.world.logger.debug(self._messages)
-                if variation_messages := self.get_messages_for_type(_messages.VariationSuggestionMessage):
-                    m = [m for m in variation_messages if m.sender == self._current_point][0]
+                if variation_messages:
+                    m = [m for m in variation_messages
+                         if not self._wait_for_response and m.sender == self._current_point
+                         or self._wait_for_response and m.sender.local_minimum][0]
                     k = min(m.steps_number, self._max_step_number)
                     if self._climbing:
                         action = Action(obj_to_help, m.sender.parameter_value + self._step * k * m.direction)
+                        # We got our response from minimum, stop climbing, create new chain and explore from there
+                        if self._wait_for_response:
+                            self.world.logger.debug('response received')
+                            self._climbing = False
+                            self._chains.append(None)
+                            self._wait_for_response = False
                     else:
                         action = Action(obj_to_help, self.value + self._step * k * m.direction)
                     self._direction = m.direction
                 elif new_value_messages := self.get_messages_for_type(_messages.NewValueSuggestionMessage):
-                    m = [m for m in new_value_messages if m.sender == self._current_point][0]
+                    m = [m for m in new_value_messages
+                         if not self._climbing and m.sender == self._current_point
+                         or self._climbing and m.sender.local_minimum][0]
                     action = Action(obj_to_help, m.new_parameter_value)
                     self._climbing = m.climbing
                     if m.climbing:
-                        self._step = self._init_step
                         self._expected_criticality = m.expected_criticality
+                        self._step = self._init_step
                     else:
                         self._step /= 4  # TODO trouver une valeur pertinente
                     self._direction = math.copysign(DIR_INCREASE, action.value - self.value)
@@ -288,6 +321,9 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
     def __del__(self):
         if self._file:
             self._file.close()
+
+    def __repr__(self):
+        return f'{self.name}={self.value}'
 
 
 class PointAgent(Agent):
@@ -322,14 +358,22 @@ class PointAgent(Agent):
         self_value = self._param_value
 
         if self._previous_point is None:  # No neighbors, i.e. first point in chain
-            self.world.logger.debug('explore')
-            direction = self._param_agent.last_direction or DIR_INCREASE
+            self.world.logger.debug('first point in chain, explore')
+            if self_value == self._param_agent.inf:
+                direction = DIR_INCREASE
+            elif self_value == self._param_agent.sup:
+                direction = DIR_DECREASE
+            else:
+                direction = self._param_agent.last_direction or DIR_INCREASE
             steps_number = 1
 
         else:
             if not self.local_minimum:
                 previous_crit = self._previous_point.objective_criticalities[self._helped_obj]
                 if self_crit < previous_crit:
+                    if self._param_agent.is_climbing_slope:
+                        self.world.logger.debug('new valley found, stop climbing')
+                        self._param_agent.on_message(_messages.NewSlopeFoundMessage(self))
                     self.world.logger.debug('follow local slope')
                     if self_value > self._previous_point.parameter_value:
                         direction = DIR_INCREASE
@@ -338,24 +382,31 @@ class PointAgent(Agent):
                     x = utils.get_xc(a=(self._previous_point.parameter_value, previous_crit),
                                      e=(self_value, self_crit), yc=0)
                     steps_number = abs(x - self_value) / abs(self_value - self._previous_point.parameter_value) - 1
-                    self.world.logger.debug(steps_number)
                     expected_crit = 0
                 else:
-                    # Is this the second point?
-                    if self._previous_point.previous_point is None:
-                        self.world.logger.debug('wrong way, turn around')
+                    if self._param_agent.is_climbing_slope:
+                        self.world.logger.debug('go up slope')
                         if self_value < self._previous_point.parameter_value:
-                            direction = DIR_INCREASE
-                        else:
                             direction = DIR_DECREASE
-                        x = utils.get_xc(a=(self_value, self_crit),
-                                         e=(self._previous_point.parameter_value, previous_crit), yc=0)
-                        steps_number = abs(x - self_value) / abs(
-                            self_value - self._previous_point.parameter_value)
-                        expected_crit = 0
+                        else:
+                            direction = DIR_INCREASE
+                        steps_number = 1
                     else:
-                        self.world.logger.debug('go to middle')
-                        suggested_point = (self_value + self._previous_point.parameter_value) / 2
+                        # Is this the second point of the current chain?
+                        if self._previous_point.previous_point is None:
+                            self.world.logger.debug('wrong way, turn around')
+                            if self_value < self._previous_point.parameter_value:
+                                direction = DIR_INCREASE
+                            else:
+                                direction = DIR_DECREASE
+                            x = utils.get_xc(a=(self_value, self_crit),
+                                             e=(self._previous_point.parameter_value, previous_crit), yc=0)
+                            steps_number = abs(x - self_value) / abs(
+                                self_value - self._previous_point.parameter_value)
+                            expected_crit = 0
+                        else:
+                            self.world.logger.debug('go to middle point')
+                            suggested_point = (self_value + self._previous_point.parameter_value) / 2
 
             else:
                 self.world.logger.debug('go up slope')
@@ -417,9 +468,16 @@ class PointAgent(Agent):
     def previous_point(self) -> typ.Optional[PointAgent]:
         return self._previous_point
 
+    @previous_point.setter
+    def previous_point(self, value: typ.Optional[PointAgent]):
+        self._previous_point = value
+
     @property
     def objective_criticalities(self) -> typ.Dict[str, float]:
         return dict(self._criticalities)
+
+    def __repr__(self):
+        return f'{self.name}={self.parameter_value}'
 
 
 class CriticalityFunction(abc.ABC):
