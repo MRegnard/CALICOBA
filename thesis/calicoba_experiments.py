@@ -102,9 +102,12 @@ def main():
         'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
         'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
                     desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
+        'square': ([desired_parameters(0)], desired_outputs(0)),
         'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
         'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
-        'square': ([desired_parameters(0)], desired_outputs(0)),
+        'levy_function': ([desired_parameters(1)], desired_outputs(0)),
+        'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
+        'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
     }
     models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
     if p_model_id:
