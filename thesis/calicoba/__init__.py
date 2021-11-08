@@ -77,9 +77,11 @@ class Calicoba:
 
     def add_objective(self, name: str, function: agents.CriticalityFunction):
         self.__logger.info(f'Creating output "{name}".')
-        output_agents = filter(lambda a: a.name in function.parameter_names,
-                               self.get_agents_for_type(agents.OutputAgent))
-        self.add_agent(agents.ObjectiveAgent(name, function, *output_agents))
+        output_agents = list(filter(lambda a: a.name in function.parameter_names,
+                                    self.get_agents_for_type(agents.OutputAgent)))
+        # TEMP ne fonctionne que pour une seule sortie
+        self.add_agent(
+            agents.ObjectiveAgent(name, function, 0, max(output_agents[0].inf, output_agents[0].sup), *output_agents))
 
     def add_agent(self, agent: agents.Agent):
         if not agent.world:

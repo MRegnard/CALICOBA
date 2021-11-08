@@ -106,7 +106,8 @@ class OutputAgent(AgentWithDataSource[data_sources.DataOutput]):
 
 
 class ObjectiveAgent(Agent):
-    def __init__(self, name: str, criticality_function: CriticalityFunction, *output_agents: OutputAgent):
+    def __init__(self, name: str, criticality_function: CriticalityFunction, output_inf: float, output_sup: float,
+                 *output_agents: OutputAgent):
         super().__init__(name)
         self.__function = criticality_function
         self.__output_agents = output_agents
@@ -114,8 +115,7 @@ class ObjectiveAgent(Agent):
         self.__parameters: typ.Sequence[ParameterAgent] = []
         self.__objective_value = 0
         self.__criticality = 0
-        # TEMP ne fonctionne que pour une seule sortie
-        self.__normalizer = _normalizers.BoundNormalizer(0, max(output_agents[0].inf, output_agents[0].sup))
+        self.__normalizer = _normalizers.BoundNormalizer(output_inf, output_sup)
         self.__file = None
 
     @property
@@ -174,9 +174,9 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
         self._max_step_number = 5
         self._init_step = source_range / 100
         self._step = self._init_step
-        # FIXME attention, doivent dépendre des plages de variation des criticités
+        # FIXME interdépendence
         self._local_minimum_threshold = 1E-4
-        self._null_criticality_threshold = 1E-4
+        self._null_criticality_threshold = 0.005
 
         self._last_point_id = 0
         self._chains: typ.List[typ.Optional[PointAgent]] = [None]
@@ -300,7 +300,7 @@ class ParameterAgent(AgentWithDataSource[data_sources.DataInput]):
                         self._expected_criticality = m.expected_criticality
                         self._step = self._init_step
                     else:
-                        self._step /= 4  # TODO trouver une valeur pertinente
+                        self._step /= 4  # TODO justifier valeur ?
                     self._direction = math.copysign(DIR_INCREASE, action.value - self.value)
 
         v = action.value
