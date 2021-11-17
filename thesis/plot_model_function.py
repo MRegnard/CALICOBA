@@ -37,12 +37,24 @@ ys = []  # TODO supprimer
 for x in np.linspace(p_min, p_max, num=sampling_precision):
     ys.append(model.evaluate(**{param_name: x})[out_name])
 
+listened_points_xs = []
+listened_points_ys = []
+mins = []
 p_xs = []
 p_ys = []
 with (path / f'{param_name}.csv').open(encoding='utf8') as f:
     for line in f.readlines()[1:]:
-        _, value, *_ = line.strip().split(',')
+        _, value, _, listened_point_value, is_min, _ = line.strip().split(',')
         value = float(value)
+        is_min = bool(int(is_min))
+        mins.append(is_min)
+        if listened_point_value != '':
+            listened_point_value = float(listened_point_value)
+            listened_points_xs.append(listened_point_value)
+            listened_points_ys.append(model.evaluate(**{param_name: listened_point_value})[out_name])
+        else:
+            listened_points_xs.append(None)
+            listened_points_ys.append(None)
         p_xs.append(value)
         p_ys.append(model.evaluate(**{param_name: value})[out_name])
 
@@ -64,6 +76,9 @@ if p_xs:
             subplot.vlines(p_xs[0], min(ys), max(ys), color='black', linestyles='--', label='$p(0)$')
             subplot.scatter(p_xs[:i], p_ys[:i], marker='x', color='r', label='$p(t)$')
             subplot.scatter(p_xs[i], p_ys[i], marker='o', color='g', label='Dernier point')
+            if i > 0 and listened_points_xs[i - 1] is not None:
+                subplot.scatter(listened_points_xs[i - 1], listened_points_ys[i - 1], marker='x', color='b',
+                                label='Point écouté')
             subplot.legend()
             fig.savefig(dest_path / f'fig_{i}.png', dpi=200)
             plt.close(fig)

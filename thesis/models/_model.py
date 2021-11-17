@@ -19,8 +19,14 @@ class Model(abc.ABC):
         self.__outputs = self.evaluate(**self.__parameters)
 
     def evaluate(self, **kwargs: float) -> typ.Dict[str, float]:
-        if any(map(lambda k: k not in self.__parameters, kwargs.keys())):
+        if any(map(lambda k: k not in self.__parameters, kwargs)):
             raise KeyError('Invalid parameter name')
+        for p, v in kwargs.items():
+            inf, sup = self.get_parameter_domain(p)
+            if v < inf:
+                kwargs[p] = inf
+            elif v > sup:
+                kwargs[p] = sup
         return self._evaluate(**kwargs)
 
     @abc.abstractmethod

@@ -81,7 +81,7 @@ class Calicoba:
                                     self.get_agents_for_type(agents.OutputAgent)))
         # TEMP ne fonctionne que pour une seule sortie
         self.add_agent(
-            agents.ObjectiveAgent(name, function, 0, max(output_agents[0].inf, output_agents[0].sup), *output_agents))
+            agents.ObjectiveAgent(name, function, 0, abs(output_agents[0].sup), *output_agents))
 
     def add_agent(self, agent: agents.Agent):
         if not agent.world:
@@ -133,7 +133,7 @@ class Calicoba:
             self.__logger.debug(f'Param {pa.name}: {pa.value}')
             pa.decide_and_act()
 
-        input('Paused')
+        input('Paused')  # TEST
 
         self.__cycle += 1
 

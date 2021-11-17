@@ -78,7 +78,7 @@ class NewValueSuggestionMessage(PointMessage):
                f'climbing={self.__climbing}, expected criticality={self.expected_criticality}}}'
 
 
-class RequestOtherWayMessage(Message):
+class RequestOtherSideMessage(Message):
     pass
 
 
