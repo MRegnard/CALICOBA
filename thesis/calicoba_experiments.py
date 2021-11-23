@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import pathlib
 import typing as typ
 
@@ -94,19 +93,19 @@ def main():
         p_output_dir.mkdir(parents=True)
 
     solutions = {
-        'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
-        'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
-        'model_3': ([desired_parameters(2, 12), desired_parameters(-2, 12)], desired_outputs(0, 0)),
-        # Partial solutions
-        'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
-        'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
-                    desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
-        'square': ([desired_parameters(0)], desired_outputs(0)),
+        # 'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
+        # 'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
+        # 'model_3': ([desired_parameters(2, 12), desired_parameters(-2, 12)], desired_outputs(0, 0)),
+        # # Partial solutions
+        # 'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
+        # 'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
+        #             desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
+        # 'square': ([desired_parameters(0)], desired_outputs(0)),
         'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
         'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
-        'levy_function': ([desired_parameters(1)], desired_outputs(0)),
+        # 'levy_function': ([desired_parameters(1)], desired_outputs(0)),
         'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
-        'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
+        # 'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
     }
 
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
@@ -144,7 +143,7 @@ def main():
                 free_param=p_free_param,
                 max_steps=p_max_steps,
                 seed=p_seed,
-                output_dir=p_output_dir,
+                output_dir=p_output_dir / model.id / map_to_string(p_init),
                 logger=logger,
                 logging_level=p_logging_level
             )
@@ -156,11 +155,13 @@ def main():
         if p_dump and p_runs_nb > 1:
             logger.info('Saving results')
             with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
-                f.write('p(0),solution found,error,speed,# of visited points,# of unique visited points\n')
+                f.write(
+                    'p(0),solution found,error,speed,# of visited points,# of unique visited points,error message\n')
                 for result in global_results[model.id]:
                     exp_res: exp_utils.ExperimentResult = result['result']
                     f.write(f'{map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
-                            f'{int(exp_res.error)},{exp_res.speed},{exp_res.points_number}\n')
+                            f'{int(exp_res.error)},{exp_res.speed},{exp_res.points_number},'
+                            f'{exp_res.unique_points_number},"{exp_res.error_message}"\n')
         else:
             print(global_results[model.id])
 
@@ -173,7 +174,7 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
 
     model.reset()
     system = calicoba.Calicoba(calicoba.CalicobaConfig(
-        dump_directory=output_dir / model.id / map_to_string(p_init),
+        dump_directory=output_dir,
         seed=seed,
         logging_level=logging_level,
     ))
@@ -181,8 +182,7 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
     param_files = {}
     for param_name in model.parameters_names:
         param_files[param_name] = (output_dir / (param_name + '.csv')).open('w', encoding='utf8')
-        param_files[param_name].write('cycle,value,selected objective,objective criticality,decider,step,steps,'
-                                      'decision\n')
+        param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,steps,decision\n')
         model.set_parameter(param_name, p_init[param_name])
         inf, sup = model.get_parameter_domain(param_name)
         if not free_param or free_param == param_name:
@@ -202,7 +202,7 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
     calibration_speed = 0
     points = []
     unique_points = []
-    error = False
+    error_message = ''
     for i in range(max_steps):
         calibration_speed = i
         model.update()
@@ -229,25 +229,33 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
             suggestions = system.suggest_new_point(params, objs)
         except BaseException as e:
             logger.exception(e)
-            error = True
+            error_message = str(e)
             break
         logger.debug(suggestions)
 
         for param_name, suggestion in suggestions.items():
+            if not suggestion:
+                error_message = 'no suggestions for parameter ' + param_name
+                break
             s = suggestion[0]
             param_files[param_name].write(f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                                          f'{s.criticality},{s.agent.parameter_value},{s.step},{s.steps_number},'
-                                          f'"{s.reason}"\n')
+                                          f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
+                                          f'{s.step},{s.steps_number},{s.decision}\n')
             model.set_parameter(param_name, s.next_point)
 
-        input('Paused')  # TEST
+        # input('Paused')  # TEST
+
+    for param_name in model.parameters_names:
+        param_files[param_name].write(
+            f'{calibration_speed + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
     return exp_utils.ExperimentResult(
         solution_found=solution_found,
-        error=error,
+        error=error_message != '',
         speed=calibration_speed,
         points_number=len(points),
         unique_points_number=len(unique_points),
+        error_message=error_message,
     )
 
 

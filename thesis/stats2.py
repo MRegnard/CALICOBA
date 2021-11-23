@@ -21,10 +21,12 @@ def stats(filename: pathlib.Path) -> typ.Dict[str, float]:
         errors = 0
         speeds = []
         for line in f.readlines()[1:]:
-            p0, solution_found, error, speed = line.split(',')
+            p0, solution_found, error, speed, nb_points, unique_points, error_message = line.split(',')
             solution_found = int(solution_found)
             error = int(error)
             speed = int(speed)
+            nb_points = int(nb_points)
+            unique_points = int(unique_points)
             total_runs += 1
 
             speeds.append(speed)

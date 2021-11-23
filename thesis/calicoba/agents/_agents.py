@@ -95,7 +95,7 @@ class ParameterAgent(Agent):
         self._init_step = (sup - inf) / 100
 
         self._chains: typ.List[PointAgent] = []
-        self._minima = []
+        self._minima = set()
         self._last_point_id = 0
 
         self._value = math.nan
@@ -121,8 +121,11 @@ class ParameterAgent(Agent):
         return self._max_step_number
 
     @property
-    def minima(self) -> typ.List[PointAgent]:
+    def minima(self) -> typ.Set[PointAgent]:
         return self._minima
+
+    def add_minima(self, point: PointAgent):
+        self._minima.add(point)
 
     def perceive(self, value: float, new_chain: bool, init_step: typ.Optional[float],
                  criticalities: typ.Dict[str, float]) -> PointAgent:
@@ -141,10 +144,14 @@ class ParameterAgent(Agent):
             self._last_point_id += 1
             if self._chains and not new_chain:
                 prev_point.next_point = new_point
-                self._chains[-1] = new_point
+                if prev_point.create_new_chain_from_me:
+                    self._chains[-1] = prev_point.previous_point
+                    prev_point.previous_point = None
+                    prev_point.create_new_chain_from_me = False
+                    self._chains.append(new_point)
+                else:
+                    self._chains[-1] = new_point
             else:
-                if self._chains:
-                    self._minima.append(self._chains[-1].get_minimum())
                 self._chains.append(new_point)
             return new_point
 
@@ -162,20 +169,30 @@ class PointAgent(Agent):
                  init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
         super().__init__(name, logger=logger)
         self.previous_point = previous_point
-        self.next_point = None
+        self.next_point: typ.Optional[PointAgent] = None
         self._param_value = parameter_agent.value
         self._param_agent = parameter_agent
         self._criticalities = objective_criticalities
         self._last_direction = DIR_NONE
         self._helped_obj = None
-        self.is_local_minimum = False
-        self.is_extremum = False
         self._is_current = True
         self._current_point = None
+        self._is_current_in_chain = False
+        self._left_point = None
+        self._left_value = None
+        self._left_crit = None
+        self._right_point = None
+        self._right_value = None
+        self._right_crit = None
+        self._min_of_chain = None
+        self._is_current_min_of_chain = False
+        self.is_local_minimum = False
+        self.is_extremum = False
         self.go_up_mode = False
+        self.create_new_chain_from_me = False
         self._step = init_step
         self._all_points: typ.List[PointAgent] = []
-        self._min_of_chain = None
+        self._last_checked_direction = DIR_NONE
 
     def perceive(self, current_point: PointAgent, last_direction: int, criticalities: typ.Dict[str, float]):
         self._is_current = self is current_point
@@ -183,63 +200,69 @@ class PointAgent(Agent):
         self._last_direction = last_direction
         self._helped_obj = max(criticalities.items(), key=lambda item: item[1])[0]
         self._all_points = self._get_all_points_in_chain()
-        if not self._min_of_chain:
+        if not self.is_local_minimum:
             self._min_of_chain = min(self._all_points, key=lambda p: p.objective_criticalities[self._helped_obj])
+        else:
+            self._min_of_chain = self
+        self._is_current_min_of_chain = self._min_of_chain is self
+        self._is_current_in_chain = current_point in self._all_points
 
-        if self._is_current:
-            if self.is_local_minimum:
-                self.go_up_mode = True
+        sorted_points = sorted(self._all_points, key=lambda p: p.parameter_value)
+        i = sorted_points.index(self)
+        if i > 0:
+            self._left_point = sorted_points[i - 1]
+            self._left_value = self._left_point.parameter_value
+            self._left_crit = self._left_point.objective_criticalities[self._helped_obj]
+        else:
+            self._left_point = None
+            self._left_value = None
+            self._left_crit = None
+        if i < len(sorted_points) - 1:
+            self._right_point = sorted_points[i + 1]
+            self._right_value = self._right_point.parameter_value
+            self._right_crit = self._right_point.objective_criticalities[self._helped_obj]
+        else:
+            self._right_point = None
+            self._right_value = None
+            self._right_crit = None
 
-            elif (self._min_of_chain is None
-                  and abs(self.parameter_value - self.previous_point.parameter_value) < self.LOCAL_MIN_THRESHOLD):
-                self.is_local_minimum = True
+        self_crit = self.objective_criticalities[self._helped_obj]
+        if (self._left_point and self._right_point and self._is_current_min_of_chain and not self.is_local_minimum
+                and abs(self._left_crit - self_crit) < self.LOCAL_MIN_THRESHOLD
+                and abs(self._right_crit - self_crit) < self.LOCAL_MIN_THRESHOLD):
+            self.log_debug('local min found')
+            self.is_local_minimum = True
+            self.go_up_mode = len(self._param_agent.minima) == 0
+            self._param_agent.add_minima(self)
+            if self.go_up_mode:
+                self.log_debug('-> go up slope')
 
         if self.go_up_mode:
-            extremum_min, extremum_max = self._get_extrema(*self._all_points)
-            extremum_min.is_extremum = True
-            extremum_max.is_extremum = True
+            extremum_min = self
+            extremum_max = self
+            for point in self._all_points:
+                if point.parameter_value < extremum_min.parameter_value:
+                    extremum_min.is_extremum = False
+                    point.is_extremum = True
+                    extremum_min = point
+                if point.parameter_value > extremum_max.parameter_value:
+                    extremum_max.is_extremum = False
+                    point.is_extremum = True
+                    extremum_max = point
 
     def decide(self) -> typ.Optional[Suggestion]:
+        if not self._is_current_in_chain:
+            return None
+
         direction = DIR_NONE
         suggested_steps_number = None
         suggested_point = None
         next_init_step = self._step
         new_chain_next = False
-        reason = ''
+        decision = ''
 
         self_crit = self._criticalities[self._helped_obj]
         self_value = self.parameter_value
-
-        if self.previous_point:
-            previous_value = self.previous_point.parameter_value
-            previous_crit = self.previous_point.objective_criticalities[self._helped_obj]
-        else:
-            previous_value = None
-            previous_crit = None
-
-        if self.next_point:
-            next_crit = self.next_point.objective_criticalities[self._helped_obj]
-        else:
-            next_crit = None
-
-        sorted_points = sorted(self._all_points, key=lambda p: p.parameter_value)
-        i = sorted_points.index(self)
-        if i > 0:
-            left_point = sorted_points[i - 1]
-            left_value = left_point.parameter_value
-            left_crit = left_point.objective_criticalities[self._helped_obj]
-        else:
-            left_point = None
-            left_value = None
-            left_crit = None
-        if i < len(sorted_points) - 1:
-            right_point = sorted_points[i + 1]
-            right_value = right_point.parameter_value
-            right_crit = right_point.objective_criticalities[self._helped_obj]
-        else:
-            right_point = None
-            right_value = None
-            right_crit = None
 
         if self._param_agent.minima:
             sorted_minima: typ.List[PointAgent] = \
@@ -248,10 +271,10 @@ class PointAgent(Agent):
         else:
             sorted_minima = []
 
-        if self._is_current and not self.is_extremum:
+        if self._is_current_min_of_chain:
             if not self.is_local_minimum:
-                if self.previous_point is None:
-                    reason = 'first point in chain, explore'
+                if self.previous_point is None and self.next_point is None:
+                    decision = 'first point in chain -> explore'
                     if self_value == self._param_agent.inf:
                         direction = DIR_INCREASE
                     elif self_value == self._param_agent.sup:
@@ -261,71 +284,57 @@ class PointAgent(Agent):
                     suggested_steps_number = 1
                     next_init_step = self._param_agent.start_init_step
 
-                elif (left_point and not right_point and left_crit > self_crit
-                      or right_point and not left_point and right_crit > self_crit
-                      or left_point and right_point and (
-                              left_crit > self_crit > right_crit
-                              or right_crit > self_crit > left_crit
-                              or left_crit < self_crit > right_crit)):
-                    reason = 'follow slope'
-                    if left_point and not right_point and left_crit > self_crit:
-                        a = (left_value, left_crit)
-                        e = (self_value, self_crit)
-                    elif right_point and not left_point and right_crit > self_crit:
-                        a = (right_value, right_crit)
-                        e = (self_value, self_crit)
-                    elif left_crit < self_crit > right_crit:
-                        a = (self_value, self_crit)
-                        if left_crit < right_crit:
-                            e = (left_value, left_crit)
-                        else:
-                            e = (right_value, right_crit)
+                elif (self._left_point is not None) != (self._right_point is not None):
+                    decision = '1 neighbor -> follow slope'
+                    if self._left_point:
+                        a = (self._left_value, self._left_crit)
                     else:
-                        # TODO suivre la pente la plus raide
-                        a = (self_value, self_crit)
-                        e = (right_value, right_crit)
-                    self._step = abs(self_value - previous_value)
-                    x = utils.get_xc(a, e, yc=0)
+                        a = (self._right_value, self._right_crit)
+                    self._step = abs(self_value - a[0])
+                    x = utils.get_xc(a, e=(self_value, self_crit), yc=0)
                     if ((x > self_value or self_value == self._param_agent.inf)
                             and self_value != self._param_agent.sup):
                         direction = DIR_INCREASE
                     else:
                         direction = DIR_DECREASE
-                    suggested_steps_number = abs(x - self_value) / abs(a[0] - e[0])
+                    suggested_steps_number = abs(x - self_value) / self._step
 
-                elif self.previous_point.previous_point is None:
-                    reason = 'second point higher than first -> go the other way'
-                    self._step = abs(self_value - previous_value)
-                    x = utils.get_xc(e=(previous_value, previous_crit), a=(self_value, self_crit), yc=0)
-                    if ((x < self_value or self_value == self._param_agent.sup)
-                            and self_value != self._param_agent.inf):
-                        direction = DIR_DECREASE
+                else:
+                    decision = '2 neighbors -> go to middle on side of lowest neighor'
+                    if self._last_checked_direction == DIR_INCREASE and self._right_crit > self_crit:
+                        other_value = self._left_value
+                        self._last_checked_direction = DIR_DECREASE
+                    elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self_crit:
+                        other_value = self._right_value
+                        self._last_checked_direction = DIR_INCREASE
                     else:
-                        direction = DIR_INCREASE
-                    suggested_steps_number = abs(x - self_value) / abs(self_value - previous_value)
-
-                elif left_point and right_point and left_crit > self_crit < right_crit:
-                    reason = 'both neighbors are higher -> go to middle point'
-                    if left_crit < right_crit:
-                        other_value = left_value
-                    else:
-                        other_value = right_value
+                        if self.next_point and self.next_point.is_current:
+                            other_value = self.previous_point.parameter_value
+                        elif self._right_crit < self._left_crit:
+                            other_value = self._right_value
+                            self._last_checked_direction = DIR_INCREASE
+                        else:
+                            other_value = self._left_value
+                            self._last_checked_direction = DIR_DECREASE
                     suggested_point = (self_value + other_value) / 2
 
             elif len(sorted_minima) > 1 and sorted_minima[0] is self:
-                reason = 'follow minima slope'
-                self._step = abs(self_value - previous_value)
+                decision = '-> follow local minima slope'
                 other_minimum = sorted_minima[1]
                 other_value = other_minimum.parameter_value
                 other_crit = other_minimum.objective_criticalities[self._helped_obj]
                 if self_crit < other_crit:
-                    a = other_value, other_crit
-                    e = self_value, self_crit
+                    a = (other_value, other_crit)
+                    e = (self_value, self_crit)
+                    direction = DIR_DECREASE if self_value < other_value else DIR_INCREASE
                 else:
-                    a = self_value, self_crit
-                    e = other_value, other_crit
+                    a = (self_value, self_crit)
+                    e = (other_value, other_crit)
+                    direction = DIR_DECREASE if self_value > other_value else DIR_INCREASE
                 x = utils.get_xc(a, e, yc=0)
-                suggested_steps_number = abs(x - self_value) / abs(self_value - other_value)
+                self._step = abs(self_value - other_value)
+                suggested_steps_number = abs(x - self_value) / self._step
+                next_init_step = self._param_agent.start_init_step
                 new_chain_next = True
 
         elif self.is_extremum and self._min_of_chain.go_up_mode:
@@ -340,20 +349,21 @@ class PointAgent(Agent):
             prev_crit = previous_on_slope.objective_criticalities[self._helped_obj]
 
             if self_crit < prev_crit:
-                reason = 'new valley found -> stop climbing'
-                self._step = abs(self_value - prev_value)
-                x = utils.get_xc(a=(prev_value, prev_crit), e=(self_value, self_crit), yc=0)
-                suggested_steps_number = abs(x - self_value) / abs(self_value - prev_value)
-                if self_value < prev_value:
+                decision = 'opposite slope found -> stop climbing; create new chain; explore'
+                if self_value == self._param_agent.inf:
+                    direction = DIR_INCREASE
+                elif self_value == self._param_agent.sup:
                     direction = DIR_DECREASE
                 else:
-                    direction = DIR_INCREASE
-                self.previous_point = None  # New chain
+                    direction = self._last_direction or DIR_INCREASE
+                suggested_steps_number = 1
+                next_init_step = self._param_agent.start_init_step
                 self._min_of_chain.go_up_mode = False
+                self.create_new_chain_from_me = True
 
             elif self_crit < other_extremum_crit:
                 if abs(self_value - prev_value) <= self.STUCK_THRESHOLD:
-                    reason = 'stuck -> move a bit'
+                    decision = 'stuck -> move a bit'
                     if self_value < prev_value:
                         direction = DIR_DECREASE
                     else:
@@ -361,29 +371,32 @@ class PointAgent(Agent):
                     suggested_point = self_value + self._step * direction
 
                 else:
-                    reason = 'go up slope'
+                    decision = 'go up slope'
+                    if self_value < prev_value:
+                        direction = DIR_DECREASE
+                    else:
+                        direction = DIR_INCREASE
                     suggested_point = utils.get_xc(a=(prev_value, prev_crit), e=(self_value, self_crit),
                                                    yc=other_extremum_crit)
 
-            self.is_extremum = False
-
-        elif (self.next_point and self.previous_point and self.next_point.is_current
-              and next_crit > self_crit < previous_crit):
-            reason = 'criticality increased -> go to middle point'
-            suggested_point = (self_value + previous_value) / 2
-
         if suggested_steps_number is not None:
-            suggested_steps_number = min(self._param_agent.step_max, suggested_steps_number)
             suggested_point = self_value + self._step * suggested_steps_number * direction
 
+        max_jump_distance = (self._param_agent.sup - self._param_agent.inf) / 10
+        if suggested_point is not None and abs(suggested_point - self_value) > max_jump_distance:
+            old_point = suggested_point
+            suggested_point = self_value + max_jump_distance * direction
+            self.log_debug(f'capped jump distance: {old_point} -> {suggested_point}')
+
         self._is_current = False
-        self.log_debug(reason)
+        if decision:
+            self.log_debug(decision)
 
         if suggested_point:
             return Suggestion(
                 agent=self,
                 next_point=suggested_point,
-                reason=reason,
+                decision=decision,
                 selected_objective=self._helped_obj,
                 criticality=self._current_point.objective_criticalities[self._helped_obj],
                 direction=direction,
@@ -441,13 +454,13 @@ class PointAgent(Agent):
         :return: A tuple containing the minimum and maximum points from the list.
         """
         extremum_min = min(points, key=lambda p: p.parameter_value)
-        extremum_max = min(points, key=lambda p: p.parameter_value)
+        extremum_max = max(points, key=lambda p: p.parameter_value)
         return extremum_min, extremum_max
 
     def __repr__(self):
         return (
             f'Point{{{self.name}={self.parameter_value},minimum={self.is_local_minimum},extremum={self.is_extremum},'
-            f'current={self._is_current}}}'
+            f'min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )
 
 
@@ -455,7 +468,7 @@ class PointAgent(Agent):
 class Suggestion:
     agent: PointAgent
     next_point: float
-    reason: str
+    decision: str
     selected_objective: str
     criticality: float
     next_init_step: float

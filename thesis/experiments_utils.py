@@ -8,3 +8,4 @@ class ExperimentResult:
     speed: int
     points_number: int = None
     unique_points_number: int = None
+    error_message: str = None

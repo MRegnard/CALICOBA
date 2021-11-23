@@ -44,7 +44,7 @@ p_xs = []
 p_ys = []
 with (path / f'{param_name}.csv').open(encoding='utf8') as f:
     for line in f.readlines()[1:]:
-        _, value, _, listened_point_value, is_min, _ = line.strip().split(',')
+        _, value, _, _, listened_point_value, is_min, *_ = line.strip().split(',')
         value = float(value)
         is_min = bool(int(is_min))
         mins.append(is_min)
