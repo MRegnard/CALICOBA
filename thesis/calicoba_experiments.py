@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+from __future__ import annotations
+
 import argparse
 import logging
 import math
@@ -6,6 +8,7 @@ import pathlib
 import typing as typ
 
 import calicoba
+import experiments_utils as exp_utils
 import models
 import test_utils
 
@@ -23,7 +26,6 @@ def desired_outputs(*values: float) -> Map:
 DEFAULT_DIR = pathlib.Path('output/experiments/calicoba')
 DEFAULT_RUNS_NB = 200
 DEFAULT_MAX_STEPS_NB = 1000
-DEFAULT_CALIBRATION_THRESHOLD = 60
 DEFAULT_LOGGING_LEVEL = 'info'
 
 
@@ -41,15 +43,14 @@ def main():
                             help='ID of the model to experiment on')
     arg_parser.add_argument('-p', '--params', metavar='VALUE', dest='param_values', type=float, nargs='+', default=[],
                             help='list of parameter values')
+    arg_parser.add_argument('-t', '--threshold', dest='null_threshold', type=float, default=1e-4,
+                            help='seed for the random numbers generator')
     arg_parser.add_argument('--free-param', metavar='NAME', dest='free_param', type=str,
                             help='name of the parameter to let free while all others are fixed')
     arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int, default=DEFAULT_RUNS_NB,
                             help=f'number of runs (default: {DEFAULT_RUNS_NB})')
     arg_parser.add_argument('--max-steps', metavar='NB', dest='max_steps', type=int, default=DEFAULT_MAX_STEPS_NB,
                             help=f'maximum number of simulation steps (default: {DEFAULT_MAX_STEPS_NB})')
-    arg_parser.add_argument('-t', '--threshold', metavar='NB', dest='threshold', type=int,
-                            default=DEFAULT_CALIBRATION_THRESHOLD,
-                            help=f'calibration threshold (default: {DEFAULT_CALIBRATION_THRESHOLD})')
     arg_parser.add_argument('-s', '--seed', dest='seed', type=int,
                             help='seed for the random numbers generator')
     arg_parser.add_argument('-o', '--output-dir', metavar='PATH', dest='output_dir', type=pathlib.Path,
@@ -64,9 +65,9 @@ def main():
     p_model_id: typ.Optional[str] = args.model_id
     p_param_values: typ.Tuple[str] = args.param_values
     p_free_param: typ.Optional[str] = args.free_param
+    p_null_threshold: float = args.null_threshold
     p_runs_nb: int = args.runs if not p_param_values else 1
     p_max_steps: int = args.max_steps
-    p_threshold: int = args.threshold
     p_seed: int = args.seed
     p_dump: bool = args.dump
     p_output_dir: typ.Optional[pathlib.Path] = args.output_dir.absolute() if p_dump else None
@@ -74,7 +75,7 @@ def main():
 
     logging.basicConfig()
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(p_logging_level)
 
     log_message = 'Running experiments'
     if p_model_id:
@@ -91,7 +92,7 @@ def main():
 
     if p_dump and not p_output_dir.exists():
         p_output_dir.mkdir(parents=True)
-    model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
+
     solutions = {
         'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
         'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
@@ -107,11 +108,14 @@ def main():
         'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
         'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
     }
+
+    model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
     models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
     if p_model_id:
         models_ = {p_model_id: models_[p_model_id]}
     else:
         models_ = models_
+
     global_results = {}
     for model, (target_parameters, target_outputs) in models_.values():
         logger.info(f'Testing model "{model.id}"')
@@ -132,14 +136,13 @@ def main():
                 logger.info('Already tested, skipped')
                 continue
             tested_params.append(p)
-            global_optimum_found, error, calibration_speed = evaluate_model(
+            result = evaluate_model(
                 model,
                 p_init,
-                target_parameters,
                 target_outputs,
+                p_null_threshold,
                 free_param=p_free_param,
                 max_steps=p_max_steps,
-                threshold=p_threshold,
                 seed=p_seed,
                 output_dir=p_output_dir,
                 logger=logger,
@@ -147,118 +150,114 @@ def main():
             )
             global_results[model.id].append({
                 'p_init': p_init,
-                'found': global_optimum_found,
-                'error': error,
-                'speed': calibration_speed,
+                'result': result,
             })
 
-            if p_dump and p_runs_nb > 1:
-                logger.info('Saving results')
-                with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='UTF-8') as f:
-                    f.write('P(0),solution found,error,speed\n')
-                    for result in global_results[model.id]:
-                        values = [
-                            map_to_string(result['p_init']),
-                            str(int(result['found'])),
-                            str(int(result['error'])),
-                            str(result['speed']),
-                        ]
-                        f.write(','.join(values) + '\n')
-
-
-def evaluate_model(model: models.Model, p_init: Map, solutions: typ.Sequence[Map], target_outputs: Map, *,
-                   free_param: str = None, max_steps: int = DEFAULT_MAX_STEPS_NB,
-                   threshold: int = DEFAULT_CALIBRATION_THRESHOLD, seed: int = None, output_dir: pathlib.Path = None,
-                   logger: logging.Logger = None, logging_level: int = logging.INFO) \
-        -> typ.Tuple[bool, bool, int]:
-    def get_influence(p_name: str, p_value: float, obj_name: str, _: float) -> float:
-        delta = 1e-6
-        current_params = {name: model.get_parameter(name) for name in model.parameters_names}
-        test_params = dict(current_params)
-        test_params[p_name] = p_value + delta
-        cf = crit_functions[obj_name]
-        output1 = model.evaluate(**current_params)
-        crit1 = abs(cf(**{p_name: output1[p_name] for p_name in cf.parameter_names}))
-        output2 = model.evaluate(**test_params)
-        crit2 = abs(cf(**{p_name: output2[p_name] for p_name in cf.parameter_names}))
-
-        if crit1 < crit2:
-            return 1
-        elif crit1 > crit2:
-            return -1
+        if p_dump and p_runs_nb > 1:
+            logger.info('Saving results')
+            with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
+                f.write('p(0),solution found,error,speed,# of visited points,# of unique visited points\n')
+                for result in global_results[model.id]:
+                    exp_res: exp_utils.ExperimentResult = result['result']
+                    f.write(f'{map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
+                            f'{int(exp_res.error)},{exp_res.speed},{exp_res.points_number}\n')
         else:
-            return 0
+            print(global_results[model.id])
 
-    for param_name in model.parameters_names:
-        if free_param and free_param != param_name:
-            p_init[param_name] = solutions[1][param_name]
 
+def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_threshold: float, *,
+                   free_param: str = None, max_steps: int = DEFAULT_MAX_STEPS_NB, seed: int = None,
+                   output_dir: pathlib.Path = None, logger: logging.Logger = None, logging_level: int = logging.INFO) \
+        -> exp_utils.ExperimentResult:
     logger.info(f'Starting from {map_to_string(p_init)}')
 
     model.reset()
     system = calicoba.Calicoba(calicoba.CalicobaConfig(
         dump_directory=output_dir / model.id / map_to_string(p_init),
-        free_parameter=free_param,
-        influence_function=get_influence,
         seed=seed,
         logging_level=logging_level,
     ))
 
+    param_files = {}
     for param_name in model.parameters_names:
+        param_files[param_name] = (output_dir / (param_name + '.csv')).open('w', encoding='utf8')
+        param_files[param_name].write('cycle,value,selected objective,objective criticality,decider,step,steps,'
+                                      'decision\n')
         model.set_parameter(param_name, p_init[param_name])
         inf, sup = model.get_parameter_domain(param_name)
-        system.add_parameter(ModelInput(inf, sup, param_name, model))
+        if not free_param or free_param == param_name:
+            system.add_parameter(param_name, inf, sup)
 
-    crit_functions = {}
+    obj_functions = {}
     for output_name in model.outputs_names:
         inf, sup = model.get_output_domain(output_name)
-        system.add_output(ModelOutput(inf, sup, output_name, model))
         objective_name = 'obj_' + output_name
-        crit_functions[objective_name] = SimpleCriticalityFunction(target_outputs[output_name], output_name)
-        system.add_objective(objective_name, crit_functions[objective_name])
+        obj_functions[objective_name] = SimpleObjectiveFunction(target_outputs[output_name], output_name)
+        inf = 0
+        sup = max(obj_functions[objective_name](o1=inf), obj_functions[objective_name](o1=sup))
+        system.add_objective(objective_name, inf, sup)
 
     system.setup()
-    # M2
+    solution_found = False
     calibration_speed = 0
+    points = []
+    unique_points = []
     error = False
     for i in range(max_steps):
+        calibration_speed = i
         model.update()
+        params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
+        p = sorted(params.items())
+        points.append(p)
+        if p not in unique_points:
+            unique_points.append(p)
+        objs = {
+            obj_name: obj_function(**{
+                out_name: model.get_output(out_name)
+                for out_name in obj_function.parameter_names
+            })
+            for obj_name, obj_function in obj_functions.items()
+        }
+
+        if all([abs(obj) < null_threshold for obj in objs.values()]):
+            solution_found = True
+            break
+
+        # noinspection PyBroadException
         try:
-            system.step()
-        except (ArithmeticError, IndexError):
+            logger.debug(params, objs)
+            suggestions = system.suggest_new_point(params, objs)
+        except BaseException as e:
+            logger.exception(e)
             error = True
             break
-        calibration_speed = i
-        if system.stopped:
-            break
+        logger.debug(suggestions)
 
-    return system.stopped, error, calibration_speed
+        for param_name, suggestion in suggestions.items():
+            s = suggestion[0]
+            param_files[param_name].write(f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
+                                          f'{s.criticality},{s.agent.parameter_value},{s.step},{s.steps_number},'
+                                          f'"{s.reason}"\n')
+            model.set_parameter(param_name, s.next_point)
+
+        input('Paused')  # TEST
+
+    return exp_utils.ExperimentResult(
+        solution_found=solution_found,
+        error=error,
+        speed=calibration_speed,
+        points_number=len(points),
+        unique_points_number=len(unique_points),
+    )
 
 
-class SimpleCriticalityFunction(calicoba.agents.CriticalityFunction):
+class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
     def __init__(self, target_value: float, *parameter_names):
         super().__init__(*parameter_names)
         self._target_value = target_value
 
     def __call__(self, **kwargs: float):
-        return kwargs[self.parameter_names[0]] - self._target_value
-
-
-class ModelOutput(calicoba.data_sources.DataOutput):
-    def __init__(self, inf: float, sup: float, name: str, model: models.Model):
-        super().__init__(inf, sup, name)
-        self._model = model
-
-    def get_data(self) -> float:
-        return self._model.get_output(self.name)
-
-
-class ModelInput(ModelOutput, calicoba.data_sources.DataInput):
-    def get_data(self) -> float:
-        return self._model.get_parameter(self.name)
-
-    def set_data(self, value: float):
-        self._model.set_parameter(self.name, value)
+        return abs(kwargs[self.parameter_names[0]] - self._target_value)
 
 
 if __name__ == '__main__':

@@ -23,7 +23,7 @@ class DummyDataInput(calicoba.data_sources.DataInput):
         self._data = value
 
 
-class DummyCriticalityFunction(calicoba.agents.CriticalityFunction):
+class DummyCriticalityFunction(calicoba.agents.ObjectiveFunction):
     def __init__(self):
         super().__init__('out')
 
@@ -99,7 +99,7 @@ class ObjectiveAgentTestCase(unittest.TestCase):
     def test_criticality(self):
         self.output_agent.perceive()
         self.obj_agent.perceive()
-        self.obj_agent.decide_and_act()
+        self.obj_agent.decide()
         self.assertEqual(1, self.obj_agent.criticality)
 
 

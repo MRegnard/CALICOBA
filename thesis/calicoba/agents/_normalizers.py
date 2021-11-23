@@ -1,5 +1,4 @@
 import abc
-import math
 
 
 class Normalizer(abc.ABC):

@@ -33,7 +33,7 @@ class PointAgentTest(unittest.TestCase):
     def test_no_previous(self):
         agent = calicoba.agents.PointAgent('p', self.param, None, {'o': 0.5})
         self.world.add_agent(agent)
-        agent.decide_and_act()
+        agent.decide()
 
         messages = self.param.get_messages_for_type(calicoba.agents.VariationSuggestionMessage)
         self.assertEqual(1, len(messages))
@@ -48,7 +48,7 @@ class PointAgentTest(unittest.TestCase):
         agent2 = calicoba.agents.PointAgent('p_2', self.param, agent1, {'o': 0.4})
         self.world.add_agent(agent1)
         self.world.add_agent(agent2)
-        agent2.decide_and_act()
+        agent2.decide()
 
         messages = self.param.get_messages_for_type(calicoba.agents.VariationSuggestionMessage)
         self.assertEqual(1, len(messages))
@@ -63,7 +63,7 @@ class PointAgentTest(unittest.TestCase):
         agent2 = calicoba.agents.PointAgent('p_2', self.param, agent1, {'o': 0.6})
         self.world.add_agent(agent1)
         self.world.add_agent(agent2)
-        agent2.decide_and_act()
+        agent2.decide()
 
         messages = self.param.get_messages_for_type(calicoba.agents.VariationSuggestionMessage)
         self.assertEqual(1, len(messages))
@@ -82,7 +82,7 @@ class PointAgentTest(unittest.TestCase):
         self.world.add_agent(agent1)
         self.world.add_agent(agent2)
         self.world.add_agent(agent3)
-        agent3.decide_and_act()
+        agent3.decide()
 
         messages = self.param.get_messages_for_type(calicoba.agents.VariationSuggestionMessage)
         self.assertEqual(1, len(messages))
@@ -101,7 +101,7 @@ class PointAgentTest(unittest.TestCase):
         self.world.add_agent(agent1)
         self.world.add_agent(agent2)
         self.world.add_agent(agent3)
-        agent3.decide_and_act()
+        agent3.decide()
 
         messages = self.param.get_messages_for_type(calicoba.agents.NewValueSuggestionMessage)
         self.assertEqual(1, len(messages))
