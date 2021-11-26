@@ -219,6 +219,8 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
             for obj_name, obj_function in obj_functions.items()
         }
 
+        print([abs(obj) for obj in objs.values()])
+        print([abs(obj) < null_threshold for obj in objs.values()])
         if all([abs(obj) < null_threshold for obj in objs.values()]):
             solution_found = True
             break
@@ -243,7 +245,7 @@ def evaluate_model(model: models.Model, p_init: Map, target_outputs: Map, null_t
                                           f'{s.step},{s.steps_number},{s.decision}\n')
             model.set_parameter(param_name, s.next_point)
 
-        # input('Paused')  # TEST
+        input('Paused')  # TEST
 
     for param_name in model.parameters_names:
         param_files[param_name].write(

@@ -29,7 +29,6 @@ class Calicoba:
         self._parameter_agents: typ.List[agents.ParameterAgent] = []
         self._objective_agents: typ.List[agents.ObjectiveAgent] = []
         self._create_new_chain_for_params = set()
-        self._next_init_steps = {}
 
     @property
     def config(self) -> CalicobaConfig:
@@ -96,8 +95,7 @@ class Calicoba:
             else:
                 last_directions[p_name] = agents.DIR_NONE
             new_chain = p_name in self._create_new_chain_for_params
-            new_point = parameter.perceive(parameter_values[p_name], new_chain,
-                                           self._next_init_steps.get(p_name), crits)
+            new_point = parameter.perceive(parameter_values[p_name], new_chain, crits)
             current_points[p_name] = new_point
             if new_point not in self._agents_registry:
                 self.add_agent(new_point)
@@ -116,8 +114,6 @@ class Calicoba:
             elif suggestion:
                 if suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.parameter_name)
-                if suggestion.next_init_step is not None:
-                    self._next_init_steps[point.parameter_name] = suggestion.next_init_step
                 suggestions[point.parameter_name].append(suggestion)
 
         self._cycle += 1
