@@ -1,5 +1,7 @@
 import math
 
+import scipy.optimize
+
 from . import _model
 
 
@@ -217,6 +219,21 @@ class StyblinskiTangFunction(_model.Model):
         }
 
 
+class RosenbrockFunction(_model.Model):
+    def __init__(self, dimensions: int = 1):
+        super().__init__(
+            'rosenbrock_function',
+            {f'p{i + 1}': (-5, 10) for i in range(dimensions)},
+            {'o1': (0, 18e4)}
+        )
+
+    def _evaluate(self, **kwargs: float):
+        params = [v for k, v in sorted(kwargs.items(), key=lambda e: int(e[0][1:]))]
+        return {
+            'o1': scipy.optimize.rosen(params),
+        }
+
+
 class SimpleModelsFactory(_model.ModelFactory):
     __models = {
         'model_1': Model1,
@@ -229,6 +246,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         'ackley_function': AckleyFunction,
         'levy_function': LevyFunction,
         'rastrigin_function': RastriginFunction,
+        'rosenbrock_function': RosenbrockFunction,
         'langermann_function': LangermannFunction,
         'styblinski_tang_function': StyblinskiTangFunction,
     }

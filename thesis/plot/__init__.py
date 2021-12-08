@@ -8,7 +8,7 @@ import models
 
 
 def plot_model_function(model: models.Model, bounds: typ.Tuple[float, float], precision: int = 200) \
-        -> typ.Tuple[fig.Figure, fig.Axes]:
+        -> typ.Tuple[fig.Figure, fig.Axes, float, float]:
     param_name = 'p1'
     out_name = 'o1'
     p_min, p_max = bounds or model.get_parameter_domain(param_name)
@@ -23,4 +23,4 @@ def plot_model_function(model: models.Model, bounds: typ.Tuple[float, float], pr
     model_id = model.id.replace('_', r'\_')
     subplot.set_ylabel(f'${model_id}(p)$')
     subplot.plot(xs, ys, label='$f(p)$')
-    return figure, subplot
+    return figure, subplot, min(ys), max(ys)

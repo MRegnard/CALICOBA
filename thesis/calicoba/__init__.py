@@ -71,7 +71,7 @@ class Calicoba:
 
     def suggest_new_point(self, parameter_values: typ.Dict[str, float], objective_values: typ.Dict[str, float]) \
             -> typ.Dict[str, typ.List[agents.Suggestion]]:
-        self._logger.info(f'Cycle {self._cycle}')
+        self._logger.debug(f'Cycle {self._cycle}')
 
         # Update criticalities
         crits = {}

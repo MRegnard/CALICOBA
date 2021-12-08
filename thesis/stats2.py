@@ -1,100 +1,107 @@
 #!/usr/bin/python3
+import dataclasses
+import math
 import pathlib
 import sys
 import typing as typ
 
-import numpy
+import numpy as np
 
 
-def to_dict(s: str) -> typ.Dict[str, float]:
-    def aux(i: str) -> typ.Tuple[str, float]:
-        name, value = i.split('=')
-        return name, float(value)
+@dataclasses.dataclass(frozen=True)
+class StatsObject:
+    mean: float
+    median: float
+    std_dev: float
 
-    return {k: v for k, v in map(aux, s.split(';'))}
+    def __str__(self):
+        return f'Mean: {self.mean:.2f}; Median: {self.median:.2f}; Std dev: {self.std_dev:.2f}'
 
 
-def stats(filename: pathlib.Path) -> typ.Dict[str, float]:
-    with filename.open(encoding='UTF-8') as f:
-        total_runs = 0
-        failures_not_found = 0
-        errors = 0
-        speeds = []
-        for line in f.readlines()[1:]:
-            p0, solution_found, error, speed, nb_points, unique_points, error_message = line.split(',')
-            solution_found = int(solution_found)
-            error = int(error)
-            speed = int(speed)
-            nb_points = int(nb_points)
-            unique_points = int(unique_points)
-            total_runs += 1
+class DataSet:
+    def __init__(self, file: pathlib.Path):
+        self.total_runs = 0
+        self.successes_number = 0
+        self.errors_number = 0
+        self.speeds = []
+        self.visited_points_numbers = []
+        self.unique_visited_points_number = []
+        self.error_messages = {}
 
-            speeds.append(speed)
+        with file.open(encoding='utf8') as f:
+            for line in f.readlines()[1:]:
+                p0, solution_found, error, speed, nb_points, unique_points, error_message = line.split(',')
+                if int(solution_found):
+                    self.successes_number += 1
+                if int(error):
+                    self.errors_number += 1
+                self.total_runs += 1
+                self.speeds.append(int(speed))
+                self.visited_points_numbers.append(int(nb_points))
+                self.unique_visited_points_number.append(int(unique_points))
+                if error_message:
+                    self.error_messages[p0] = error_message
 
-            if not solution_found:
-                failures_not_found += 1
-            if error:
-                errors += 1
+    @property
+    def failures_number(self) -> int:
+        return self.total_runs - self.successes_number
 
-        speeds.sort()
+    @property
+    def success_rate(self) -> float:
+        return self.successes_number / self.total_runs
 
-        not_found_pc = 100 * failures_not_found / total_runs
-        errors_rate = 100 * errors / failures_not_found
+    @property
+    def failure_rate(self) -> float:
+        return (self.total_runs - self.successes_number) / self.total_runs
 
-        speed_mean = numpy.mean(speeds)
-        speed_med = numpy.median(speeds)
-        speed_std = numpy.std(speeds)
+    @property
+    def error_rate(self) -> float:
+        if self.total_runs == self.successes_number:
+            return math.nan
+        return self.errors_number / (self.total_runs - self.successes_number)
 
-        print(f'Nombre d’échecs (solution non trouvée) : '
-              f'{failures_not_found}/{total_runs} ({not_found_pc:.2f} %)')
-        print(f'Dont exceptions : '
-              f'{errors}/{failures_not_found} ({errors_rate:.2f} %)')
+    @property
+    def speed_stats(self) -> StatsObject:
+        return self._get_stats(self.speeds)
 
-        print('Moyenne des vitesses :', speed_mean)
-        print('Médiane des vitesses :', speed_med)
-        print('Écart-type des vitesses :', speed_std)
+    @property
+    def visited_points_stats(self) -> StatsObject:
+        return self._get_stats(self.visited_points_numbers)
 
-        return {
-            'not_found': not_found_pc,
-            'speed_mean': speed_mean,
-            'speed_med': speed_med,
-            'speed_std': speed_std,
-        }
+    @property
+    def unique_points_stats(self) -> StatsObject:
+        return self._get_stats(self.unique_visited_points_number)
+
+    @staticmethod
+    def _get_stats(values: typ.List[typ.Union[int, float]]) -> StatsObject:
+        # noinspection PyTypeChecker
+        return StatsObject(
+            mean=np.mean(values),
+            median=np.median(values),
+            std_dev=np.std(values),
+        )
+
+    def __str__(self):
+        return f"""
+Successes: {self.successes_number}/{self.total_runs} ({self.success_rate * 100:.2f} %)
+Failures:  {self.failures_number}/{self.total_runs} ({self.failure_rate * 100:.2f} %)
+Errors:    {self.errors_number}/{self.failures_number} ({self.error_rate * 100:.2f} %)
+Speed stats:                 {self.speed_stats}
+Visited points stats:        {self.visited_points_stats}
+Unique visited points stats: {self.unique_points_stats}
+""".strip()
 
 
 def main():
-    filename = pathlib.Path(sys.argv[1]).absolute()
-    if filename.is_file():
-        stats(filename)
-    elif filename.is_dir():
-        table_data = {}
-        for fname in sorted(filename.glob('*.csv')):
-            if fname.is_file():
-                table_data[fname.stem] = stats(fname)
-
-        def get_stacked_data(key: str):
-            m, var = 'Speed', 'N_c'
-            return (fr'\textbf{{{m}}} & '
-                    + ' & '.join([fr'\Longunderstack{{$E({var}) = {v[key + "_mean"]:.1f}$\\'
-                                  fr'$M({var}) = {v[key + "_med"]:.1f}$\\'
-                                  fr'$\sigma({var}) = {v[key + "_std"]:.1f}$}}'
-                                  for v in table_data.values()]))
-
-        def get_data(key: str):
-            return (fr'\textbf{{{key.replace("_", " ").capitalize()}}} & '
-                    + ' & '.join([fr'{v[key]:.1f}~\%' for v in table_data.values()]))
-
-        print(table_data)
-        print(fr'\begin{{tabular}}{{|{"|".join("c" * (len(table_data) + 1))}|}}')
-        print(r'    \hline')
-        print(r'    ~ & ' + ' & '.join([fr'\textbf{{{k}}}' for k in table_data.keys()])
-              + r' \\')
-        print(r'    \hline')
-        print(fr'    {get_data("not_found")} \\')
-        print(r'    \hline')
-        print(fr'    {get_stacked_data("speed")} \\')
-        print(r'    \hline')
-        print(r'\end{tabular}')
+    path = pathlib.Path(sys.argv[1]).absolute()
+    if path.is_file():
+        print(DataSet(path))
+    elif path.is_dir():
+        for file in sorted(path.glob('*.csv')):
+            if file.is_file():
+                print(f'{file.stem}:')
+                print(DataSet(file))
+                print()
 
 
 if __name__ == '__main__':

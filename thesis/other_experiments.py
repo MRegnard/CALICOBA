@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import argparse
 import logging
-import math
 import pathlib
 import random
 import typing as typ
@@ -9,33 +8,12 @@ import typing as typ
 import numpy as np
 import scipy.optimize as sp_opti
 
+import experiments_utils as exp_utils
 import models
 import other_methods
 import test_utils
 
-Map = typ.Dict[str, float]
-
-
-def desired_parameters(*values: float) -> Map:
-    return {f'p{i + 1}': v for i, v in enumerate(values)}
-
-
-def desired_outputs(*values: float) -> Map:
-    return {f'o{i + 1}': v for i, v in enumerate(values)}
-
-
 DEFAULT_DIR = pathlib.Path('output/experiments')
-DEFAULT_RUNS_NB = 200
-DEFAULT_MAX_STEPS_NB = 1000
-DEFAULT_LOGGING_LEVEL = 'info'
-
-
-def sobol_to_param(v: float, mini: float, maxi: float) -> float:
-    return v * (maxi - mini) + mini
-
-
-def map_to_string(m: Map, sep: str = ';') -> str:
-    return sep.join(f'{k}={v}' for k, v in m.items())
 
 
 def main():
@@ -49,10 +27,11 @@ def main():
                             help='list of parameter values')
     arg_parser.add_argument('--free-param', metavar='NAME', dest='free_param', type=str,
                             help='name of the parameter to let free while all others are fixed')
-    arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int, default=DEFAULT_RUNS_NB,
-                            help=f'number of runs (default: {DEFAULT_RUNS_NB})')
-    arg_parser.add_argument('--max-steps', metavar='NB', dest='max_steps', type=int, default=DEFAULT_MAX_STEPS_NB,
-                            help=f'maximum number of simulation steps (default: {DEFAULT_MAX_STEPS_NB})')
+    arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int, default=test_utils.DEFAULT_RUNS_NB,
+                            help=f'number of runs (default: {test_utils.DEFAULT_RUNS_NB})')
+    arg_parser.add_argument('--max-steps', metavar='NB', dest='max_steps', type=int,
+                            default=test_utils.DEFAULT_MAX_STEPS_NB,
+                            help=f'maximum number of simulation steps (default: {test_utils.DEFAULT_MAX_STEPS_NB})')
     arg_parser.add_argument('-s', '--seed', dest='seed', type=int,
                             help='seed for the random numbers generator')
     arg_parser.add_argument('-o', '--output-dir', metavar='PATH', dest='output_dir', type=pathlib.Path,
@@ -92,22 +71,7 @@ def main():
     if p_dump and not p_output_dir.exists():
         p_output_dir.mkdir(parents=True)
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
-    solutions = {
-        'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
-        'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
-        'model_3': ([desired_parameters(2, 12), desired_parameters(-2, 12)], desired_outputs(0, 0)),
-        # Partial solutions
-        'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
-        'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
-                    desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
-        'square': ([desired_parameters(0)], desired_outputs(0)),
-        'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
-        'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
-        'levy_function': ([desired_parameters(1)], desired_outputs(0)),
-        'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
-        'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
-    }
-    models_ = {k: (model_factory.generate_model(k), v) for k, v in solutions.items()}
+    models_ = {k: (model_factory.generate_model(k), v) for k, v in test_utils.MODEL_SOLUTIONS.items()}
     if p_model_id:
         models_ = {p_model_id: models_[p_model_id]}
     else:
@@ -121,7 +85,7 @@ def main():
             params_iterator = [p_param_values]
         else:
             params_iterator = (tuple(
-                sobol_to_param(v, *model.get_parameter_domain(param_names[i])) for i, v in enumerate(point))
+                test_utils.sobol_to_param(v, *model.get_parameter_domain(param_names[i])) for i, v in enumerate(point))
                 for point in test_utils.SobolSequence(len(model.parameters_names), p_runs_nb)
             )
         tested_params = []
@@ -132,7 +96,7 @@ def main():
                 logger.info('Already tested, skipped')
                 continue
             tested_params.append(p)
-            global_optimum_found, found_solution, error, calibration_speed = evaluate_model(
+            result = evaluate_model(
                 p_method,
                 model,
                 p_init,
@@ -141,49 +105,37 @@ def main():
                 free_param=p_free_param,
                 max_steps=p_max_steps,
                 seed=p_seed,
-                output_dir=p_output_dir,
                 logger=logger
             )
             global_results[model.id].append({
                 'p_init': p_init,
-                'found': global_optimum_found,
-                'solution': found_solution,
-                'error': error,
-                'speed': calibration_speed,
+                'result': result,
             })
 
-            if p_dump and p_runs_nb > 1:
-                logger.info('Saving results')
-                with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='UTF-8') as f:
-                    f.write('P(0),solution found,solution,error,speed\n')
-                    for result in global_results[model.id]:
-                        values = [
-                            map_to_string(result['p_init']),
-                            str(int(result['found'])),
-                            str(result['solution']),
-                            str(int(result['error'])),
-                            str(result['speed']),
-                        ]
-                        f.write(','.join(values) + '\n')
+        if p_dump and p_runs_nb > 1:
+            logger.info('Saving results')
+            with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='UTF-8') as f:
+                f.write(
+                    'P(0),solution found,error,speed,# of visited points,# of unique visited points,error message\n')
+                for result in global_results[model.id]:
+                    exp_res: exp_utils.ExperimentResult = result['result']
+                    f.write(f'{test_utils.map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
+                            f'{int(exp_res.error)},{exp_res.speed},{exp_res.points_number},'
+                            f'{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
 
 
-def evaluate_model(method: str, model: models.Model, p_init: Map, solutions: typ.Sequence[Map], target_outputs: Map, *,
-                   free_param: str = None, max_steps: int = DEFAULT_MAX_STEPS_NB,
-                   seed: int = None, output_dir: pathlib.Path = None,
-                   logger: logging.Logger = None) \
-        -> typ.Tuple[bool, float, bool, int]:
+def evaluate_model(method: str, model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map],
+                   target_outputs: test_utils.Map, *, free_param: str = None,
+                   max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB, seed: int = None, logger: logging.Logger = None) \
+        -> exp_utils.ExperimentResult:
     for param_name in model.parameters_names:
         if free_param and free_param != param_name:
             p_init[param_name] = solutions[1][param_name]
 
-    logger.info(f'Starting from {map_to_string(p_init)}')
+    logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
     target_out = target_outputs['o1']
     ε = 0.01
-    if output_dir:
-        output = output_dir / model.id / map_to_string(p_init)
-    else:
-        output = None
 
     def function(x):
         return model.evaluate(p1=x[0])['o1']
@@ -194,16 +146,21 @@ def evaluate_model(method: str, model: models.Model, p_init: Map, solutions: typ
     model.reset()
 
     if method == 'SA':  # Simulated Annealing
-        best, best_eval, speed = other_methods.simulated_annealing(
+        res = other_methods.simulated_annealing(
             init_state=np.asarray([p_init['p1']]),
             objective_function=function,
             bounds=np.asarray([model.get_parameter_domain('p1')]),
             n_iterations=max_steps,
             step_size=0.1,
             init_temp=10,
-            output_dir=output
         )
-        return abs(best_eval - target_out) < ε, best[0], False, speed
+        return exp_utils.ExperimentResult(
+            solution_found=abs(res.fun - target_out) < ε,
+            error=False,
+            speed=res.nit,
+            points_number=res.nfev,
+            unique_points_number=res.nfev,
+        )
 
     elif method == 'DA':  # Dual Annealing
         res = sp_opti.dual_annealing(
@@ -213,7 +170,13 @@ def evaluate_model(method: str, model: models.Model, p_init: Map, solutions: typ
             seed=seed,
             x0=np.asarray([p_init['p1']])
         )
-        return abs(res.fun - target_out) < ε, res.x[0], False, res.nit
+        return exp_utils.ExperimentResult(
+            solution_found=abs(res.fun - target_out) < ε,
+            error=False,
+            speed=res.nit,
+            points_number=res.nfev,
+            unique_points_number=res.nfev,
+        )
 
     elif method == 'HC':  # Hill Climbing
         def get_neighbors(x):
@@ -221,14 +184,19 @@ def evaluate_model(method: str, model: models.Model, p_init: Map, solutions: typ
             step = (out_sup - out_inf) / 1000
             return [[x[0] - step], [x[0] + step]]
 
-        best, best_eval, speed = other_methods.descrete_hill_climbing(
+        res = other_methods.descrete_hill_climbing(
             init_state=[p_init['p1']],
             i_max=max_steps,
             get_neighbors=get_neighbors,
             objective_function=function,
-            output_dir=output
         )
-        return abs(best_eval - target_out) < ε, best[0], False, speed
+        return exp_utils.ExperimentResult(
+            solution_found=abs(res.fun - target_out) < ε,
+            error=False,
+            speed=res.nit,
+            points_number=res.nfev,
+            unique_points_number=res.nfev,
+        )
 
     elif method == 'BH':  # Basin-hopping
         res = sp_opti.basinhopping(
@@ -237,7 +205,15 @@ def evaluate_model(method: str, model: models.Model, p_init: Map, solutions: typ
             niter=max_steps,
             seed=seed
         )
-        return abs(res.fun - target_out) < ε, res.x[0], False, res.nit
+        return exp_utils.ExperimentResult(
+            solution_found=abs(res.fun - target_out) < ε,
+            error=False,
+            speed=res.nit,
+            points_number=res.nfev,
+            unique_points_number=res.nfev,
+        )
+
+    # TODO ajouter des algos G (-> scipy.optimize.differential_evolution())
 
     raise ValueError(f'unknown method "{method}"')
 
