@@ -64,7 +64,7 @@ def main():
 
     logging.basicConfig()
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(p_logging_level)
 
     log_message = 'Running experiments'
     if p_model_id:
@@ -139,6 +139,8 @@ def main():
                 'p_init': p_init,
                 'result': result,
             })
+            if result.error_message:
+                logger.info(f'Error: {result.error_message}')
 
         if p_dump and p_runs_nb > 1:
             logger.info('Saving results')
@@ -239,6 +241,8 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
                                           f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
                                           f'{s.step},{s.steps_number},{s.decision}\n')
             model.set_parameter(param_name, s.next_point)
+        if error_message:
+            break
 
         if step_by_step:
             input('Paused')
