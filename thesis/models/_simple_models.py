@@ -98,6 +98,20 @@ class Model5(_model.Model):
         }
 
 
+class DiscontinuousFunction(_model.Model):
+    def __init__(self):
+        super().__init__(
+            'discontinuous_function',
+            {'p1': (-20, 20)},
+            {'o1': (0, 0)}
+        )
+
+    def _evaluate(self, p1: float):
+        return {
+            'o1': 0
+        }
+
+
 class SquareFunction(_model.Model):
     def __init__(self):
         super().__init__(
@@ -234,6 +248,27 @@ class RosenbrockFunction(_model.Model):
         }
 
 
+class WeierstrassFunction(_model.Model):
+    def __init__(self, a: float = 0.5, b: float = 3, precision: int = 10):
+        if not (0 < a < 1):
+            raise ValueError('a should be in [0, 1]')
+        if b <= 0 or b % 2 == 0:
+            raise ValueError('b should be a positive odd integer')
+        super().__init__(
+            'weierstrass_function',
+            {'p1': (0, 2)},
+            {'o1': (-2, 2)}
+        )
+        self._a = a
+        self._b = b
+        self._precision = precision
+
+    def _evaluate(self, p1: float):
+        return {
+            'o1': sum((self._a ** n) * math.cos((self._b ** n) * math.pi * p1) for n in range(0, self._precision))
+        }
+
+
 class SimpleModelsFactory(_model.ModelFactory):
     __models = {
         'model_1': Model1,
@@ -246,6 +281,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         'ackley_function': AckleyFunction,
         'levy_function': LevyFunction,
         'rastrigin_function': RastriginFunction,
+        'weierstrass_function': WeierstrassFunction,
         'rosenbrock_function': RosenbrockFunction,
         'langermann_function': LangermannFunction,
         'styblinski_tang_function': StyblinskiTangFunction,

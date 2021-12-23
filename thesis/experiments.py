@@ -21,7 +21,7 @@ DEFAULT_LOGGING_LEVEL = 'info'
 def main():
     arg_parser = argparse.ArgumentParser(description='Run experiments with selected method(s) on selected model(s).')
     arg_parser.add_argument('method', type=str, help='method to use to explore the model', choices=[
-        'calicoba', 'SA', 'DA', 'BH', 'NM', 'DE',
+        'calicoba', 'SA', 'DA', 'BH', 'NM', 'DE', 'PSO',
     ])
     arg_parser.add_argument('-m', '--model', dest='model_id', type=str, default=None,
                             help='ID of the model to experiment on')
@@ -48,6 +48,7 @@ def main():
                             default=DEFAULT_LOGGING_LEVEL, choices=('debug', 'info', 'warning', 'error', 'critical'),
                             help='logging level among debug, info, warning, error and critical '
                                  f'(default: {DEFAULT_LOGGING_LEVEL})')
+    arg_parser.add_argument('-n', '--noisy', dest='noisy', action='store_true', help='add noise to model outputs')
     args = arg_parser.parse_args()
     p_method: str = args.method
     p_model_id: typ.Optional[str] = args.model_id
@@ -61,6 +62,7 @@ def main():
     p_dump: bool = args.dump
     p_output_dir: typ.Optional[pathlib.Path] = args.output_dir.absolute() if p_dump else None
     p_logging_level: int = vars(logging)[args.logging_level.upper()]
+    p_noisy: bool = args.noisy
 
     logging.basicConfig()
     logger = logging.getLogger(__name__)
@@ -80,6 +82,8 @@ def main():
     logger.info(log_message)
 
     p_output_dir /= p_method
+    if p_noisy:
+        p_output_dir /= 'noisy'
 
     if p_dump and not p_output_dir.exists():
         p_output_dir.mkdir(parents=True)
@@ -115,6 +119,7 @@ def main():
                     p_init,
                     target_outputs,
                     p_null_threshold,
+                    noisy=p_noisy,
                     free_param=p_free_param,
                     max_steps=p_max_steps,
                     step_by_step=p_step_by_step,
@@ -130,6 +135,7 @@ def main():
                     p_init,
                     target_parameters,
                     target_outputs,
+                    noisy=p_noisy,
                     free_param=p_free_param,
                     max_steps=p_max_steps,
                     seed=p_seed,
@@ -156,17 +162,19 @@ def main():
 
 def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_outputs: test_utils.Map,
                             null_threshold: float, *, free_param: str = None, step_by_step: bool = False,
-                            max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB, seed: int = None,
+                            max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB, seed: int = None, noisy: bool = False,
                             output_dir: pathlib.Path = None, logger: logging.Logger = None,
                             logging_level: int = logging.INFO) \
         -> exp_utils.ExperimentResult:
     class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
-        def __init__(self, target_value: float, *parameter_names):
+        def __init__(self, target_value: float, *parameter_names, noise=False):
             super().__init__(*parameter_names)
             self._target_value = target_value
+            self.noisy = noise
 
         def __call__(self, **kwargs: float):
-            return abs(kwargs[self.parameter_names[0]] - self._target_value)
+            return (abs(kwargs[self.parameter_names[0]] - self._target_value)
+                    + (test_utils.gaussian_noise() if self.noisy else 0))
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
@@ -190,7 +198,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
     for output_name in model.outputs_names:
         inf, sup = model.get_output_domain(output_name)
         objective_name = 'obj_' + output_name
-        obj_functions[objective_name] = SimpleObjectiveFunction(target_outputs[output_name], output_name)
+        obj_functions[objective_name] = SimpleObjectiveFunction(target_outputs[output_name], output_name, noise=noisy)
         inf = 0
         sup = max(obj_functions[objective_name](o1=inf), obj_functions[objective_name](o1=sup))
         system.add_objective(objective_name, inf, sup)
@@ -263,8 +271,8 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
 
 def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Map,
                          solutions: typ.Sequence[test_utils.Map], target_outputs: test_utils.Map, *,
-                         free_param: str = None, max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB, seed: int = None,
-                         logger: logging.Logger = None) \
+                         noisy: bool = False, free_param: str = None, max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB,
+                         seed: int = None, logger: logging.Logger = None) \
         -> exp_utils.ExperimentResult:
     for param_name in model.parameters_names:
         if free_param and free_param != param_name:
@@ -276,7 +284,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     ε = 0.01
 
     def function(x):
-        return model.evaluate(p1=x[0])['o1']
+        return model.evaluate(p1=x[0])['o1'] + (test_utils.gaussian_noise() if noisy else 0)
 
     if seed is not None:
         random.seed(seed)
@@ -330,6 +338,14 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
             bounds=bounds,
             maxiter=max_steps,
             seed=seed
+        )
+
+    elif method == 'PSO':  # Particle Swarm Optimization
+        res = other_methods.pso(
+            func=function,
+            lb=[bounds[0][0]],
+            ub=[bounds[0][1]],
+            maxiter=max_steps,
         )
 
     if res:

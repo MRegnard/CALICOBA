@@ -1,5 +1,6 @@
 import math
 import typing as typ
+import numpy as np
 
 DEFAULT_RUNS_NB = 200
 DEFAULT_MAX_STEPS_NB = 1000
@@ -23,6 +24,10 @@ def desired_outputs(*values: float) -> Map:
     return {f'o{i + 1}': v for i, v in enumerate(values)}
 
 
+def gaussian_noise(mean: float = 0, stdev: float = 1):
+    return np.random.normal(mean, stdev)
+
+
 MODEL_SOLUTIONS = {
     # 'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
     # 'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
@@ -36,6 +41,7 @@ MODEL_SOLUTIONS = {
     'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
     'levy_function': ([desired_parameters(1)], desired_outputs(0)),
     'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
+    'weierstrass_function': ([desired_parameters(1)], desired_outputs(-2)),
     # 'rosenbrock_function': ([desired_parameters(1)], desired_outputs(0)),
     # 'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
 }

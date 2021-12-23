@@ -95,7 +95,7 @@ class ParameterAgent(Agent):
         self._init_step = (sup - inf) / 100
 
         self._chains: typ.List[PointAgent] = []
-        self._minima = set()
+        self._minima = []
         self._last_point_id = 0
 
         self._value = math.nan
@@ -121,11 +121,11 @@ class ParameterAgent(Agent):
         return self._max_step_number
 
     @property
-    def minima(self) -> typ.Set[PointAgent]:
+    def minima(self) -> typ.Sequence[PointAgent]:
         return self._minima
 
     def add_minimum(self, point: PointAgent):
-        self._minima.add(point)
+        self._minima.append(point)
         for m in self.minima:
             m.update_neighbors(self.minima)
 
@@ -166,7 +166,7 @@ class ParameterAgent(Agent):
 class PointAgent(Agent):
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
-    SAME_POINT_THRESHOLD = 5e-3
+    SAME_POINT_THRESHOLD = 0.01
 
     def __init__(self, name: str, parameter_agent: ParameterAgent, previous_point: typ.Optional[PointAgent],
                  init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
@@ -180,6 +180,8 @@ class PointAgent(Agent):
         self._step = init_step
         self._last_direction = DIR_NONE
         self._last_checked_direction = DIR_NONE
+
+        self.steps_mult = 1
 
         self.previous_point = previous_point
         self.next_point: typ.Optional[PointAgent] = None
@@ -198,11 +200,12 @@ class PointAgent(Agent):
         self._right_crit = None
 
         self._sorted_minima = []
-        self._min_of_chain = None
+        self._min_of_chain: typ.Optional[PointAgent] = None
         self._is_current_min_of_chain = False
         self.is_local_minimum = False
         self.is_extremum = False
         self.go_up_mode = False
+        self.already_went_up = False
         self.first_point = False  # Is this point the first when going up the slope?
 
         self.best_local_minimum = False
@@ -211,15 +214,22 @@ class PointAgent(Agent):
 
         self._all_points: typ.List[PointAgent] = []
 
-    def update_neighbors(self, points: typ.Iterable[PointAgent]):
+    def update_neighbors(self, points: typ.Iterable[PointAgent], threshold: float = 0):
+        def value_in_list(v, vs):
+            for e in vs:
+                if abs(v - e) <= threshold:
+                    return True
+            return False
+
         sorted_points = sorted(points, key=lambda p: p.parameter_value)
         # Remove duplicates
         values = set()
         sorted_points_ = []
         for point in sorted_points:
-            if point.parameter_value not in values or point is self:  # Keep self in list
+            if not value_in_list(point.parameter_value, values) or point is self:  # Keep self in list
                 # If another point with the same value as self is in the list, remove it and append self instead
-                if point is self and sorted_points_ and sorted_points_[-1].parameter_value == self.parameter_value:
+                if (point is self and sorted_points_
+                        and abs(sorted_points_[-1].parameter_value - self.parameter_value) <= threshold):
                     del sorted_points_[-1]
                 sorted_points_.append(point)
                 values.add(point.parameter_value)
@@ -276,31 +286,28 @@ class PointAgent(Agent):
                 and abs(self._right_crit - self_crit) < self.LOCAL_MIN_THRESHOLD):
             self.log_debug('local min found')
             self.is_local_minimum = True
+            similar_minima = [mini for mini in self._param_agent.minima
+                              if abs(mini.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD]
+            other_minima = set(self._param_agent.minima) - set(similar_minima)
+            if similar_minima:
+                self.log_debug('local min already visited')
             # Toggle go up mode if this minimum is alone or has already been visited before
-            self.go_up_mode = len(self._param_agent.minima) == 0 or any(
-                abs(mini.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD
-                for mini in self._param_agent.minima
-            )
+            self.go_up_mode = (len(self._param_agent.minima) == 0
+                               or similar_minima and (
+                                       not any(mini.already_went_up for mini in similar_minima) or not other_minima))
             self._param_agent.add_minimum(self)
             if self.go_up_mode:
-                if len(self._param_agent.minima) > 1:
-                    self.log_debug('local min already visited')
                 self.log_debug('-> go up slope')
                 self.first_point = True
                 wait = True
 
         if self.is_local_minimum:
-            # Go up if the current point is between points in this minimum’s chain
-            # if not self._is_current_in_points_list:  # FIXME
-            #     self.log_debug('chain already visited -> go up slope')
-            #     self.first_point = True
-            #     wait = True
-            #     self.go_up_mode = True
-            self.update_neighbors(self._param_agent.minima)
+            self.update_neighbors(self._param_agent.minima, threshold=self.SAME_POINT_THRESHOLD)
             if self._param_agent.minima:
-                self._sorted_minima: typ.List[PointAgent] = \
-                    sorted(self._param_agent.minima,
-                           key=lambda mini: abs(mini.parameter_value - self._current_point.parameter_value))
+                filtered = filter(lambda mini: mini is self or abs(
+                    mini.parameter_value - self.parameter_value) > self.SAME_POINT_THRESHOLD, self._param_agent.minima)
+                self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
+                    mini.parameter_value - self._current_point.parameter_value))
             else:
                 self._sorted_minima = []
             if (not self.go_up_mode and self._is_current_in_chain and len(self._sorted_minima) > 1
@@ -469,6 +476,12 @@ class PointAgent(Agent):
                                 other_value = self._left_value
                                 self._last_checked_direction = DIR_DECREASE
                         suggested_point = (self_value + other_value) / 2
+                if suggested_steps_number is not None:
+                    prev_minimum = self._param_agent.minima[-1]
+                    # If we came back to the same local minimum since last new chain, go twice as far on the slope.
+                    if abs(prev_minimum.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD:
+                        self.steps_mult *= 2 * prev_minimum.steps_mult
+                        suggested_steps_number *= self.steps_mult
                 new_chain_next = True
 
         elif self.is_extremum and self._min_of_chain.go_up_mode:
@@ -497,10 +510,16 @@ class PointAgent(Agent):
                     direction = self._last_direction or DIR_INCREASE
                 suggested_steps_number = 1
                 self._min_of_chain.go_up_mode = False
-                if self._min_of_chain.first_point:
+                self._min_of_chain.already_went_up = True
+                if self._min_of_chain.first_point or self_on_bound:
                     new_chain_next = True
                 else:
                     self.create_new_chain_from_me = True
+
+            elif self_on_bound and other_on_bound:
+                if self_crit < other_extremum_crit:
+                    decision = 'both extrema on bounds -> go to middle from lowest'
+                    suggested_point = (self_value + prev_value) / 2
 
             elif (self_crit < other_extremum_crit or other_on_bound) and not self_on_bound:
                 if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or other_on_bound:
@@ -527,12 +546,12 @@ class PointAgent(Agent):
         if suggested_steps_number is not None:
             suggested_steps_number = min(self._param_agent.step_max, suggested_steps_number)
             suggested_point = from_value + self._step * suggested_steps_number * direction
-            if suggested_point < self._param_agent.inf:  # TODO supprimer ?
-                self.log_debug('next point out of bounds (inf), stopping half way')
-                suggested_point = (self._param_agent.inf + from_value) / 2
-            elif suggested_point > self._param_agent.sup:
-                self.log_debug('next point out of bounds (sup), stopping half way')
-                suggested_point = (self._param_agent.sup + from_value) / 2
+            # if suggested_point < self._param_agent.inf:
+            #     self.log_debug('next point out of bounds (inf), stopping half way')
+            #     suggested_point = (self._param_agent.inf + from_value) / 2
+            # elif suggested_point > self._param_agent.sup:
+            #     self.log_debug('next point out of bounds (sup), stopping half way')
+            #     suggested_point = (self._param_agent.sup + from_value) / 2
 
         self._is_current = False
 
