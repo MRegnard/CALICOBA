@@ -364,7 +364,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
     target_out = target_outputs['o1']
-    ε = 0.01
+    epsilon = 0.01
 
     def function(x):
         return (model.evaluate(p1=x[0])['o1']
@@ -434,7 +434,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
 
     if res:
         return exp_utils.ExperimentResult(
-            solution_found=abs(res.fun - target_out) < ε,
+            solution_found=abs(res.fun - target_out) < epsilon,
             error=False,
             speed=res.nit,
             points_number=res.nfev,
