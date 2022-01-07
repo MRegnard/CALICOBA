@@ -1,9 +1,7 @@
 import math
 import typing as typ
-import numpy as np
 
-DEFAULT_RUNS_NB = 200
-DEFAULT_MAX_STEPS_NB = 1000
+import numpy as np
 
 Map = typ.Dict[str, float]
 

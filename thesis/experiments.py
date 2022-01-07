@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import argparse
+import configparser
 import logging
 import pathlib
 import random
@@ -16,81 +17,154 @@ import test_utils
 
 DEFAULT_DIR = pathlib.Path('output/experiments')
 DEFAULT_LOGGING_LEVEL = 'info'
+DEFAULT_RUNS_NB = 200
+DEFAULT_MAX_STEPS_NB = 1000
+DEFAULT_NULL_THRESHOLD = 0.005
+DEFAULT_NOISE_MEAN = 0
+DEFAULT_NOISE_STDEV = 0.01
 
 
-def main():
+def get_config() -> exp_utils.ExperimentsConfig:
+    def get_or_default(v, default):
+        return v if v is not None else default
+
     arg_parser = argparse.ArgumentParser(description='Run experiments with selected method(s) on selected model(s).')
-    arg_parser.add_argument('method', type=str, help='method to use to explore the model', choices=[
+    arg_parser.add_argument('-c', '--config', dest='config_file', metavar='FILE', type=pathlib.Path,
+                            help='path to config file')
+    arg_parser.add_argument('--method', dest='method', metavar='METHOD', type=str, choices=(
         'calicoba', 'SA', 'DA', 'BH', 'NM', 'DE', 'PSO',
-    ])
-    arg_parser.add_argument('-m', '--model', dest='model_id', type=str, default=None,
-                            help='ID of the model to experiment on')
+    ), help='method to use to explore the model')
+    arg_parser.add_argument('-m', '--model', dest='model_id', type=str, help='ID of the model to experiment on')
     arg_parser.add_argument('-p', '--params', metavar='VALUE', dest='param_values', type=float, nargs='+', default=[],
                             help='list of parameter values')
-    arg_parser.add_argument('-t', '--threshold', dest='null_threshold', type=float, default=1e-3,
+    arg_parser.add_argument('-t', '--threshold', dest='null_threshold', type=float,
                             help='seed for the random numbers generator')
     arg_parser.add_argument('--free-param', metavar='NAME', dest='free_param', type=str,
                             help='name of the parameter to let free while all others are fixed')
-    arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int, default=test_utils.DEFAULT_RUNS_NB,
-                            help=f'number of runs (default: {test_utils.DEFAULT_RUNS_NB})')
+    arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int,
+                            help=f'number of runs (default: {DEFAULT_RUNS_NB})')
     arg_parser.add_argument('--max-steps', metavar='NB', dest='max_steps', type=int,
-                            default=test_utils.DEFAULT_MAX_STEPS_NB,
-                            help=f'maximum number of simulation steps (default: {test_utils.DEFAULT_MAX_STEPS_NB})')
+                            help=f'maximum number of simulation steps (default: {DEFAULT_MAX_STEPS_NB})')
     arg_parser.add_argument('--step-by-step', dest='step_by_step', action='store_true',
                             help='enable step by step for CALICOBA')
     arg_parser.add_argument('-s', '--seed', dest='seed', type=int,
                             help='seed for the random numbers generator')
     arg_parser.add_argument('-o', '--output-dir', metavar='PATH', dest='output_dir', type=pathlib.Path,
-                            default=DEFAULT_DIR, help=f'output directory for dumped files (default: {DEFAULT_DIR})')
-    arg_parser.add_argument('--no-dump', dest='dump', action='store_false',
-                            help='prevent dumping of generated data to files')
+                            help=f'output directory for dumped files (default: {DEFAULT_DIR})')
+    arg_parser.add_argument('-d', '--dump', dest='dump', action='store_true', help='dump generated data to files')
     arg_parser.add_argument('-l', '--level', metavar='LEVEL', dest='logging_level', type=str,
-                            default=DEFAULT_LOGGING_LEVEL, choices=('debug', 'info', 'warning', 'error', 'critical'),
+                            choices=('debug', 'info', 'warning', 'error', 'critical'),
                             help='logging level among debug, info, warning, error and critical '
                                  f'(default: {DEFAULT_LOGGING_LEVEL})')
     arg_parser.add_argument('-n', '--noisy', dest='noisy', action='store_true', help='add noise to model outputs')
+    arg_parser.add_argument('--mean', metavar='MEAN', dest='noise_mean', type=float, help='mean of gaussian noise')
+    arg_parser.add_argument('--stdev', metavar='STDEV', dest='noise_stdev', type=float,
+                            help='standard deviation of gaussian noise')
     args = arg_parser.parse_args()
-    p_method: str = args.method
-    p_model_id: typ.Optional[str] = args.model_id
-    p_param_values: typ.Tuple[str] = args.param_values
-    p_free_param: typ.Optional[str] = args.free_param
-    p_null_threshold: float = args.null_threshold
-    p_runs_nb: int = args.runs if not p_param_values else 1
-    p_max_steps: int = args.max_steps
-    p_step_by_step: bool = args.step_by_step
-    p_seed: int = args.seed
-    p_dump: bool = args.dump
-    p_output_dir: typ.Optional[pathlib.Path] = args.output_dir.absolute() if p_dump else None
-    p_logging_level: int = vars(logging)[args.logging_level.upper()]
-    p_noisy: bool = args.noisy
+
+    default_method = None
+    default_model_id = None
+    default_seed = None
+    default_null_crit = DEFAULT_NULL_THRESHOLD
+    default_params_values = []
+    default_free_param = None
+    default_runs_nb = DEFAULT_RUNS_NB
+    default_max_steps = DEFAULT_MAX_STEPS_NB
+    default_step_by_step = False
+    default_output_dir = DEFAULT_DIR
+    default_dump_data = False
+    default_log_level = DEFAULT_LOGGING_LEVEL
+    default_noisy = False
+    default_noise_mean = DEFAULT_NOISE_MEAN
+    default_noise_stdev = DEFAULT_NOISE_STDEV
+
+    if args.config_file:
+        config_parser = configparser.ConfigParser()
+        if not args.config_file.exists():
+            raise FileNotFoundError(args.config_file)
+        config_parser.read(args.config_file, encoding='utf8')
+
+        method = config_parser.get('Main', 'method')
+        if not method:
+            raise ValueError('missing method')
+
+        params_values = config_parser.get('Parameters', 'parameters', fallback=default_params_values)
+        if params_values:
+            params_values = [float(v) for v in params_values.split(',')]
+
+        default_method = method
+        default_model_id = config_parser.get('Main', 'model', fallback=default_model_id)
+        default_seed = config_parser.getint('Main', 'seed', fallback=default_seed)
+        default_null_crit = config_parser.getfloat('Main', 'null_criticality_threshold', fallback=default_null_crit)
+        default_params_values = params_values
+        default_free_param = config_parser.get('Parameters', 'free_parameter', fallback=default_free_param)
+        default_runs_nb = config_parser.getint('Run', 'runs_number', fallback=default_runs_nb)
+        default_max_steps = config_parser.getint('Run', 'max_steps', fallback=default_max_steps)
+        default_step_by_step = config_parser.getboolean('Run', 'step_by_step', fallback=default_step_by_step)
+        default_output_dir = config_parser.get('Output', 'output_directory', fallback=default_output_dir)
+        if isinstance(default_output_dir, str):
+            default_output_dir = pathlib.Path(default_output_dir)
+        default_dump_data = config_parser.getboolean('Output', 'dump_data', fallback=default_dump_data)
+        default_log_level = config_parser.get('Output', 'log_level', fallback=default_log_level)
+        default_noisy = config_parser.getboolean('Noise', 'noisy', fallback=default_noisy)
+        default_noise_mean = config_parser.getfloat('Noise', 'noise_mean', fallback=default_noise_mean)
+        default_noise_stdev = config_parser.getfloat('Noise', 'noise_stdev', fallback=default_noise_stdev)
+
+    method = get_or_default(args.method, default_method)
+    if not method:
+        raise ValueError('missing method')
+    dump_data = default_dump_data or args.dump
+
+    return exp_utils.ExperimentsConfig(
+        method=method,
+        model_id=get_or_default(args.model_id, default_model_id),
+        seed=get_or_default(args.seed, default_seed),
+        null_crit_threshold=get_or_default(args.null_threshold, default_null_crit),
+        parameters_values=args.param_values or default_params_values,
+        free_parameter=get_or_default(args.free_param, default_free_param),
+        runs_number=get_or_default(args.runs, default_runs_nb),
+        max_steps=get_or_default(args.max_steps, default_max_steps),
+        step_by_step=default_step_by_step or args.step_by_step,
+        output_directory=get_or_default(args.output_dir, default_output_dir).absolute() if dump_data else None,
+        dump_data=dump_data,
+        log_level=vars(logging)[get_or_default(args.logging_level, default_log_level).upper()],
+        noisy_functions=default_noisy or args.noisy,
+        noise_mean=get_or_default(args.noise_mean, default_noise_mean),
+        noise_stdev=get_or_default(args.noise_stdev, default_noise_stdev),
+    )
+
+
+def main():
+    config = get_config()
 
     logging.basicConfig()
     logger = logging.getLogger(__name__)
-    logger.setLevel(p_logging_level)
+    logger.setLevel(config.log_level)
 
     log_message = 'Running experiments'
-    if p_model_id:
-        log_message += f' model "{p_model_id}"'
+    if config.model_id:
+        log_message += f' model "{config.model_id}"'
     else:
         log_message += ' all models'
-    if p_runs_nb:
-        log_message += f' for {p_runs_nb} run(s)'
-        if not p_model_id:
+    if config.runs_number:
+        log_message += f' for {config.runs_number} run(s)'
+        if not config.model_id:
             log_message += ' each'
-    if p_param_values:
-        log_message += f' with parameter values ' + ', '.join(map(str, p_param_values))
+    if config.parameters_values:
+        log_message += f' with parameter values ' + ', '.join(map(str, config.parameters_values))
     logger.info(log_message)
 
-    p_output_dir /= p_method
-    if p_noisy:
-        p_output_dir /= 'noisy'
+    output_dir = config.output_directory
+    output_dir /= config.method
+    if config.noisy_functions:
+        output_dir /= 'noisy'
 
-    if p_dump and not p_output_dir.exists():
-        p_output_dir.mkdir(parents=True)
+    if config.dump_data and not output_dir.exists():
+        output_dir.mkdir(parents=True)
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
     models_ = {k: (model_factory.generate_model(k), v) for k, v in test_utils.MODEL_SOLUTIONS.items()}
-    if p_model_id:
-        models_ = {p_model_id: models_[p_model_id]}
+    if config.model_id:
+        models_ = {config.model_id: models_[config.model_id]}
     else:
         models_ = models_
     global_results = {}
@@ -98,48 +172,53 @@ def main():
         logger.info(f'Testing model "{model.id}"')
         global_results[model.id] = []
         param_names = list(model.parameters_names)
-        if p_param_values:
-            params_iterator = [p_param_values]
+        if config.parameters_values:
+            params_iterator = [config.parameters_values]
         else:
             params_iterator = (tuple(
                 test_utils.sobol_to_param(v, *model.get_parameter_domain(param_names[i])) for i, v in enumerate(point))
-                for point in test_utils.SobolSequence(len(model.parameters_names), p_runs_nb)
+                for point in test_utils.SobolSequence(len(model.parameters_names), config.runs_number)
             )
         tested_params = []
         for run, p in enumerate(params_iterator):
             p_init = {param_names[i]: v for i, v in enumerate(p)}
-            logger.info(f'Model "{model.id}": run {run + 1}/{p_runs_nb}')
+            logger.info(f'Model "{model.id}": run {run + 1}/{config.runs_number}')
             if p in tested_params:
                 logger.info('Already tested, skipped')
                 continue
             tested_params.append(p)
-            if p_method == 'calicoba':
+            if config.method == 'calicoba':
                 result = evaluate_model_calicoba(
-                    model,
-                    p_init,
-                    target_outputs,
-                    p_null_threshold,
-                    noisy=p_noisy,
-                    free_param=p_free_param,
-                    max_steps=p_max_steps,
-                    step_by_step=p_step_by_step,
-                    seed=p_seed,
-                    output_dir=p_output_dir / model.id / test_utils.map_to_string(p_init),
-                    logger=logger,
-                    logging_level=p_logging_level
-                )
-            else:
-                result = evaluate_model_other(
-                    p_method,
                     model,
                     p_init,
                     target_parameters,
                     target_outputs,
-                    noisy=p_noisy,
-                    free_param=p_free_param,
-                    max_steps=p_max_steps,
-                    seed=p_seed,
-                    logger=logger
+                    config.null_crit_threshold,
+                    noisy=config.noisy_functions,
+                    noise_mean=config.noise_mean,
+                    noise_stdev=config.noise_stdev,
+                    free_param=config.free_parameter,
+                    max_steps=config.max_steps,
+                    step_by_step=config.step_by_step,
+                    seed=config.seed,
+                    output_dir=output_dir / model.id / test_utils.map_to_string(p_init),
+                    logger=logger,
+                    logging_level=config.log_level,
+                )
+            else:
+                result = evaluate_model_other(
+                    config.method,
+                    model,
+                    p_init,
+                    target_parameters,
+                    target_outputs,
+                    noisy=config.noisy_functions,
+                    noise_mean=config.noise_mean,
+                    noise_stdev=config.noise_stdev,
+                    free_param=config.free_parameter,
+                    max_steps=config.max_steps,
+                    seed=config.seed,
+                    logger=logger,
                 )
             global_results[model.id].append({
                 'p_init': p_init,
@@ -148,9 +227,9 @@ def main():
             if result.error_message:
                 logger.info(f'Error: {result.error_message}')
 
-        if p_dump and p_runs_nb > 1:
+        if config.dump_data and config.runs_number > 1:
             logger.info('Saving results')
-            with (p_output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
+            with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
                 f.write(
                     'P(0),solution found,error,speed,# of visited points,# of unique visited points,error message\n')
                 for result in global_results[model.id]:
@@ -160,9 +239,11 @@ def main():
                             f'{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
 
 
-def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_outputs: test_utils.Map,
-                            null_threshold: float, *, free_param: str = None, step_by_step: bool = False,
-                            max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB, seed: int = None, noisy: bool = False,
+def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map],
+                            target_outputs: test_utils.Map, null_threshold: float,
+                            *, free_param: str = None, step_by_step: bool = False,
+                            max_steps: int = DEFAULT_MAX_STEPS_NB, seed: int = None, noisy: bool = False,
+                            noise_mean: float = DEFAULT_NOISE_MEAN, noise_stdev: float = DEFAULT_NOISE_STDEV,
                             output_dir: pathlib.Path = None, logger: logging.Logger = None,
                             logging_level: int = logging.INFO) \
         -> exp_utils.ExperimentResult:
@@ -174,7 +255,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
 
         def __call__(self, **kwargs: float):
             return (abs(kwargs[self.parameter_names[0]] - self._target_value)
-                    + (test_utils.gaussian_noise() if self.noisy else 0))
+                    + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if self.noisy else 0))
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
@@ -227,7 +308,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
 
         logger.debug('Objectives: ' + str(objs.items()))
         if all([abs(obj) < null_threshold for obj in objs.values()]):
-            solution_found = True
+            solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < null_threshold for params in solutions)
             break
 
         # noinspection PyBroadException
@@ -271,7 +352,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, target_
 
 def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Map,
                          solutions: typ.Sequence[test_utils.Map], target_outputs: test_utils.Map, *,
-                         noisy: bool = False, free_param: str = None, max_steps: int = test_utils.DEFAULT_MAX_STEPS_NB,
+                         noisy: bool = False, noise_mean: float = DEFAULT_NOISE_MEAN,
+                         noise_stdev: float = DEFAULT_NOISE_STDEV, free_param: str = None,
+                         max_steps: int = DEFAULT_MAX_STEPS_NB,
                          seed: int = None, logger: logging.Logger = None) \
         -> exp_utils.ExperimentResult:
     for param_name in model.parameters_names:
@@ -284,7 +367,8 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     ε = 0.01
 
     def function(x):
-        return model.evaluate(p1=x[0])['o1'] + (test_utils.gaussian_noise() if noisy else 0)
+        return (model.evaluate(p1=x[0])['o1']
+                + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if noisy else 0))
 
     if seed is not None:
         random.seed(seed)

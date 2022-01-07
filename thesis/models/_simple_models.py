@@ -257,7 +257,7 @@ class WeierstrassFunction(_model.Model):
         super().__init__(
             'weierstrass_function',
             {'p1': (0, 2)},
-            {'o1': (-2, 2)}
+            {'o1': (-1.998046875, 1.998046875)}  # Values for a = 0.5 and b = 3 and precision = 10
         )
         self._a = a
         self._b = b
