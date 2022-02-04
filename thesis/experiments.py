@@ -326,13 +326,16 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 break
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
-                solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < null_threshold
-                                     for params in solutions)
+                threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
+                solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < threshold for params in solutions)
             else:
-                param_files[param_name].write(f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                                              f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
-                                              f'{s.step},{s.steps_number},{s.decision}\n')
+                param_files[param_name].write(
+                    f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
+                    f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
+                    f'{s.step},{s.steps_number},{s.decision}\n'
+                )
                 model.set_parameter(param_name, s.next_point)
+
         if solution_found or error_message:
             break
 

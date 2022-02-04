@@ -346,224 +346,16 @@ class PointAgent(Agent):
         new_chain_next = False
         check_for_out_of_bounds = False
         decision = ''
-
-        self_value = self.parameter_value
-        self_crit = self._criticalities[self._helped_obj]
-
-        from_value = self_value
+        from_value = self.parameter_value
 
         if self._is_current_min_of_chain:
             if not self.is_local_minimum:
-                if self.previous_point is None and self.next_point is None:
-                    decision = 'first point in chain -> explore'
-                    if self_value == self._param_agent.inf:
-                        direction = DIR_INCREASE
-                    elif self_value == self._param_agent.sup:
-                        direction = DIR_DECREASE
-                    else:
-                        direction = self._last_direction or DIR_INCREASE
-                    suggested_steps_number = 1
-
-                elif self_value == self._param_agent.inf or self_value == self._param_agent.sup:
-                    decision = 'point on bound -> go to middle'
-                    if self_value == self._param_agent.inf:
-                        other_value = self._right_value
-                    else:
-                        other_value = self._left_value
-                    suggested_point = (self_value + other_value) / 2
-
-                elif (self._left_point is not None) != (self._right_point is not None):
-                    decision = '1 neighbor -> follow slope'
-                    if self._left_point:
-                        top_point = (self._left_value, self._left_crit)
-                    else:
-                        top_point = (self._right_value, self._right_crit)
-                    self._step = abs(self_value - top_point[0])
-                    x = utils.get_xc(top_point, intermediate_point=(self_value, self_crit), yc=0)
-                    if x > self_value:
-                        direction = DIR_INCREASE
-                    else:
-                        direction = DIR_DECREASE
-                    if abs(x - self_value) < self.STUCK_THRESHOLD:
-                        suggested_point = self_value + self._step * direction
-                    else:
-                        suggested_steps_number = abs(x - self_value) / self._step
-
-                else:
-                    decision = '2 neighbors -> go to middle point'
-                    if self._last_checked_direction == DIR_INCREASE and self._right_crit > self_crit:
-                        other_value = self._left_value
-                        self._last_checked_direction = DIR_DECREASE
-                    elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self_crit:
-                        other_value = self._right_value
-                        self._last_checked_direction = DIR_INCREASE
-                    else:
-                        if self.next_point and self.next_point.is_current:
-                            other_value = self.previous_point.parameter_value
-                        elif self._right_crit < self._left_crit:
-                            other_value = self._right_value
-                            self._last_checked_direction = DIR_INCREASE
-                        else:
-                            other_value = self._left_value
-                            self._last_checked_direction = DIR_DECREASE
-                    suggested_point = (self_value + other_value) / 2
-
+                decision, direction, suggested_point, suggested_steps_number = self._local_search()
             elif self.best_local_minimum:
-                self.best_local_minimum = False
-                other_min: typ.Optional[PointAgent] = None
-                if (self._left_point is not None) != (self._right_point is not None):
-                    decision = '1 minimum neighbor -> follow slope'
-                    if self._left_point:
-                        top_point = (self._left_value, self._left_crit)
-                        other_min = self._left_point
-                    else:
-                        top_point = (self._right_value, self._right_crit)
-                        other_min = self._right_point
-                    if top_point[1] < self_crit:
-                        interm_point = top_point
-                        top_point = (self_value, self_crit)
-                        from_value = interm_point[0]
-                    else:
-                        interm_point = (self_value, self_crit)
-                    self._step = abs(interm_point[0] - top_point[0])
-                    x = utils.get_xc(top_point, intermediate_point=interm_point, yc=0)
-                    if x > self_value:
-                        direction = DIR_INCREASE
-                    else:
-                        direction = DIR_DECREASE
-                    suggested_steps_number = abs(x - interm_point[0]) / self._step
-                    check_for_out_of_bounds = True
-
-                else:
-                    decision = '2 minima neighbors: '
-                    if self._left_crit < self_crit < self._right_crit:
-                        decision += 'left lower, right higher -> follow left slope'
-                        from_value = self._left_value
-                        self._step = abs(self_value - self._left_value)
-                        x = utils.get_xc(top_point=(self_value, self_crit),
-                                         intermediate_point=(self._left_value, self._left_crit), yc=0)
-                        direction = DIR_DECREASE
-                        other_min = self._left_point
-                        suggested_steps_number = abs(x - self._left_value) / self._step
-                        check_for_out_of_bounds = True
-
-                    elif self._left_crit > self_crit > self._right_crit:
-                        decision += 'left higher, right lower -> follow right slope'
-                        from_value = self._right_value
-                        self._step = abs(self_value - self._right_value)
-                        x = utils.get_xc(top_point=(self_value, self_crit),
-                                         intermediate_point=(self._right_value, self._right_crit), yc=0)
-                        direction = DIR_INCREASE
-                        other_min = self._right_point
-                        suggested_steps_number = abs(x - self._right_value) / self._step
-                        check_for_out_of_bounds = True
-
-                    elif self._left_crit < self_crit > self._right_crit:
-                        decision += 'both lower -> follow slope on lowest’s side'
-                        if self._right_crit < self._left_crit:
-                            from_value = self._right_value
-                            crit = self._right_crit
-                            other_min = self._right_point
-                        else:
-                            from_value = self._left_value
-                            crit = self._left_crit
-                            other_min = self._left_point
-                        self._step = abs(self_value - from_value)
-                        x = utils.get_xc(top_point=(self_value, self_crit),
-                                         intermediate_point=(from_value, crit), yc=0)
-                        direction = DIR_INCREASE
-                        suggested_steps_number = abs(x - from_value) / self._step
-                        check_for_out_of_bounds = True
-
-                    else:
-                        decision += 'both higher -> go to middle point'
-                        if self._last_checked_direction == DIR_INCREASE and self._right_crit > self_crit:
-                            other_value = self._left_value
-                            self._last_checked_direction = DIR_DECREASE
-                        elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self_crit:
-                            other_value = self._right_value
-                            self._last_checked_direction = DIR_INCREASE
-                        else:
-                            if self.next_point and self.next_point.is_current:
-                                other_value = self.previous_point.parameter_value
-                            elif self._right_crit < self._left_crit:
-                                other_value = self._right_value
-                                self._last_checked_direction = DIR_INCREASE
-                            else:
-                                other_value = self._left_value
-                                self._last_checked_direction = DIR_DECREASE
-                        suggested_point = (self_value + other_value) / 2
-
-                if suggested_steps_number is not None and self.local_min_already_visited:
-                    prev_min = self._param_agent.minima[-2]  # -1 is current minimum
-                    if (abs(self.parameter_value - prev_min.parameter_value) <= self.SAME_POINT_THRESHOLD
-                            and prev_min.prev_suggestion_out_of_bounds):
-                        decision += ' -> previous was OOB -> cancel jump and go to middle'
-                        suggested_steps_number = None
-                        suggested_point = (self_value + other_min.parameter_value) / 2
-                        check_for_out_of_bounds = False
-                    else:
-                        # We came back to an already visited local minimum, go twice as far than previously
-                        decision += ' and jump twice as far'
-                        self.steps_mult *= 2
-                        suggested_steps_number *= self.steps_mult
-                new_chain_next = True
-
+                (check_for_out_of_bounds, decision, direction, from_value,
+                 new_chain_next, suggested_point, suggested_steps_number) = self._semi_local_search()
         elif self.is_extremum and self._min_of_chain.go_up_mode:
-            other_extremum = [p for p in self._all_points if p.is_extremum and p is not self][0]
-            other_extremum_value = other_extremum.parameter_value
-            other_extremum_crit = other_extremum.objective_criticalities[self._helped_obj]
-            self_on_bound = self_value in [self._param_agent.inf, self._param_agent.sup]
-            other_on_bound = other_extremum_value in [self._param_agent.inf, self._param_agent.sup]
-
-            if other_extremum_value < self_value:
-                prev_value = self._left_value
-                prev_crit = self._left_crit
-                prev = self._left_point
-            else:
-                prev_value = self._right_value
-                prev_crit = self._right_crit
-                prev = self._right_point
-
-            if self_crit < prev_crit:
-                decision = 'opposite slope found -> stop climbing; create new chain; explore'
-                if prev is self._left_point or self_value == self._param_agent.inf:
-                    direction = DIR_INCREASE
-                elif prev is self._right_point or self_value == self._param_agent.sup:
-                    direction = DIR_DECREASE
-                else:
-                    direction = self._last_direction or DIR_INCREASE
-                suggested_steps_number = 1
-                self._min_of_chain.go_up_mode = False
-                self._min_of_chain.already_went_up = True
-                if self._min_of_chain.first_point or self_on_bound:
-                    new_chain_next = True
-                else:
-                    self.create_new_chain_from_me = True
-
-            elif self_on_bound and other_on_bound:
-                if self_crit < other_extremum_crit:
-                    decision = 'both extrema on bounds -> go to middle from lowest'
-                    suggested_point = (self_value + prev_value) / 2
-
-            elif (self_crit < other_extremum_crit or other_on_bound) and not self_on_bound:
-                if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or other_on_bound:
-                    decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
-                    if self_value < prev_value:
-                        direction = DIR_DECREASE
-                    else:
-                        direction = DIR_INCREASE
-                    suggested_point = self_value + self._step * direction
-
-                else:
-                    decision = 'go up slope'
-                    if self_value < prev_value:
-                        direction = DIR_DECREASE
-                    else:
-                        direction = DIR_INCREASE
-                    suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
-                                                   intermediate_point=(self_value, self_crit),
-                                                   yc=other_extremum_crit)
+            decision, direction, new_chain_next, suggested_point, suggested_steps_number = self._hill_climb()
 
         if decision:
             self.log_debug('Decision: ' + decision)
@@ -590,6 +382,233 @@ class PointAgent(Agent):
                 new_chain_next=new_chain_next,
             )
         return None
+
+    def _local_search(self):
+        direction = DIR_NONE
+        suggested_point = None
+        suggested_steps_number = None
+        self_value = self.parameter_value
+        self_crit = self._criticalities[self._helped_obj]
+
+        if self.previous_point is None and self.next_point is None:
+            decision = 'first point in chain -> explore'
+            if self_value == self._param_agent.inf:
+                direction = DIR_INCREASE
+            elif self_value == self._param_agent.sup:
+                direction = DIR_DECREASE
+            else:
+                direction = self._last_direction or DIR_INCREASE
+            suggested_steps_number = 1
+
+        elif self_value in (self._param_agent.inf, self._param_agent.sup):
+            decision = 'point on bound -> go to middle'
+            if self_value == self._param_agent.inf:
+                other_value = self._right_value
+            else:
+                other_value = self._left_value
+            suggested_point = (self_value + other_value) / 2
+
+        elif (self._left_point is not None) != (self._right_point is not None):
+            decision = '1 neighbor -> follow slope'
+            if self._left_point:
+                top_point = (self._left_value, self._left_crit)
+            else:
+                top_point = (self._right_value, self._right_crit)
+            self._step = abs(self_value - top_point[0])
+            x = utils.get_xc(top_point, intermediate_point=(self_value, self_crit), yc=0)
+            direction = DIR_INCREASE if x > self_value else DIR_DECREASE
+            if abs(x - self_value) < self.STUCK_THRESHOLD:
+                suggested_point = self_value + self._step * direction
+            else:
+                suggested_steps_number = abs(x - self_value) / self._step
+
+        else:
+            decision = '2 neighbors -> go to middle point'
+            if self._last_checked_direction == DIR_INCREASE and self._right_crit > self_crit:
+                other_value = self._left_value
+                self._last_checked_direction = DIR_DECREASE
+            elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self_crit:
+                other_value = self._right_value
+                self._last_checked_direction = DIR_INCREASE
+            elif self.next_point and self.next_point.is_current:
+                other_value = self.previous_point.parameter_value
+            elif self._right_crit < self._left_crit:
+                other_value = self._right_value
+                self._last_checked_direction = DIR_INCREASE
+            else:
+                other_value = self._left_value
+                self._last_checked_direction = DIR_DECREASE
+            suggested_point = (self_value + other_value) / 2
+
+        return decision, direction, suggested_point, suggested_steps_number
+
+    def _semi_local_search(self):
+        self.best_local_minimum = False
+        self_value = self.parameter_value
+        self_crit = self.objective_criticalities[self._helped_obj]
+        from_value = self_value
+        suggested_point = None
+        suggested_steps_number = None
+        check_for_out_of_bounds = False
+        direction = DIR_NONE
+        other_min: typ.Optional[PointAgent] = None
+
+        if (self._left_point is not None) != (self._right_point is not None):
+            decision = '1 minimum neighbor -> follow slope'
+            if self._left_point:
+                top_point = (self._left_value, self._left_crit)
+                other_min = self._left_point
+            else:
+                top_point = (self._right_value, self._right_crit)
+                other_min = self._right_point
+            if top_point[1] < self_crit:
+                interm_point = top_point
+                top_point = (self_value, self_crit)
+                from_value = interm_point[0]
+            else:
+                interm_point = (self_value, self_crit)
+            self._step = abs(interm_point[0] - top_point[0])
+            x = utils.get_xc(top_point, intermediate_point=interm_point, yc=0)
+            direction = DIR_INCREASE if x > self_value else DIR_DECREASE
+            suggested_steps_number = abs(x - interm_point[0]) / self._step
+            check_for_out_of_bounds = True
+
+        else:
+            decision = '2 minima neighbors: '
+            if self._left_crit < self_crit < self._right_crit:
+                decision += 'left lower, right higher -> follow left slope'
+                from_value = self._left_value
+                self._step = abs(self_value - self._left_value)
+                x = utils.get_xc(top_point=(self_value, self_crit),
+                                 intermediate_point=(self._left_value, self._left_crit), yc=0)
+                direction = DIR_DECREASE
+                other_min = self._left_point
+                suggested_steps_number = abs(x - self._left_value) / self._step
+                check_for_out_of_bounds = True
+
+            elif self._left_crit > self_crit > self._right_crit:
+                decision += 'left higher, right lower -> follow right slope'
+                from_value = self._right_value
+                self._step = abs(self_value - self._right_value)
+                x = utils.get_xc(top_point=(self_value, self_crit),
+                                 intermediate_point=(self._right_value, self._right_crit), yc=0)
+                direction = DIR_INCREASE
+                other_min = self._right_point
+                suggested_steps_number = abs(x - self._right_value) / self._step
+                check_for_out_of_bounds = True
+
+            elif self._left_crit < self_crit > self._right_crit:
+                decision += 'both lower -> follow slope on lowest’s side'
+                if self._right_crit < self._left_crit:
+                    from_value = self._right_value
+                    crit = self._right_crit
+                    other_min = self._right_point
+                else:
+                    from_value = self._left_value
+                    crit = self._left_crit
+                    other_min = self._left_point
+                self._step = abs(self_value - from_value)
+                x = utils.get_xc(top_point=(self_value, self_crit),
+                                 intermediate_point=(from_value, crit), yc=0)
+                direction = DIR_INCREASE
+                suggested_steps_number = abs(x - from_value) / self._step
+                check_for_out_of_bounds = True
+
+            else:
+                decision += 'both higher -> go to middle point'
+                if self._last_checked_direction == DIR_INCREASE and self._right_crit > self_crit:
+                    other_value = self._left_value
+                    self._last_checked_direction = DIR_DECREASE
+                elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self_crit:
+                    other_value = self._right_value
+                    self._last_checked_direction = DIR_INCREASE
+                elif self.next_point and self.next_point.is_current:
+                    other_value = self.previous_point.parameter_value
+                elif self._right_crit < self._left_crit:
+                    other_value = self._right_value
+                    self._last_checked_direction = DIR_INCREASE
+                else:
+                    other_value = self._left_value
+                    self._last_checked_direction = DIR_DECREASE
+                suggested_point = (self_value + other_value) / 2
+
+        if suggested_steps_number is not None and self.local_min_already_visited:
+            prev_min = self._param_agent.minima[-2]  # -1 is current minimum
+            if (abs(self.parameter_value - prev_min.parameter_value) <= self.SAME_POINT_THRESHOLD
+                    and prev_min.prev_suggestion_out_of_bounds):
+                decision += ' -> previous was OOB -> cancel jump and go to middle'
+                suggested_steps_number = None
+                suggested_point = (self_value + other_min.parameter_value) / 2
+                check_for_out_of_bounds = False
+            else:
+                # We came back to an already visited local minimum, go twice as far than previously
+                decision += ' and jump twice as far'
+                self.steps_mult *= 2
+                suggested_steps_number *= self.steps_mult
+
+        new_chain_next = True
+
+        return (check_for_out_of_bounds, decision, direction, from_value,
+                new_chain_next, suggested_point, suggested_steps_number)
+
+    def _hill_climb(self):
+        decision = ''
+        new_chain_next = False
+        self_value = self.parameter_value
+        self_crit = self.objective_criticalities[self._helped_obj]
+        suggested_point = None
+        suggested_steps_number = None
+        direction = DIR_NONE
+
+        other_extremum = [p for p in self._all_points if p.is_extremum and p is not self][0]
+        other_extremum_value = other_extremum.parameter_value
+        other_extremum_crit = other_extremum.objective_criticalities[self._helped_obj]
+        self_on_bound = self_value in [self._param_agent.inf, self._param_agent.sup]
+        other_on_bound = other_extremum_value in [self._param_agent.inf, self._param_agent.sup]
+
+        if other_extremum_value < self_value:
+            prev_value = self._left_value
+            prev_crit = self._left_crit
+            prev = self._left_point
+        else:
+            prev_value = self._right_value
+            prev_crit = self._right_crit
+            prev = self._right_point
+
+        if self_crit < prev_crit:
+            decision = 'opposite slope found -> stop climbing; create new chain; explore'
+            if prev is self._left_point or self_value == self._param_agent.inf:
+                direction = DIR_INCREASE
+            elif prev is self._right_point or self_value == self._param_agent.sup:
+                direction = DIR_DECREASE
+            else:
+                direction = self._last_direction or DIR_INCREASE
+            suggested_steps_number = 1
+            self._min_of_chain.go_up_mode = False
+            self._min_of_chain.already_went_up = True
+            if self._min_of_chain.first_point or self_on_bound:
+                new_chain_next = True
+            else:
+                self.create_new_chain_from_me = True
+
+        elif self_on_bound and other_on_bound:
+            if self_crit < other_extremum_crit:
+                decision = 'both extrema on bounds -> go to middle from lowest'
+                suggested_point = (self_value + prev_value) / 2
+
+        elif (self_crit < other_extremum_crit or other_on_bound) and not self_on_bound:
+            direction = DIR_DECREASE if self_value < prev_value else DIR_INCREASE
+            if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or other_on_bound:
+                decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
+                suggested_point = self_value + self._step * direction
+
+            else:
+                decision = 'go up slope'
+                suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
+                                               intermediate_point=(self_value, self_crit),
+                                               yc=other_extremum_crit)
+
+        return decision, direction, new_chain_next, suggested_point, suggested_steps_number
 
     def get_minimum(self) -> typ.Optional[PointAgent]:
         if self.is_local_minimum:

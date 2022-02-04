@@ -32,7 +32,7 @@ class DataSet:
         with file.open(encoding='utf8') as f:
             for line in f.readlines()[1:]:
                 p0, solution_found, error, cycles_number, speed, nb_points, unique_points, error_message = \
-                    line.split(',')
+                    line.split(',', maxsplit=7)
                 if int(solution_found):
                     self.successes_number += 1
                 if int(error):
