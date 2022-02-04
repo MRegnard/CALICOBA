@@ -26,7 +26,8 @@ class ExperimentsConfig:
 class ExperimentResult:
     solution_found: bool
     error: bool
-    speed: int
+    cycles_number: int
+    time: float
     points_number: int = None
     unique_points_number: int = None
     error_message: str = None

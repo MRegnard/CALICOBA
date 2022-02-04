@@ -286,6 +286,8 @@ class PointAgent(Agent):
                 and abs(self._left_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD
                 and abs(self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD):
             self.log_debug('local min found')
+            # TODO tester ici si le minimum global a été trouvé
+            # TODO -> sous-classer Suggestion avec GlobalMinimumFoundSuggestion pour ce cas-là
             self.is_local_minimum = True
             similar_minima = [mini for mini in self._param_agent.minima
                               if abs(mini.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD]
@@ -392,7 +394,10 @@ class PointAgent(Agent):
                         direction = DIR_INCREASE
                     else:
                         direction = DIR_DECREASE
-                    suggested_steps_number = abs(x - self_value) / self._step
+                    if abs(x - self_value) < self.STUCK_THRESHOLD:
+                        suggested_point = self_value + self._step * direction
+                    else:
+                        suggested_steps_number = abs(x - self_value) / self._step
 
                 else:
                     decision = '2 neighbors -> go to middle point'

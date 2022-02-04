@@ -4,6 +4,7 @@ import configparser
 import logging
 import pathlib
 import random
+import time
 import typing as typ
 
 import numpy as np
@@ -32,7 +33,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
     arg_parser.add_argument('-c', '--config', dest='config_file', metavar='FILE', type=pathlib.Path,
                             help='path to config file')
     arg_parser.add_argument('--method', dest='method', metavar='METHOD', type=str, choices=(
-        'calicoba', 'SA', 'DA', 'BH', 'NM', 'DE', 'PSO',
+        'calicoba', 'SA', 'GSA', 'BH', 'NM', 'DE', 'PSO',
     ), help='method to use to explore the model')
     arg_parser.add_argument('-m', '--model', dest='model_id', type=str, help='ID of the model to experiment on')
     arg_parser.add_argument('-p', '--params', metavar='VALUE', dest='param_values', type=float, nargs='+', default=[],
@@ -230,12 +231,12 @@ def main():
         if config.dump_data and config.runs_number > 1:
             logger.info('Saving results')
             with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
-                f.write(
-                    'P(0),solution found,error,speed,# of visited points,# of unique visited points,error message\n')
+                f.write('P(0),solution found,error,cycles_number,speed,# of visited points,# of unique visited points,'
+                        'error message\n')
                 for result in global_results[model.id]:
                     exp_res: exp_utils.ExperimentResult = result['result']
                     f.write(f'{test_utils.map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
-                            f'{int(exp_res.error)},{exp_res.speed},{exp_res.points_number},'
+                            f'{int(exp_res.error)},{exp_res.cycles_number},{exp_res.time},{exp_res.points_number},'
                             f'{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
 
 
@@ -286,12 +287,13 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
     system.setup()
     solution_found = False
-    calibration_speed = 0
+    cycles_number = 0
+    start_time = time.time()
     points = []
     unique_points = []
     error_message = ''
     for i in range(max_steps):
-        calibration_speed = i
+        cycles_number = i
         model.update()
         params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
         p = sorted(params.items())
@@ -307,7 +309,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         }
 
         logger.debug('Objectives: ' + str(objs.items()))
+        # TODO retirer et remplacer par la détection de la classe GlobalMinimumFoundSuggestion après la ligne 332
         if all([abs(obj) < null_threshold for obj in objs.values()]):
+            print(model.get_parameter('p1'))
             solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < null_threshold for params in solutions)
             break
 
@@ -336,14 +340,17 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         if step_by_step:
             input('Paused')
 
+    total_time = time.time() - start_time
+
     for param_name in model.parameters_names:
         param_files[param_name].write(
-            f'{calibration_speed + 1},{model.get_parameter(param_name)},,,,1,,,\n')
+            f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
     return exp_utils.ExperimentResult(
         solution_found=solution_found,
         error=error_message != '',
-        speed=calibration_speed,
+        cycles_number=cycles_number,
+        time=total_time,
         points_number=len(points),
         unique_points_number=len(unique_points),
         error_message=error_message,
@@ -379,6 +386,8 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
 
     model.reset()
 
+    start_time = time.time()
+
     if method == 'SA':  # Simulated Annealing
         res = other_methods.simulated_annealing(
             init_state=x0,
@@ -389,7 +398,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
             init_temp=10,
         )
 
-    elif method == 'DA':  # Dual Annealing
+    elif method == 'GSA':  # Generalized Simulated Annealing
         res = sp_opti.dual_annealing(
             func=function,
             bounds=bounds,
@@ -436,7 +445,8 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
         return exp_utils.ExperimentResult(
             solution_found=abs(res.fun - target_out) < ε,
             error=False,
-            speed=res.nit,
+            cycles_number=res.nit,
+            time=time.time() - start_time,
             points_number=res.nfev,
             unique_points_number=res.nfev,
         )
