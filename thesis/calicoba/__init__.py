@@ -112,7 +112,7 @@ class Calicoba:
             if point.dead:
                 self.remove_agent(point)
             elif suggestion:
-                if suggestion.new_chain_next:
+                if isinstance(suggestion, agents.Suggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.parameter_name)
                 suggestions[point.parameter_name].append(suggestion)
 

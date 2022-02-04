@@ -152,7 +152,7 @@ def main():
         if not config.model_id:
             log_message += ' each'
     if config.parameters_values:
-        log_message += f' with parameter values ' + ', '.join(map(str, config.parameters_values))
+        log_message += ' with parameter values ' + ', '.join(map(str, config.parameters_values))
     logger.info(log_message)
 
     output_dir = config.output_directory
@@ -309,11 +309,6 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         }
 
         logger.debug('Objectives: ' + str(objs.items()))
-        # TODO retirer et remplacer par la détection de la classe GlobalMinimumFoundSuggestion après la ligne 332
-        if all([abs(obj) < null_threshold for obj in objs.values()]):
-            print(model.get_parameter('p1'))
-            solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < null_threshold for params in solutions)
-            break
 
         # noinspection PyBroadException
         try:
@@ -330,11 +325,15 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 error_message = 'no suggestions for parameter ' + param_name
                 break
             s = suggestion[0]
-            param_files[param_name].write(f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                                          f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
-                                          f'{s.step},{s.steps_number},{s.decision}\n')
-            model.set_parameter(param_name, s.next_point)
-        if error_message:
+            if isinstance(s, calicoba.agents.GlobalMinimumFound):
+                solution_found = any(abs(params['p1'] - model.get_parameter('p1')) < null_threshold
+                                     for params in solutions)
+            else:
+                param_files[param_name].write(f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
+                                              f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
+                                              f'{s.step},{s.steps_number},{s.decision}\n')
+                model.set_parameter(param_name, s.next_point)
+        if solution_found or error_message:
             break
 
         if step_by_step:

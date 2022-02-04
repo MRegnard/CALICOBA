@@ -167,6 +167,7 @@ class PointAgent(Agent):
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
     SAME_POINT_THRESHOLD = 0.01
+    NULL_THRESHOLD = 0.005
 
     def __init__(self, name: str, parameter_agent: ParameterAgent, previous_point: typ.Optional[PointAgent],
                  init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
@@ -191,7 +192,6 @@ class PointAgent(Agent):
         self._is_current = False
         self._current_point = None
         self._is_current_in_chain = False
-        self._is_current_in_points_list = False
 
         self._left_point = None
         self._left_value = None
@@ -205,6 +205,7 @@ class PointAgent(Agent):
         self._min_of_chain: typ.Optional[PointAgent] = None
         self._is_current_min_of_chain = False
         self.is_local_minimum = False
+        self.is_global_minimum = False
         self.is_extremum = False
         self.go_up_mode = False
         self.already_went_up = False
@@ -218,10 +219,7 @@ class PointAgent(Agent):
 
     def update_neighbors(self, points: typ.Iterable[PointAgent], threshold: float = 0):
         def value_in_list(v, vs):
-            for e in vs:
-                if abs(v - e) <= threshold:
-                    return True
-            return False
+            return any(abs(v - e) <= threshold for e in vs)
 
         sorted_points = sorted(points, key=lambda p: p.parameter_value)
         # Remove duplicates
@@ -254,16 +252,6 @@ class PointAgent(Agent):
             self._right_value = None
             self._right_crit = None
 
-    def _current_point_in_chain(self, point: PointAgent) -> typ.Tuple[bool, bool]:
-        if point in self._all_points:
-            return True, True
-        # if point.previous_point is None:  # Only check if point is first in its chain
-        #     sorted_points = sorted(self._all_points, key=lambda p_: p_.parameter_value)
-        #     for i in range(1, len(sorted_points)):
-        #         if sorted_points[i - 1].parameter_value <= point.parameter_value <= sorted_points[i].parameter_value:
-        #             return True, False
-        return False, False
-
     def perceive(self, current_point: PointAgent, last_direction: int, criticalities: typ.Dict[str, float]):
         self._is_current = self is current_point
         self._current_point = current_point
@@ -275,9 +263,8 @@ class PointAgent(Agent):
         else:
             self._min_of_chain = self
         self._is_current_min_of_chain = self._min_of_chain is self
-        in_chain, in_points_list = self._current_point_in_chain(current_point)
+        in_chain = current_point in self._all_points
         self._is_current_in_chain = in_chain
-        self._is_current_in_points_list = in_points_list
         wait = False
 
         self.update_neighbors(self._all_points)
@@ -286,13 +273,14 @@ class PointAgent(Agent):
                 and abs(self._left_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD
                 and abs(self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD):
             self.log_debug('local min found')
-            # TODO tester ici si le minimum global a été trouvé
-            # TODO -> sous-classer Suggestion avec GlobalMinimumFoundSuggestion pour ce cas-là
             self.is_local_minimum = True
+            if self.objective_criticalities[self._helped_obj] < self.NULL_THRESHOLD:
+                self.is_global_minimum = True
+                return
             similar_minima = [mini for mini in self._param_agent.minima
                               if abs(mini.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD]
             already_went_up = any(mini.already_went_up for mini in similar_minima)
-            max_steps_mult = max([mini.steps_mult for mini in similar_minima], default=1)
+            max_steps_mult = max((mini.steps_mult for mini in similar_minima), default=1)
             other_minima = set(self._param_agent.minima) - set(similar_minima)
 
             if similar_minima:
@@ -346,7 +334,9 @@ class PointAgent(Agent):
                     point.is_extremum = True
                     extremum_max = point
 
-    def decide(self) -> typ.Optional[Suggestion]:
+    def decide(self) -> typ.Optional[typ.Optional[Suggestion, GlobalMinimumFound]]:
+        if self.is_global_minimum:
+            return GlobalMinimumFound()
         if not self._is_current_in_chain and not self.best_local_minimum:
             return None
 
@@ -669,6 +659,10 @@ class Suggestion:
     step: float = None
     steps_number: float = None
     direction: int = None
+
+
+class GlobalMinimumFound:
+    pass
 
 
 class ObjectiveFunction(abc.ABC):
