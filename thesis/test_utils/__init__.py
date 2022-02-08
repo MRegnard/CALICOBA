@@ -41,7 +41,11 @@ MODEL_SOLUTIONS = {
     'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
     'weierstrass_function': ([desired_parameters(1)], desired_outputs(-2)),
     # 'rosenbrock_function': ([desired_parameters(1)], desired_outputs(0)),
-    # 'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534))
+    # 'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534)),
+    'gl_ackley': ([desired_parameters(0)], desired_outputs(-0.869011, 0)),  # TODO determine true parameter value
+    'ackley_rastrigin': ([desired_parameters(0)], desired_outputs(0, 0)),
+    'gl_offset': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
+    'ackley_offset': ([desired_parameters(0)], desired_outputs(0)),
 }
 
 
@@ -160,7 +164,7 @@ class PeriodDetector:
 
     @property
     def has_converged(self) -> bool:
-        return any([d < 1e-5 for d, _ in self.get_period_distances()])
+        return any(d < 1e-5 for d, _ in self.get_period_distances())
 
     def append(self, value: float):
         if self.is_full:

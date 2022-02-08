@@ -194,7 +194,6 @@ def main():
                     p_init,
                     target_parameters,
                     target_outputs,
-                    config.null_crit_threshold,
                     noisy=config.noisy_functions,
                     noise_mean=config.noise_mean,
                     noise_stdev=config.noise_stdev,
@@ -241,8 +240,7 @@ def main():
 
 
 def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map],
-                            target_outputs: test_utils.Map, null_threshold: float,
-                            *, free_param: str = None, step_by_step: bool = False,
+                            target_outputs: test_utils.Map, *, free_param: str = None, step_by_step: bool = False,
                             max_steps: int = DEFAULT_MAX_STEPS_NB, seed: int = None, noisy: bool = False,
                             noise_mean: float = DEFAULT_NOISE_MEAN, noise_stdev: float = DEFAULT_NOISE_STDEV,
                             output_dir: pathlib.Path = None, logger: logging.Logger = None,
@@ -281,8 +279,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         inf, sup = model.get_output_domain(output_name)
         objective_name = 'obj_' + output_name
         obj_functions[objective_name] = SimpleObjectiveFunction(target_outputs[output_name], output_name, noise=noisy)
-        inf = 0
-        sup = max(obj_functions[objective_name](o1=inf), obj_functions[objective_name](o1=sup))
+        # inf = 0
+        # sup = max(obj_functions[objective_name](**{output_name: inf}),
+        #           obj_functions[objective_name](**{output_name: sup}))
         system.add_objective(objective_name, inf, sup)
 
     system.setup()

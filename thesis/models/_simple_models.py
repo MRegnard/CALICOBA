@@ -153,8 +153,8 @@ class AckleyFunction(_model.Model):
 
     def _evaluate(self, **params: float):
         d = len(self.parameters_names)
-        e1 = -self._b * math.sqrt(sum([p ** 2 for p in params.values()]) / d)
-        e2 = sum([math.cos(self._c * p) for p in params.values()]) / d
+        e1 = -self._b * math.sqrt(sum(p ** 2 for p in params.values()) / d)
+        e2 = sum(math.cos(self._c * p) for p in params.values()) / d
         return {
             'o1': -self._a * math.exp(e1) - math.exp(e2) + self._a + math.exp(1),
         }
@@ -169,12 +169,11 @@ class LevyFunction(_model.Model):
         )
 
     def _evaluate(self, **params: float):
-        π = math.pi
         d = len(self.parameters_names)
         w = [1 + (p - 1) / 4 for _, p in sorted(params.items(), key=lambda e: int(e[0][1:]))]
-        a = math.sin(π * w[0]) ** 2
-        b = sum(((wi - 1) ** 2) * (1 + 10 * math.sin(π * wi + 1) ** 2) for wi in w)
-        c = ((w[d - 1] - 1) ** 2) * (1 + math.sin(2 * π * w[d - 1]) ** 2)
+        a = math.sin(math.pi * w[0]) ** 2
+        b = sum(((wi - 1) ** 2) * (1 + 10 * math.sin(math.pi * wi + 1) ** 2) for wi in w)
+        c = ((w[d - 1] - 1) ** 2) * (1 + math.sin(2 * math.pi * w[d - 1]) ** 2)
         return {
             'o1': a + b + c,
         }
@@ -191,7 +190,7 @@ class RastriginFunction(_model.Model):
     def _evaluate(self, **params: float):
         d = len(self.parameters_names)
         return {
-            'o1': 10 * d + sum([p ** 2 - 10 * math.cos(2 * math.pi * p) for p in params.values()]),
+            'o1': 10 * d + sum(p ** 2 - 10 * math.cos(2 * math.pi * p) for p in params.values()),
         }
 
 
@@ -207,7 +206,6 @@ class LangermannFunction(_model.Model):
         self.__a = ((3,), (5,), (2,), (1,), (7,))
 
     def _evaluate(self, **params: float):
-        π = math.pi
         x = [p for _, p in sorted(params.items(), key=lambda e: int(e[0][1:]))]
         d = len(x)
 
@@ -215,7 +213,7 @@ class LangermannFunction(_model.Model):
             return sum((x[j] - self.__a[i][j]) ** 2 for j in range(d))
 
         return {
-            'o1': sum(self.__c[i] * math.exp(-f(i) / π) * math.cos(π * f(i)) for i in range(self.__m)),
+            'o1': sum(self.__c[i] * math.exp(-f(i) / math.pi) * math.cos(math.pi * f(i)) for i in range(self.__m)),
         }
 
 
@@ -265,7 +263,84 @@ class WeierstrassFunction(_model.Model):
 
     def _evaluate(self, p1: float):
         return {
-            'o1': sum((self._a ** n) * math.cos((self._b ** n) * math.pi * p1) for n in range(0, self._precision))
+            'o1': sum(
+                (self._a ** n) * math.cos((self._b ** n) * math.pi * p1)
+                for n in range(self._precision)
+            )
+        }
+
+
+class CombinedGLAckley(_model.Model):
+    def __init__(self, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
+        super().__init__(
+            'gl_ackley_function',
+            {'p1': (0.5, 2.5)},
+            {'o1': (-1, 5.1), 'o2': (3.55, 10.22)}
+        )
+        self._a = a
+        self._b = b
+        self._c = c
+
+    def _evaluate(self, p1: float):
+        e1 = -self._b * math.sqrt(p1 ** 2)
+        e2 = math.cos(self._c * p1)
+        return {
+            'o1': (math.sin(10 * math.pi * p1) / (2 * p1)) + (p1 - 1) ** 4,  # Gramacy & Lee
+            'o2': -self._a * math.exp(e1) - math.exp(e2) + self._a + math.exp(1),  # Ackley 1D
+        }
+
+
+class CombinedAckleyRastrigin(_model.Model):
+    def __init__(self, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
+        super().__init__(
+            'ackley_rastrigin',
+            {'p1': (-5.12, 5.12)},
+            {'o1': (0, 45), 'o2': (0, 15)}
+        )
+        self._a = a
+        self._b = b
+        self._c = c
+
+    def _evaluate(self, p1: float):
+        e1 = -self._b * math.sqrt(p1 ** 2)
+        e2 = math.cos(self._c * p1)
+        return {
+            'o1': 10 + (p1 ** 2 - 10 * math.cos(2 * math.pi * p1)),  # Rastrigin 1D
+            'o2': -self._a * math.exp(e1) - math.exp(e2) + self._a + math.exp(1),  # Ackley 1D
+        }
+
+
+class ModelGramacyAndLee2012Offset(_model.Model):
+    def __init__(self):
+        super().__init__(
+            'gl_offset',
+            {'p1': (0.5, 2.5)},
+            {'o1': (-10, 5.1)}
+        )
+
+    def _evaluate(self, p1: float):
+        return {
+            'o1': (math.sin(10 * math.pi * p1) / (2 * p1)) + (p1 - 1) ** 4,
+        }
+
+
+class AckleyFunctionOffset(_model.Model):
+    def __init__(self, dimensions: int = 1, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
+        super().__init__(
+            'ackley_offset',
+            {f'p{i + 1}': (-32, 32) for i in range(dimensions)},
+            {'o1': (-25, 25)}
+        )
+        self._a = a
+        self._b = b
+        self._c = c
+
+    def _evaluate(self, **params: float):
+        d = len(self.parameters_names)
+        e1 = -self._b * math.sqrt(sum(p ** 2 for p in params.values()) / d)
+        e2 = sum(math.cos(self._c * p) for p in params.values()) / d
+        return {
+            'o1': -self._a * math.exp(e1) - math.exp(e2) + self._a + math.exp(1),
         }
 
 
@@ -285,6 +360,10 @@ class SimpleModelsFactory(_model.ModelFactory):
         'rosenbrock_function': RosenbrockFunction,
         'langermann_function': LangermannFunction,
         'styblinski_tang_function': StyblinskiTangFunction,
+        'gl_ackley': CombinedGLAckley,
+        'ackley_rastrigin': CombinedAckleyRastrigin,
+        'gl_offset': ModelGramacyAndLee2012Offset,
+        'ackley_offset': AckleyFunctionOffset,
     }
 
     def generate_model(self, model_id: str, *args, **kwargs):
