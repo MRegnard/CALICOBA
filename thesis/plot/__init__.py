@@ -3,20 +3,31 @@ import typing as typ
 import matplotlib.figure as fig
 import numpy as np
 
+import calicoba.agents as calicoba
 import models
 
 
-def plot_model_function(subplot: fig.Axes, model: models.Model, out_name: str, bounds: typ.Tuple[float, float],
-                        precision: int = 200) -> typ.Tuple[float, float]:
-    param_name = 'p1'
+def plot_model_function(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, float], precision: int = 200):
+    colors = ['b', 'g', 'c', 'm', 'y', 'k']
+    param_name = model.parameters_names[0]
     p_min, p_max = bounds or model.get_parameter_domain(param_name)
     xs = []
-    ys = []
+    ys = {output_name: [] for output_name in model.outputs_names}
+    ys['front'] = []
+    normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
+                   for output_name in model.outputs_names}
     for x in np.linspace(p_min, p_max, num=precision):
         xs.append(x)
-        ys.append(model.evaluate(**{param_name: x})[out_name])
-    subplot.set_xlabel('$p$')
+        outputs = model.evaluate(**{param_name: x})
+        maxi = 0
+        for output_name, value in outputs.items():
+            v = normalizers[output_name](value)
+            maxi = max(maxi, v)
+            ys[output_name].append(v)
+        ys['front'].append(maxi)
+    subplot.set_xlabel(f'${param_name}$')
     model_id = model.id.replace('_', r'\_')
-    subplot.set_ylabel(f'${model_id}(p)$')
-    subplot.plot(xs, ys, label='$f(p)$')
-    return min(ys), max(ys)
+    subplot.set_ylabel(f'${model_id}({param_name})$')
+    for i, output_name in enumerate(model.outputs_names):
+        subplot.plot(xs, ys[output_name], color=colors[i], label=f'${output_name}$')
+    subplot.plot(xs, ys['front'], color='r', linestyle='--', label='Max criticality')

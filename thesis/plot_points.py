@@ -1,10 +1,10 @@
-#!/usr/bin/python3
 import argparse
 import pathlib
 import typing as typ
 
 import matplotlib.pyplot as plt
 
+import calicoba.agents as calicoba
 import models
 import plot
 
@@ -30,42 +30,34 @@ model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
 if len(model.parameters_names) != 1:
     raise ValueError('model has more than one parameter')
 
-param_name = 'p1'
-out_names = ['o1', 'o2']
+param_name = model.parameters_names[0]
+out_names = model.outputs_names
 p_min, p_max = bounds or model.get_parameter_domain(param_name)
 
 listened_points_xs = []
-listened_points_ys = {out_name: [] for out_name in out_names}
-mins = []
 p_xs = []
 p_ys = {out_name: [] for out_name in out_names}
-helped_objs = []
+normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
+               for output_name in model.outputs_names}
 new_chain_indices = []
 with (path / f'{param_name}.csv').open(encoding='utf8') as f:
     for line in f.readlines()[1:]:
-        cycle, value, objective, _, listened_point_value, is_min, _, _, message = line.strip().split(',')
-        value = float(value)
-        is_min = bool(int(is_min))
-        mins.append(is_min)
-        helped_objs.append(objective[objective.index('obj_') + 4:])
+        cycle, param_value, _, _, listened_point_value, _, _, _, message = line.strip().split(',')
+        param_value = float(param_value)
         if 'chain' in message:
             new_chain_indices.append(int(cycle))
         if listened_point_value != '':
             listened_point_value = float(listened_point_value)
             listened_points_xs.append(listened_point_value)
-            for out_name in out_names:
-                listened_points_ys[out_name].append(model.evaluate(**{param_name: listened_point_value})[out_name])
         else:
             listened_points_xs.append(None)
-            for out_name in out_names:
-                listened_points_ys[out_name].append(None)
-        p_xs.append(value)
-        for out_name in out_names:
-            p_ys[out_name].append(model.evaluate(**{param_name: value})[out_name])
+        p_xs.append(param_value)
+        for out_name, out_value in model.evaluate(**{param_name: param_value}).items():
+            p_ys[out_name].append(normalizers[out_name](out_value))
     new_chain_indices.append(len(p_xs))
 
 if p_xs:
-    colors = ['r', 'c', 'm', 'y', 'k', 'w']
+    colors = ['r', 'c', 'm', 'y', 'k']
     if split_figures:
         dest_path = path / 'figures'
         if not dest_path.exists():
@@ -75,36 +67,39 @@ if p_xs:
                 if file.is_file():
                     file.unlink()
 
-        for j, x in enumerate(p_xs):
+        for i in range(len(p_xs)):
             fig = plt.figure()
             fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id}\n'
-                         f'pour $p(0) = {p_xs[0]}$ (itération {j + 1}/{len(p_xs)})')
-            for i, out_name in enumerate(out_names):
-                subplot = fig.add_subplot(1, len(out_names), i + 1)
-                print(f'Generating plot {j + 1}/{len(p_xs)}')
-                y_min, y_max = plot.plot_model_function(subplot, model, out_name, bounds,
-                                                        precision=sampling_precision)
-                subplot.vlines(p_xs[0], y_min, y_max, color='black', linestyles='--', label='$p(0)$')
-                for k in range(len(new_chain_indices) - 1):
-                    index = new_chain_indices[k]
-                    next_index = new_chain_indices[k + 1]
-                    subplot.scatter(p_xs[index:min(j, next_index)], p_ys[out_name][index:min(j, next_index)],
-                                    marker='x', color=colors[k])
-                subplot.scatter(p_xs[j], p_ys[out_name][j], marker='o', color='g', label='Dernier point')
-                if j > 0 and listened_points_xs[j - 1] is not None and out_name == helped_objs[j - 1]:
-                    subplot.scatter(listened_points_xs[j - 1], listened_points_ys[out_name][j - 1], marker='x',
-                                    color='b', label='Point suggérant')
-                subplot.legend()
-            fig.savefig(dest_path / f'fig_{j}.png', dpi=200)
+                         f'pour ${param_name}(0) = {p_xs[0]}$ (itération {i + 1}/{len(p_xs)})')
+            subplot = fig.add_subplot(1, 1, 1)
+            print(f'Generating plot {i + 1}/{len(p_xs)}')
+            plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
+            subplot.vlines(p_xs[0], 0, 1, color='black', linestyles='--', label=f'${param_name}(0)$')
+            for j in range(len(new_chain_indices) - 1):
+                index = new_chain_indices[j]
+                next_index = new_chain_indices[j + 1]
+                for out_name in model.outputs_names:
+                    subplot.scatter(p_xs[index:min(i, next_index)], p_ys[out_name][index:min(i, next_index)],
+                                    marker='x', color=colors[j])
+            for j, out_name in enumerate(model.outputs_names):
+                subplot.scatter(p_xs[i], p_ys[out_name][i], marker='o', color='g',
+                                label='Dernier point' if j == 0 else None)
+            if i > 0 and listened_points_xs[i - 1] is not None:
+                for j, out_name in enumerate(model.outputs_names):
+                    y = p_ys[out_name][p_xs.index(listened_points_xs[i - 1])]
+                    subplot.scatter(listened_points_xs[i - 1], y, marker='x', color='b',
+                                    label='Point suggérant' if j == 0 else None)
+            subplot.legend()
+            fig.savefig(dest_path / f'fig_{i + 1}.png', dpi=200)
             plt.close(fig)
     else:
         fig = plt.figure()
-        fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id} pour $p(0) = {p_xs[0]}$')
-        for i, out_name in enumerate(out_names):
-            subplot = fig.add_subplot(1, len(out_names), i + 1)
-            y_min, y_max = plot.plot_model_function(subplot, model, out_name, bounds, precision=sampling_precision)
-            subplot.scatter(p_xs, p_ys[out_name], marker='x', color='r', label='$p(t)$')
-            subplot.vlines(p_xs[0], y_min, y_max, color='black', linestyles='--', label='$p(0)$')
-            subplot.vlines(p_xs[-1], y_min, y_max, color='limegreen', linestyles='--', label=f'$p({len(p_xs) - 1})$')
-            subplot.legend()
+        fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id} pour ${param_name}(0) = {p_xs[0]}$')
+        subplot = fig.add_subplot(1, 1, 1)
+        plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
+        for i, out_name in enumerate(model.outputs_names):
+            subplot.scatter(p_xs, p_ys[out_name], marker='x', color='r', label=f'${param_name}(t)$' if i == 0 else None)
+        subplot.vlines(p_xs[0], 0, 1, color='black', linestyles='--', label=f'${param_name}(0)$')
+        subplot.vlines(p_xs[-1], 0, 1, color='limegreen', linestyles='--', label=f'${param_name}({len(p_xs) - 1})$')
+        subplot.legend()
         plt.show()

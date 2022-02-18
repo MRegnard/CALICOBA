@@ -273,7 +273,7 @@ class WeierstrassFunction(_model.Model):
 class CombinedGLAckley(_model.Model):
     def __init__(self, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
         super().__init__(
-            'gl_ackley_function',
+            'gl_ackley',
             {'p1': (0.5, 2.5)},
             {'o1': (-0.87, 5.1), 'o2': (3.55, 10.22)}
         )
