@@ -156,12 +156,13 @@ def main():
     logger.info(log_message)
 
     output_dir = config.output_directory
-    output_dir /= config.method
-    if config.noisy_functions:
-        output_dir /= 'noisy'
+    if output_dir:
+        output_dir /= config.method
+        if config.noisy_functions:
+            output_dir /= 'noisy'
 
-    if config.dump_data and not output_dir.exists():
-        output_dir.mkdir(parents=True)
+        if config.dump_data and not output_dir.exists():
+            output_dir.mkdir(parents=True)
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
     models_ = {k: (model_factory.generate_model(k), v) for k, v in test_utils.MODEL_SOLUTIONS.items()}
     if config.model_id:
@@ -189,22 +190,13 @@ def main():
                 continue
             tested_params.append(p)
             if config.method == 'calicoba':
-                result = evaluate_model_calicoba(
-                    model,
-                    p_init,
-                    target_parameters,
-                    target_outputs,
-                    noisy=config.noisy_functions,
-                    noise_mean=config.noise_mean,
-                    noise_stdev=config.noise_stdev,
-                    free_param=config.free_parameter,
-                    max_steps=config.max_steps,
-                    step_by_step=config.step_by_step,
-                    seed=config.seed,
-                    output_dir=output_dir / model.id / test_utils.map_to_string(p_init),
-                    logger=logger,
-                    logging_level=config.log_level,
-                )
+                result = evaluate_model_calicoba(model, p_init, target_parameters, free_param=config.free_parameter,
+                                                 step_by_step=config.step_by_step, max_steps=config.max_steps,
+                                                 seed=config.seed, noisy=config.noisy_functions,
+                                                 noise_mean=config.noise_mean, noise_stdev=config.noise_stdev,
+                                                 output_dir=output_dir / model.id / test_utils.map_to_string(
+                                                     p_init) if output_dir else None, logger=logger,
+                                                 logging_level=config.log_level)
             else:
                 result = evaluate_model_other(
                     config.method,
@@ -227,7 +219,7 @@ def main():
             if result.error_message:
                 logger.info(f'Error: {result.error_message}')
 
-        if config.dump_data and config.runs_number > 1:
+        if config.dump_data and output_dir and config.runs_number > 1:
             logger.info('Saving results')
             with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
                 f.write('P(0),solution found,error,cycles_number,speed,# of visited points,# of unique visited points,'
@@ -239,21 +231,19 @@ def main():
                             f'{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
 
 
-def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map],
-                            target_outputs: test_utils.Map, *, free_param: str = None, step_by_step: bool = False,
-                            max_steps: int = DEFAULT_MAX_STEPS_NB, seed: int = None, noisy: bool = False,
-                            noise_mean: float = DEFAULT_NOISE_MEAN, noise_stdev: float = DEFAULT_NOISE_STDEV,
-                            output_dir: pathlib.Path = None, logger: logging.Logger = None,
-                            logging_level: int = logging.INFO) \
+def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map], *,
+                            free_param: str = None, step_by_step: bool = False, max_steps: int = DEFAULT_MAX_STEPS_NB,
+                            seed: int = None, noisy: bool = False, noise_mean: float = DEFAULT_NOISE_MEAN,
+                            noise_stdev: float = DEFAULT_NOISE_STDEV, output_dir: pathlib.Path = None,
+                            logger: logging.Logger = None, logging_level: int = logging.INFO) \
         -> exp_utils.ExperimentResult:
     class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
-        def __init__(self, target_value: float, *parameter_names, noise=False):
+        def __init__(self, *parameter_names, noise=False):
             super().__init__(*parameter_names)
-            self._target_value = target_value
             self.noisy = noise
 
         def __call__(self, **kwargs: float):
-            return (abs(kwargs[self.parameter_names[0]] - self._target_value)
+            return (kwargs[self.parameter_names[0]]
                     + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if self.noisy else 0))
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
@@ -278,10 +268,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     for output_name in model.outputs_names:
         inf, sup = model.get_output_domain(output_name)
         objective_name = 'obj_' + output_name
-        obj_functions[objective_name] = SimpleObjectiveFunction(target_outputs[output_name], output_name, noise=noisy)
-        # inf = 0
-        # sup = max(obj_functions[objective_name](**{output_name: inf}),
-        #           obj_functions[objective_name](**{output_name: sup}))
+        obj_functions[objective_name] = SimpleObjectiveFunction(output_name, noise=noisy)
         system.add_objective(objective_name, inf, sup)
 
     system.setup()

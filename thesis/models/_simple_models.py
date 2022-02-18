@@ -131,7 +131,7 @@ class ModelGramacyAndLee2012(_model.Model):
         super().__init__(
             'gramacy_and_lee_2012',
             {'p1': (0.5, 2.5)},
-            {'o1': (-1, 5.1)}
+            {'o1': (-0.87, 5.1)}
         )
 
     def _evaluate(self, p1: float):
@@ -275,7 +275,7 @@ class CombinedGLAckley(_model.Model):
         super().__init__(
             'gl_ackley_function',
             {'p1': (0.5, 2.5)},
-            {'o1': (-1, 5.1), 'o2': (3.55, 10.22)}
+            {'o1': (-0.87, 5.1), 'o2': (3.55, 10.22)}
         )
         self._a = a
         self._b = b
