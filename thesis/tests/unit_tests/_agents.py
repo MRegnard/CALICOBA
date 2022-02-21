@@ -27,8 +27,8 @@ class DummyCriticalityFunction(calicoba.agents.ObjectiveFunction):
     def __init__(self):
         super().__init__('out')
 
-    def __call__(self, **kwargs):
-        return 2 * kwargs['out']
+    def __call__(self, **outputs_values):
+        return 2 * outputs_values['out']
 
 
 class AgentTestCase(unittest.TestCase):

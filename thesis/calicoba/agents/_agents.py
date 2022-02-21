@@ -685,13 +685,13 @@ class GlobalMinimumFound:
 
 
 class ObjectiveFunction(abc.ABC):
-    def __init__(self, *parameter_names: str):
-        self._param_names = parameter_names
+    def __init__(self, *outputs_names: str):
+        self._outputs_names = outputs_names
 
     @property
-    def parameter_names(self) -> typ.Tuple[str]:
-        return self._param_names
+    def outputs_names(self) -> typ.Tuple[str]:
+        return self._outputs_names
 
     @abc.abstractmethod
-    def __call__(self, **kwargs: float) -> float:
+    def __call__(self, **outputs_values: float) -> float:
         pass

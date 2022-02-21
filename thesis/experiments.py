@@ -238,12 +238,12 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                             logger: logging.Logger = None, logging_level: int = logging.INFO) \
         -> exp_utils.ExperimentResult:
     class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
-        def __init__(self, *parameter_names, noise=False):
-            super().__init__(*parameter_names)
+        def __init__(self, *outputs_names, noise=False):
+            super().__init__(*outputs_names)
             self.noisy = noise
 
-        def __call__(self, **kwargs: float):
-            return (kwargs[self.parameter_names[0]]
+        def __call__(self, **outputs_values: float):
+            return (outputs_values[self.outputs_names[0]]
                     + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if self.noisy else 0))
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
@@ -289,7 +289,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         objs = {
             obj_name: obj_function(**{
                 out_name: model.get_output(out_name)
-                for out_name in obj_function.parameter_names
+                for out_name in obj_function.outputs_names
             })
             for obj_name, obj_function in obj_functions.items()
         }
