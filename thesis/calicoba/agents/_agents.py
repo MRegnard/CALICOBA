@@ -176,7 +176,6 @@ class PointAgent(Agent):
         self._param_value = parameter_agent.value
 
         self._criticalities = objective_criticalities
-        self._helped_obj = None
 
         self._step = init_step
         self._last_direction = DIR_NONE
@@ -238,7 +237,7 @@ class PointAgent(Agent):
         if i > 0:
             self._left_point = sorted_points[i - 1]
             self._left_value = self._left_point.parameter_value
-            self._left_crit = self._left_point.objective_criticalities[self._helped_obj]
+            self._left_crit = self._left_point.criticality
         else:
             self._left_point = None
             self._left_value = None
@@ -246,20 +245,19 @@ class PointAgent(Agent):
         if i < len(sorted_points) - 1:
             self._right_point = sorted_points[i + 1]
             self._right_value = self._right_point.parameter_value
-            self._right_crit = self._right_point.objective_criticalities[self._helped_obj]
+            self._right_crit = self._right_point.criticality
         else:
             self._right_point = None
             self._right_value = None
             self._right_crit = None
 
-    def perceive(self, current_point: PointAgent, last_direction: int, criticalities: typ.Dict[str, float]):
+    def perceive(self, current_point: PointAgent, last_direction: int):
         self._is_current = self is current_point
         self._current_point = current_point
         self._last_direction = last_direction
-        self._helped_obj = max(criticalities.items(), key=lambda item: item[1])[0]
         self._all_points = self._get_all_points_in_chain()
         if not self.is_local_minimum:
-            self._min_of_chain = min(self._all_points, key=lambda p: p.objective_criticalities[self._helped_obj])
+            self._min_of_chain = min(self._all_points, key=lambda p: p.criticality)
         else:
             self._min_of_chain = self
         self._is_current_min_of_chain = self._min_of_chain is self
@@ -274,7 +272,7 @@ class PointAgent(Agent):
                 and abs(self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD):
             self.log_debug('local min found')
             self.is_local_minimum = True
-            if self.objective_criticalities[self._helped_obj] < self.NULL_THRESHOLD:
+            if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
                 return
             similar_minima = [mini for mini in self._param_agent.minima
@@ -374,8 +372,8 @@ class PointAgent(Agent):
                 agent=self,
                 next_point=min(self._param_agent.sup, max(self._param_agent.inf, suggested_point)),
                 decision=decision,
-                selected_objective=self._helped_obj,
-                criticality=self._current_point.objective_criticalities[self._helped_obj],
+                selected_objective='',
+                criticality=self._current_point.criticality,
                 direction=direction,
                 step=self._step,
                 steps_number=suggested_steps_number,
@@ -388,7 +386,7 @@ class PointAgent(Agent):
         suggested_point = None
         suggested_steps_number = None
         self_value = self.parameter_value
-        self_crit = self._criticalities[self._helped_obj]
+        self_crit = self.criticality
 
         if self.previous_point is None and self.next_point is None:
             decision = 'first point in chain -> explore'
@@ -445,7 +443,7 @@ class PointAgent(Agent):
     def _semi_local_search(self):
         self.best_local_minimum = False
         self_value = self.parameter_value
-        self_crit = self.objective_criticalities[self._helped_obj]
+        self_crit = self.criticality
         from_value = self_value
         suggested_point = None
         suggested_steps_number = None
@@ -555,14 +553,14 @@ class PointAgent(Agent):
         decision = ''
         new_chain_next = False
         self_value = self.parameter_value
-        self_crit = self.objective_criticalities[self._helped_obj]
+        self_crit = self.criticality
         suggested_point = None
         suggested_steps_number = None
         direction = DIR_NONE
 
         other_extremum = [p for p in self._all_points if p.is_extremum and p is not self][0]
         other_extremum_value = other_extremum.parameter_value
-        other_extremum_crit = other_extremum.objective_criticalities[self._helped_obj]
+        other_extremum_crit = other_extremum.criticality
         self_on_bound = self_value in [self._param_agent.inf, self._param_agent.sup]
         other_on_bound = other_extremum_value in [self._param_agent.inf, self._param_agent.sup]
 
@@ -629,6 +627,10 @@ class PointAgent(Agent):
     @property
     def objective_criticalities(self) -> typ.Dict[str, float]:
         return dict(self._criticalities)
+
+    @property
+    def criticality(self) -> float:
+        return max(self._criticalities.values())
 
     @property
     def is_current(self) -> bool:

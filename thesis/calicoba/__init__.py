@@ -104,7 +104,7 @@ class Calicoba:
         # Update point agents
         point_agents = self.get_agents_for_type(agents.PointAgent)
         for point in point_agents:
-            point.perceive(current_points[point.parameter_name], last_directions[point.parameter_name], crits)
+            point.perceive(current_points[point.parameter_name], last_directions[point.parameter_name])
 
         # Let point agents decide where to go next
         for point in point_agents:
