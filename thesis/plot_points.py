@@ -69,8 +69,8 @@ if p_xs:
 
         for i in range(len(p_xs)):
             fig = plt.figure()
-            fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id}\n'
-                         f'pour ${param_name}(0) = {p_xs[0]}$ (itération {i + 1}/{len(p_xs)})')
+            fig.suptitle(f'CoBOpti’s behavior on model {model.id}\n'
+                         f'for ${plot.format_name(param_name)}(0) = {p_xs[0]}$ (iteration {i + 1}/{len(p_xs)})')
             subplot = fig.add_subplot(1, 1, 1)
             print(f'Generating plot {i + 1}/{len(p_xs)}')
             plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
@@ -83,23 +83,25 @@ if p_xs:
                                     marker='x', color=colors[j])
             for j, out_name in enumerate(model.outputs_names):
                 subplot.scatter(p_xs[i], p_ys[out_name][i], marker='o', color='g',
-                                label='Dernier point' if j == 0 else None)
+                                label='Latest point' if j == 0 else None)
             if i > 0 and listened_points_xs[i - 1] is not None:
                 for j, out_name in enumerate(model.outputs_names):
                     y = p_ys[out_name][p_xs.index(listened_points_xs[i - 1])]
                     subplot.scatter(listened_points_xs[i - 1], y, marker='x', color='b',
-                                    label='Point suggérant' if j == 0 else None)
+                                    label='Suggesting point' if j == 0 else None)
             subplot.legend()
             fig.savefig(dest_path / f'fig_{i + 1}.png', dpi=200)
             plt.close(fig)
     else:
         fig = plt.figure()
-        fig.suptitle(f'Comportement de CALICOBA sur le modèle {model.id} pour ${param_name}(0) = {p_xs[0]}$')
+        fig.suptitle(f'CoBOpti’s behavior on model {model.id} for ${plot.format_name(param_name)}(0) = {p_xs[0]}$')
         subplot = fig.add_subplot(1, 1, 1)
         plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
         for i, out_name in enumerate(model.outputs_names):
-            subplot.scatter(p_xs, p_ys[out_name], marker='x', color='r', label=f'${param_name}(t)$' if i == 0 else None)
-        subplot.vlines(p_xs[0], 0, 1, color='black', linestyles='--', label=f'${param_name}(0)$')
-        subplot.vlines(p_xs[-1], 0, 1, color='limegreen', linestyles='--', label=f'${param_name}({len(p_xs) - 1})$')
+            subplot.scatter(p_xs, p_ys[out_name], marker='x', color='r',
+                            label=f'${plot.format_name(param_name)}(t)$' if i == 0 else None)
+        subplot.vlines(p_xs[0], 0, 1, color='black', linestyles='--', label=f'${plot.format_name(param_name)}(0)$')
+        subplot.vlines(p_xs[-1], 0, 1, color='limegreen', linestyles='--',
+                       label=f'${plot.format_name(param_name)}({len(p_xs) - 1})$')
         subplot.legend()
         plt.show()

@@ -1,3 +1,4 @@
+import re
 import typing as typ
 
 import matplotlib.figure as fig
@@ -5,6 +6,10 @@ import numpy as np
 
 import calicoba.agents as calicoba
 import models
+
+
+def format_name(name: str):
+    return re.sub(r'(\d+)', r'_{\1}', name)
 
 
 def plot_model_function(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, float], precision: int = 200):
@@ -25,9 +30,9 @@ def plot_model_function(subplot: fig.Axes, model: models.Model, bounds: typ.Tupl
             maxi = max(maxi, v)
             ys[output_name].append(v)
         ys['front'].append(maxi)
-    subplot.set_xlabel(f'${param_name}$')
+    subplot.set_xlabel(f'${format_name(param_name)}$')
     model_id = model.id.replace('_', r'\_')
-    subplot.set_ylabel(f'${model_id}({param_name})$')
+    subplot.set_ylabel(f'${model_id}({format_name(param_name)})$')
     for i, output_name in enumerate(model.outputs_names):
-        subplot.plot(xs, ys[output_name], color=colors[i], label=f'${output_name}$')
+        subplot.plot(xs, ys[output_name], color=colors[i], label=f'${format_name(output_name)}$')
     subplot.plot(xs, ys['front'], color='r', linestyle='--', label='Max criticality')
