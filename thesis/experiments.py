@@ -264,6 +264,15 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         if not free_param or free_param == param_name:
             system.add_parameter(param_name, inf, sup)
 
+    # inf, sup = math.inf, -math.inf
+    # for output_name in model.outputs_names:
+    #     low, high = model.get_output_domain(output_name)
+    #     inf = min(inf, low)
+    #     sup = max(sup, high)
+    # obj_functions = {
+    #     'out': SimpleObjectiveFunction(*model.outputs_names, noise=noisy)
+    # }
+    # system.add_objective('out', inf, sup)
     obj_functions = {}
     for output_name in model.outputs_names:
         inf, sup = model.get_output_domain(output_name)
