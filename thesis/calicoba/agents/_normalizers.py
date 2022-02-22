@@ -49,4 +49,4 @@ class BoundNormalizer(Normalizer):
         self.__sup = sup
 
     def __call__(self, value):
-        return (value - self.__inf) / (self.__sup - self.__inf)
+        return abs(value - self.__inf) / abs(self.__sup - self.__inf)
