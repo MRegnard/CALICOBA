@@ -13,11 +13,14 @@ arg_parser.add_argument('-b', '--bounds', dest='bounds', metavar='BOUND', nargs=
                         help='the lower and upper bounds for the parameter’s domain', default=None)
 arg_parser.add_argument('-p', '--precision', dest='sampling_precision', metavar='PRECISION', type=int, default=200,
                         help='number of sampled points (default: 200)')
+arg_parser.add_argument('-r', '--raw', dest='raw', action='store_true', default=False,
+                        help='display non-normalized function')
 
 args = arg_parser.parse_args()
 model_id: str = args.model_id
 bounds: typ.Tuple[float, float] = args.bounds
 sampling_precision: int = args.sampling_precision
+raw: bool = args.raw
 
 model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
 if len(model.parameters_names) != 1:
@@ -30,8 +33,9 @@ p_min, p_max = bounds or model.get_parameter_domain(param_name)
 normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
                for output_name in model.outputs_names}
 fig = plt.figure()
-fig.suptitle(f'Normalized outputs of model {model.id} along ${plot.format_name(param_name)}$')
+title = 'Outputs' if raw else 'Normalized outputs'
+fig.suptitle(f'{title} of model {model.id} along ${plot.format_name(param_name)}$')
 subplot = fig.add_subplot(1, 1, 1)
-plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
+plot.plot_model_function(subplot, model, bounds, precision=sampling_precision, normalized=not raw)
 subplot.legend()
 plt.show()

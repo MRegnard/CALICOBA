@@ -24,6 +24,7 @@ class DataSet:
         self.successes_number = 0
         self.errors_number = 0
         self.cycles_numbers = []
+        self.soluction_cycles = []
         self.speeds = []
         self.visited_points_numbers = []
         self.unique_visited_points_number = []
@@ -31,14 +32,15 @@ class DataSet:
 
         with file.open(encoding='utf8') as f:
             for line in f.readlines()[1:]:
-                p0, solution_found, error, cycles_number, speed, nb_points, unique_points, error_message = \
-                    line.split(',', maxsplit=7)
+                (p0, solution_found, error, cycles_number, solution_cycle,
+                 speed, nb_points, unique_points, error_message) = line.split(',', maxsplit=8)
                 if int(solution_found):
                     self.successes_number += 1
                 if int(error):
                     self.errors_number += 1
                 self.total_runs += 1
                 self.cycles_numbers.append(int(cycles_number))
+                self.soluction_cycles.append(int(solution_cycle))
                 self.speeds.append(float(speed))
                 self.visited_points_numbers.append(int(nb_points))
                 self.unique_visited_points_number.append(int(unique_points))
@@ -68,6 +70,10 @@ class DataSet:
         return self._get_stats(self.cycles_numbers)
 
     @property
+    def solution_cycles_stats(self) -> StatsObject:
+        return self._get_stats(self.soluction_cycles)
+
+    @property
     def speed_stats(self) -> StatsObject:
         return self._get_stats(self.speeds)
 
@@ -90,11 +96,12 @@ class DataSet:
 
     def __str__(self):
         return f"""
-Successes: {self.successes_number}/{self.total_runs} ({self.success_rate * 100:.2f} %)
-Failures:  {self.failures_number}/{self.total_runs} ({self.failure_rate * 100:.2f} %)
-Errors:    {self.errors_number}/{self.failures_number} ({self.error_rate * 100:.2f} %)
+Successes: {self.successes_number}/{self.total_runs} ({self.success_rate * 100:.2f} %)
+Failures:  {self.failures_number}/{self.total_runs} ({self.failure_rate * 100:.2f} %)
+Errors:    {self.errors_number}/{self.failures_number} ({self.error_rate * 100:.2f} %)
 Cycles numbers stats:        {self.cycles_numbers_stats}
-Speed stats:                 {self.speed_stats}
+Solution cycles stats:       {self.solution_cycles_stats}
+Speed stats (s):             {self.speed_stats}
 Visited points stats:        {self.visited_points_stats}
 Unique visited points stats: {self.unique_points_stats}
 """.strip()

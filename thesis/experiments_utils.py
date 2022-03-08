@@ -27,6 +27,7 @@ class ExperimentResult:
     solution_found: bool
     error: bool
     cycles_number: int
+    solution_cycle: int
     time: float
     points_number: int = None
     unique_points_number: int = None

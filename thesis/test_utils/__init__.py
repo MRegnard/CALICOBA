@@ -27,25 +27,27 @@ def gaussian_noise(mean: float = 0, stdev: float = 1):
 
 
 MODEL_SOLUTIONS = {
-    # 'model_1': ([desired_parameters(-12), desired_parameters(12)], desired_outputs(0)),
-    # 'model_2': ([desired_parameters(-11, 12), desired_parameters(35, 12)], desired_outputs(0, 0)),
-    # 'model_3': ([desired_parameters(2, 12), desired_parameters(-2, 12)], desired_outputs(0, 0)),
-    # # Partial solutions
-    # 'model_4': ([desired_parameters(-21, 20), desired_parameters(-19, 20)], desired_outputs(0, 0)),
-    # 'model_5': ([desired_parameters(math.sqrt(3 - math.sqrt(3)))],
-    #             desired_outputs(-4 * math.sqrt(3 - math.sqrt(3)) * (3 + math.sqrt(3)))),
-    # 'square': ([desired_parameters(0)], desired_outputs(0)),
-    'gramacy_and_lee_2012': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
-    'ackley_function': ([desired_parameters(0)], desired_outputs(0)),
-    'levy_function': ([desired_parameters(1)], desired_outputs(0)),
-    'rastrigin_function': ([desired_parameters(0)], desired_outputs(0)),
-    'weierstrass_function': ([desired_parameters(1)], desired_outputs(-2)),
-    # 'rosenbrock_function': ([desired_parameters(1)], desired_outputs(0)),
-    # 'styblinski_tang_function': ([desired_parameters(-39.16599)], desired_outputs(-2.903534)),
-    'gl_ackley': ([desired_parameters(0)], desired_outputs(-0.869011, 0)),  # TODO determine true parameter value
-    'ackley_rastrigin': ([desired_parameters(0)], desired_outputs(0, 0)),
-    'gl_offset': ([desired_parameters(0.548563)], desired_outputs(-0.869011)),
-    'ackley_offset': ([desired_parameters(0)], desired_outputs(0)),
+    # 'model_1': [desired_parameters(-12)],
+    # 'model_2': [desired_parameters(-11, 12)],
+    # 'model_3': [desired_parameters(2, 12)],
+    # Partial solutions
+    # 'model_4': [desired_parameters(-21, 20), desired_parameters(-19, 20)]
+    # 'model_5': [desired_parameters(math.sqrt(3 - math.sqrt(3)))],
+    # 'square': [desired_parameters(0)],
+    'gramacy_and_lee_2012': [desired_parameters(0.548563)],
+    'ackley_function': [desired_parameters(0)],
+    'levy_function': [desired_parameters(1)],
+    'rastrigin_function': [desired_parameters(0)],
+    'weierstrass_function': [desired_parameters(1)],
+    # 'rosenbrock_function': [desired_parameters(1)],
+    # 'styblinski_tang_function': [desired_parameters(-39.16599)],
+    'multi_obj': [desired_parameters(0.95)],  # 0.95 -> without Weierstrass, 0.975 -> full
+    'zitzler_3': [desired_parameters(0.433)],
+    'zitzler_6': [desired_parameters(0.248)],
+    'viennet': [desired_parameters(-1 / 3)],
+    'gl_offset': [desired_parameters(0.548563)],
+    'ackley_offset': [desired_parameters(0)],
+    'rastrigin_offset': [desired_parameters(0)],
 }
 
 
