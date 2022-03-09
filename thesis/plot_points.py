@@ -73,7 +73,7 @@ if p_xs:
                          f'for ${plot.format_name(param_name)}(0) = {p_xs[0]}$ (iteration {i + 1}/{len(p_xs)})')
             subplot = fig.add_subplot(1, 1, 1)
             print(f'Generating plot {i + 1}/{len(p_xs)}')
-            plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
+            plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision)
             subplot.vlines(p_xs[0], 0, 1, color='black', linestyles='--', label=f'${param_name}(0)$')
             for j in range(len(new_chain_indices) - 1):
                 index = new_chain_indices[j]
@@ -96,7 +96,7 @@ if p_xs:
         fig = plt.figure()
         fig.suptitle(f'CoBOpti’s behavior on model {model.id} for ${plot.format_name(param_name)}(0) = {p_xs[0]}$')
         subplot = fig.add_subplot(1, 1, 1)
-        plot.plot_model_function(subplot, model, bounds, precision=sampling_precision)
+        plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision)
         for i, out_name in enumerate(model.outputs_names):
             subplot.scatter(p_xs, p_ys[out_name], marker='x', color='r',
                             label=f'${plot.format_name(param_name)}(t)$' if i == 0 else None)

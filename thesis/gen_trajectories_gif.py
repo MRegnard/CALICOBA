@@ -39,7 +39,7 @@ def load_data(directory: pathlib.Path, normalizers):
     return max_cycles, all_xs, all_ys
 
 
-def generate_frames(all_xs, all_ys, max_cycles, precision, output_dir: pathlib.Path):
+def generate_frames(all_xs, all_ys, max_cycles, precision, full, output_dir: pathlib.Path):
     directory = output_dir / FRAMES_DIR
     if not directory.exists():
         directory.mkdir(parents=True)
@@ -53,13 +53,16 @@ def generate_frames(all_xs, all_ys, max_cycles, precision, output_dir: pathlib.P
                      f'Iteration {i + 1}/{max_cycles}')
         subplot = fig.add_subplot(1, 1, 1)
         print(f'Generating frame {i + 1}/{max_cycles}')
-        plot.plot_model_function(subplot, model, bounds, precision=precision)
+        plot.plot_model_outputs(subplot, model, bounds, precision=precision)
         for k in all_xs:
             xs = all_xs[k]
             ys = all_ys[k]
             if i < len(xs):
-                for out_name in model.outputs_names:
-                    subplot.scatter(xs[i], ys[out_name][i], marker='o', color='b')
+                if full:
+                    for out_name in model.outputs_names:
+                        subplot.scatter(xs[i], ys[out_name][i], marker='o', color='b')
+                else:
+                    subplot.scatter(xs[i], max(y[i] for y in ys.values()), marker='o', color='b')
         subplot.legend()
         fig.savefig(directory / f'{i + 1}.png', dpi=200)
         plt.close(fig)
@@ -87,6 +90,8 @@ if __name__ == '__main__':
                             help='number of sampled points (default: 200)')
     arg_parser.add_argument('-d', '--delay', dest='delay', metavar='DELAY', type=int, default=100,
                             help='delay between frames in ms (default: 100)')
+    arg_parser.add_argument('-f', '--full', dest='full', default=False, action='store_true',
+                            help='whether to display all subpoints')
 
     args = arg_parser.parse_args()
     path: pathlib.Path = args.path.absolute()
@@ -94,6 +99,7 @@ if __name__ == '__main__':
     bounds: typ.Tuple[float, float] = args.bounds
     sampling_precision: int = args.sampling_precision
     frames_delay: int = args.delay
+    sub_points: bool = args.full
 
     model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
     if len(model.parameters_names) != 1:
@@ -108,5 +114,5 @@ if __name__ == '__main__':
 
     out_dir = path / 'animation'
     longest_cycles, p_xs, p_ys = load_data(path, normalizer_functions)
-    generate_frames(p_xs, p_ys, longest_cycles, sampling_precision, out_dir)
+    generate_frames(p_xs, p_ys, longest_cycles, sampling_precision, sub_points, out_dir)
     generate_gif(frames_delay, out_dir)

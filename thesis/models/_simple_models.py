@@ -313,7 +313,7 @@ class MultiObj(_model.Model):
             # 'o5': k * sum(
             #     (a3 ** n) * math.cos((b3 ** n) * math.pi * p1)
             #     for n in range(precision)
-            # )
+            # )  # Weierstrass
         }
 
 
