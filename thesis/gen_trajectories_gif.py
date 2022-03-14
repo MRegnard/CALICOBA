@@ -12,14 +12,15 @@ import plot
 FRAMES_DIR = 'frames'
 
 
-def load_data(directory: pathlib.Path, normalizers):
+def load_data(directory: pathlib.Path, model: models.Model, param_name: str, out_names: typ.Iterable[str],
+              proportion: int, normalizers):
     print(f'Loading data from {directory}')
     max_cycles = 0
     all_xs = {}
     all_ys = {}
 
-    for dir_name in directory.glob('p1=*'):
-        if not dir_name.is_dir():
+    for i, dir_name in enumerate(directory.glob('p1=*')):
+        if not dir_name.is_dir() or i % proportion != 0:
             continue
         xs = []
         ys = {out_name: [] for out_name in out_names}
@@ -39,7 +40,8 @@ def load_data(directory: pathlib.Path, normalizers):
     return max_cycles, all_xs, all_ys
 
 
-def generate_frames(all_xs, all_ys, max_cycles, precision, output_dir: pathlib.Path):
+def generate_frames(model: models.Model, bounds: typ.Tuple[float, float], all_xs, all_ys, max_cycles: int,
+                    precision: int, full: bool, output_dir: pathlib.Path):
     directory = output_dir / FRAMES_DIR
     if not directory.exists():
         directory.mkdir(parents=True)
@@ -47,21 +49,28 @@ def generate_frames(all_xs, all_ys, max_cycles, precision, output_dir: pathlib.P
         print('Frames already generated, skipping.')
         return
 
-    for i in range(max_cycles):
+    color_names = []
+    with open('xkcd_rgb.txt', encoding='utf8') as f:
+        for line in f.readlines():
+            color_names.append('xkcd:' + line.split('\t')[0])
+
+    for cycle in range(max_cycles):
         fig = plt.figure()
         fig.suptitle(f'CoBOpti’s behavior on model {model.id} over {len(all_xs)} run(s)\n'
-                     f'Iteration {i + 1}/{max_cycles}')
+                     f'Iteration {cycle + 1}/{max_cycles}')
         subplot = fig.add_subplot(1, 1, 1)
-        print(f'Generating frame {i + 1}/{max_cycles}')
+        print(f'Generating frame {cycle + 1}/{max_cycles}')
         plot.plot_model_function(subplot, model, bounds, precision=precision)
-        for k in all_xs:
-            xs = all_xs[k]
-            ys = all_ys[k]
-            if i < len(xs):
+        for run_index, start_value in enumerate(all_xs):
+            xs = all_xs[start_value]
+            ys = all_ys[start_value]
+            if cycle < len(xs):
+                max_out_name = max(ys.items(), key=lambda y: y[1][cycle])[0]
                 for out_name in model.outputs_names:
-                    subplot.scatter(xs[i], ys[out_name][i], marker='o', color='b')
+                    if full or out_name == max_out_name:
+                        subplot.scatter(xs[cycle], ys[out_name][cycle], marker='o', color=color_names[run_index])
         subplot.legend()
-        fig.savefig(directory / f'{i + 1}.png', dpi=200)
+        fig.savefig(directory / f'{cycle + 1}.png', dpi=200)
         plt.close(fig)
 
 
@@ -70,12 +79,12 @@ def generate_gif(delay: int, output_dir: pathlib.Path):
     frames = [Image.open(image) for image in sorted((output_dir / FRAMES_DIR).glob('*.png'),
                                                     key=lambda p: int(p.name.split('.')[0]))]
     frame_one = frames[0]
-    frame_one.save(output_dir / 'trajectories.gif', format='GIF', append_images=frames,
+    frame_one.save(output_dir / f'trajectories-{delay}ms.gif', format='GIF', append_images=frames,
                    save_all=True, duration=delay, loop=True)
     print(f'Generated image in {output_dir}')
 
 
-if __name__ == '__main__':
+def main():
     arg_parser = argparse.ArgumentParser(
         description='Generate GIF image of trajectory of points for selected model and data.')
     arg_parser.add_argument('model_id', metavar='MODEL', type=str, help='ID of the model to plot')
@@ -87,6 +96,10 @@ if __name__ == '__main__':
                             help='number of sampled points (default: 200)')
     arg_parser.add_argument('-d', '--delay', dest='delay', metavar='DELAY', type=int, default=100,
                             help='delay between frames in ms (default: 100)')
+    arg_parser.add_argument('-f', '--full', dest='full', action='store_true', default=False,
+                            help='display points on all functions')
+    arg_parser.add_argument('-P', '--proportion', dest='proportion', type=int, default=1,
+                            help='proportion of points to display (default: 1)')
 
     args = arg_parser.parse_args()
     path: pathlib.Path = args.path.absolute()
@@ -94,6 +107,8 @@ if __name__ == '__main__':
     bounds: typ.Tuple[float, float] = args.bounds
     sampling_precision: int = args.sampling_precision
     frames_delay: int = args.delay
+    full: bool = args.full
+    proportion: int = args.proportion
 
     model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
     if len(model.parameters_names) != 1:
@@ -107,6 +122,10 @@ if __name__ == '__main__':
                             for output_name in model.outputs_names}
 
     out_dir = path / 'animation'
-    longest_cycles, p_xs, p_ys = load_data(path, normalizer_functions)
-    generate_frames(p_xs, p_ys, longest_cycles, sampling_precision, out_dir)
+    longest_cycles, p_xs, p_ys = load_data(path, model, param_name, out_names, proportion, normalizer_functions)
+    generate_frames(model, (p_min, p_max), p_xs, p_ys, longest_cycles, sampling_precision, full, out_dir)
     generate_gif(frames_delay, out_dir)
+
+
+if __name__ == '__main__':
+    main()
