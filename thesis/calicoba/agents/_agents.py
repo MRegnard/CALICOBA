@@ -91,7 +91,7 @@ class ParameterAgent(Agent):
         super().__init__(name, logger=logger)
         self._inf = inf
         self._sup = sup
-        self._max_step_number = 5
+        self._max_step_number = 2
         self._init_step = (sup - inf) / 100
 
         self._chains: typ.List[PointAgent] = []
