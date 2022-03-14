@@ -60,7 +60,7 @@ def generate_frames(model: models.Model, bounds: typ.Tuple[float, float], all_xs
                      f'Iteration {cycle + 1}/{max_cycles}')
         subplot = fig.add_subplot(1, 1, 1)
         print(f'Generating frame {cycle + 1}/{max_cycles}')
-        plot.plot_model_function(subplot, model, bounds, precision=precision)
+        plot.plot_model_outputs(subplot, model, bounds, precision=precision)
         for run_index, start_value in enumerate(all_xs):
             xs = all_xs[start_value]
             ys = all_ys[start_value]
