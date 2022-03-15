@@ -57,7 +57,11 @@ with (path / f'{param_name}.csv').open(encoding='utf8') as f:
     new_chain_indices.append(len(p_xs))
 
 if p_xs:
-    colors = ['r', 'c', 'm', 'y', 'k']
+    colors = []
+    with open('xkcd_rgb.txt', encoding='utf8') as f:
+        for line in f.readlines():
+            colors.append('xkcd:' + line.split('\t')[0])
+
     if split_figures:
         dest_path = path / 'figures'
         if not dest_path.exists():
