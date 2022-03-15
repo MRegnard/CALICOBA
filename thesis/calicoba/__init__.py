@@ -116,6 +116,9 @@ class Calicoba:
                     self._create_new_chain_for_params.add(point.parameter_name)
                 suggestions[point.parameter_name].append(suggestion)
 
+        for parameter in self._parameter_agents:
+            parameter.local_min_found = False
+
         self._cycle += 1
 
         return suggestions

@@ -100,6 +100,8 @@ class ParameterAgent(Agent):
 
         self._value = math.nan
 
+        self.local_min_found = False
+
     @property
     def inf(self) -> float:
         return self._inf
@@ -272,6 +274,7 @@ class PointAgent(Agent):
                      or self._right_point and abs(
                             self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD)):
             self.log_debug('local min found')
+            self._param_agent.local_min_found = True
             self.is_local_minimum = True
             if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
@@ -374,6 +377,7 @@ class PointAgent(Agent):
                 decision=decision,
                 selected_objective='',
                 criticality=self._current_point.criticality,
+                local_min_found=self._param_agent.local_min_found,
                 direction=direction,
                 step=self._step,
                 steps_number=suggested_steps_number,
@@ -682,6 +686,7 @@ class Suggestion:
     decision: str
     selected_objective: str
     criticality: float
+    local_min_found: bool
     new_chain_next: bool = False
     step: float = None
     steps_number: float = None

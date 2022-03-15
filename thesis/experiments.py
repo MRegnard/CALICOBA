@@ -2,7 +2,6 @@
 import argparse
 import configparser
 import logging
-import math
 import pathlib
 import random
 import time
@@ -269,8 +268,6 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     points = []
     unique_points = []
     error_message = ''
-    lowest_solution = None
-    lowest_crit = math.inf
     solution_cycle = -1
     for i in range(max_steps):
         cycles_number = i + 1
@@ -307,9 +304,6 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
                 solution_found = True
-                # threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
-                # solution_found = any(abs(solution['p1'] - model.get_parameter('p1')) < threshold
-                #                      for solution in solutions)
                 solution_cycle = i + 1
             else:
                 param_files[param_name].write(
@@ -318,21 +312,17 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                     f'{s.step},{s.steps_number},{s.decision}\n'
                 )
                 model.set_parameter(param_name, s.next_point)
-                if lowest_crit > s.agent.criticality:
-                    lowest_crit = s.agent.criticality
-                    lowest_solution = params
-                    solution_cycle = i + 1
+                if s.local_min_found:
+                    threshold = 0.1
+                    solution_found = any(abs(solution['p1'] - params['p1']) < threshold for solution in solutions)
+                    if solution_found:
+                        solution_cycle = i + 1
 
         if solution_found or error_message:
             break
 
         if step_by_step:
             input('Paused')
-
-    # Check if the global minimum was found but not detected by the system
-    if not solution_found and not error_message and lowest_solution is not None:
-        threshold = 0.01
-        solution_found = any(abs(solution['p1'] - lowest_solution['p1']) < threshold for solution in solutions)
 
     total_time = time.time() - start_time
 
