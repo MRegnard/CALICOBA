@@ -41,7 +41,7 @@ MODEL_SOLUTIONS = {
     'weierstrass_function': [desired_parameters(1)],
     # 'rosenbrock_function': [desired_parameters(1)],
     # 'styblinski_tang_function': [desired_parameters(-39.16599)],
-    'multi_obj': [desired_parameters(0.95)],  # 0.95 -> without Weierstrass, 0.975 -> full
+    'multi_obj': [desired_parameters(0.95)],
     'zitzler_3': [desired_parameters(0.433)],
     'zitzler_6': [desired_parameters(0.248)],
     'viennet': [desired_parameters(-1 / 3)],

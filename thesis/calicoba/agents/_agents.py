@@ -126,8 +126,6 @@ class ParameterAgent(Agent):
 
     def add_minimum(self, point: PointAgent):
         self._minima.append(point)
-        for m in self.minima:
-            m.update_neighbors(self.minima)
 
     def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float]) -> PointAgent:
         self._value = value
@@ -267,14 +265,16 @@ class PointAgent(Agent):
 
         self.update_neighbors(self._all_points)
 
-        if (self._left_point and self._right_point and self._is_current_min_of_chain and not self.is_local_minimum
-                and abs(self._left_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD
-                and abs(self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD):
+        if (self._is_current_min_of_chain and not self.is_local_minimum and (self._left_point or self._right_point)
+                and (not self._left_point
+                     or (self._left_point and abs(self._left_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD))
+                and (not self._right_point
+                     or self._right_point and abs(
+                            self._right_value - self.parameter_value) < self.LOCAL_MIN_THRESHOLD)):
             self.log_debug('local min found')
             self.is_local_minimum = True
             if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
-                return
             similar_minima = [mini for mini in self._param_agent.minima
                               if abs(mini.parameter_value - self.parameter_value) <= self.SAME_POINT_THRESHOLD]
             already_went_up = any(mini.already_went_up for mini in similar_minima)
@@ -303,7 +303,7 @@ class PointAgent(Agent):
                 self.first_point = True
                 wait = True
 
-        if self.is_local_minimum:
+        if self.is_local_minimum and not self.go_up_mode:
             self.update_neighbors(self._param_agent.minima, threshold=self.SAME_POINT_THRESHOLD)
             if self._param_agent.minima:
                 filtered = filter(lambda mini: mini is self or abs(
@@ -312,23 +312,23 @@ class PointAgent(Agent):
                     mini.parameter_value - self._current_point.parameter_value))
             else:
                 self._sorted_minima = []
-            if (not self.go_up_mode and self._is_current_in_chain and len(self._sorted_minima) > 1
-                    and self is self._sorted_minima[0]):
+            if self._is_current_in_chain and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
 
         if self.go_up_mode:
             if not wait:
                 self.first_point = False
-            extremum_min = self
-            extremum_max = self
-            self.is_extremum = True
+            extremum_min = None
+            extremum_max = None
             for point in self._all_points:
-                if point.parameter_value < extremum_min.parameter_value:
-                    extremum_min.is_extremum = False
+                if not extremum_min or point.parameter_value < extremum_min.parameter_value:
+                    if extremum_min:
+                        extremum_min.is_extremum = False
                     point.is_extremum = True
                     extremum_min = point
-                if point.parameter_value > extremum_max.parameter_value:
-                    extremum_max.is_extremum = False
+                elif not extremum_max or point.parameter_value > extremum_max.parameter_value:
+                    if extremum_max:
+                        extremum_max.is_extremum = False
                     point.is_extremum = True
                     extremum_max = point
 
@@ -346,14 +346,14 @@ class PointAgent(Agent):
         decision = ''
         from_value = self.parameter_value
 
-        if self._is_current_min_of_chain:
+        if self.is_extremum and self._min_of_chain.go_up_mode:
+            decision, direction, new_chain_next, suggested_point, suggested_steps_number = self._hill_climb()
+        elif self._is_current_min_of_chain:
             if not self.is_local_minimum:
                 decision, direction, suggested_point, suggested_steps_number = self._local_search()
             elif self.best_local_minimum:
                 (check_for_out_of_bounds, decision, direction, from_value,
                  new_chain_next, suggested_point, suggested_steps_number) = self._semi_local_search()
-        elif self.is_extremum and self._min_of_chain.go_up_mode:
-            decision, direction, new_chain_next, suggested_point, suggested_steps_number = self._hill_climb()
 
         if decision:
             self.log_debug('Decision: ' + decision)
@@ -573,7 +573,7 @@ class PointAgent(Agent):
             prev_crit = self._right_crit
             prev = self._right_point
 
-        if self_crit < prev_crit:
+        if self_crit < prev_crit and not self_on_bound:
             decision = 'opposite slope found -> stop climbing; create new chain; explore'
             if prev is self._left_point or self_value == self._param_agent.inf:
                 direction = DIR_INCREASE
@@ -591,8 +591,14 @@ class PointAgent(Agent):
 
         elif self_on_bound and other_on_bound:
             if self_crit < other_extremum_crit:
-                decision = 'both extrema on bounds -> go to middle from lowest'
-                suggested_point = (self_value + prev_value) / 2
+                decision = 'both extrema on bounds -> go to middle; create new chain; explore'
+                suggested_point = (self._param_agent.inf + self._param_agent.sup) / 2
+                self._min_of_chain.go_up_mode = False
+                self._min_of_chain.already_went_up = True
+                if self._min_of_chain.first_point or self_on_bound:
+                    new_chain_next = True
+                else:
+                    self.create_new_chain_from_me = True
 
         elif (self_crit < other_extremum_crit or other_on_bound) and not self_on_bound:
             direction = DIR_DECREASE if self_value < prev_value else DIR_INCREASE

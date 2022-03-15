@@ -306,9 +306,10 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 break
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
-                threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
-                solution_found = any(abs(solution['p1'] - model.get_parameter('p1')) < threshold
-                                     for solution in solutions)
+                solution_found = True
+                # threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
+                # solution_found = any(abs(solution['p1'] - model.get_parameter('p1')) < threshold
+                #                      for solution in solutions)
                 solution_cycle = i + 1
             else:
                 param_files[param_name].write(
@@ -330,7 +331,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
     # Check if the global minimum was found but not detected by the system
     if not solution_found and not error_message and lowest_solution is not None:
-        threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
+        threshold = 0.01
         solution_found = any(abs(solution['p1'] - lowest_solution['p1']) < threshold for solution in solutions)
 
     total_time = time.time() - start_time
