@@ -42,10 +42,10 @@ def plot_model_outputs(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple
     for i, output_name in enumerate(sorted(model.outputs_names)):
         subplot.plot(xs, ys[output_name], color=colors[i % len(colors)],
                      label=f'${format_name(output_name)}({format_name(param_name)})$')
-        # if regressions:
-        #     reg, degree = fit_regression(xs, ys[output_name])
-        #     subplot.plot(xs, reg, color=colors[i % len(colors)], linestyle=':',
-        #                  label=fr'$poly\_reg({format_name(output_name)})$ / degree: {degree}')
+        if regressions:
+            reg, degree = fit_regression(xs, ys[output_name])
+            subplot.plot(xs, reg, color=colors[i % len(colors)], linestyle=':',
+                         label=fr'$poly\_reg({format_name(output_name)})$ / degree: {degree}')
     subplot.plot(xs, ys['front'], color='k', label=r'$\max(o_i)$')
     if regressions:
         reg, degree = fit_regression(xs, ys['front'])
