@@ -328,7 +328,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
     for param_name in model.parameters_names:
         param_files[param_name].write(
-            f'{cycles_number + 1},{model.get_parameter(param_name)},,,,,1,,,\n')
+            f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
     return exp_utils.ExperimentResult(
         solution_found=solution_found,
