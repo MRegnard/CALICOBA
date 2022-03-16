@@ -60,6 +60,6 @@ def fit_regression(xs, ys):
         lin_reg = sk_lin.LinearRegression()
         lin_reg.fit(xs_trans, ys)
         prediction = lin_reg.predict(xs_trans)
-        if sk_metrics.mean_squared_error(ys, prediction) <= 5e-4:
+        if sk_metrics.max_error(ys, prediction) <= 0.099:
             return prediction, d
         d += 1
