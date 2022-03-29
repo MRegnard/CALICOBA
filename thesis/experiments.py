@@ -303,6 +303,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 break
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
+                # TODO update for multi-variable
                 solution_found = True
                 solution_cycle = i + 1
             else:
@@ -314,7 +315,10 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 model.set_parameter(param_name, s.next_point)
                 if s.local_min_found:
                     threshold = 0.1
-                    solution_found = any(abs(solution['p1'] - params['p1']) < threshold for solution in solutions)
+                    solution_found = any(
+                        all(abs(solution[pname] - params[pname]) < threshold for pname in solution)
+                        for solution in solutions
+                    )
                     if solution_found:
                         solution_cycle = i + 1
 
@@ -326,9 +330,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
     total_time = time.time() - start_time
 
-    for param_name in model.parameters_names:
-        param_files[param_name].write(
-            f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
+    # for param_name in model.parameters_names:
+    #     param_files[param_name].write(
+    #         f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
     return exp_utils.ExperimentResult(
         solution_found=solution_found,
