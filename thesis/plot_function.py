@@ -3,7 +3,6 @@ import typing as typ
 
 import matplotlib.pyplot as plt
 
-import calicoba.agents as calicoba
 import models
 import plot
 
@@ -17,6 +16,10 @@ arg_parser.add_argument('-r', '--raw', dest='raw', action='store_true', default=
                         help='display non-normalized function')
 arg_parser.add_argument('-R', '--regressions', dest='regressions', action='store_true', default=False,
                         help='display polynomial regressions of function(s)')
+arg_parser.add_argument('-s', '--simple', dest='simple', action='store_true', default=False,
+                        help='only displays the max function')
+arg_parser.add_argument('-m', '--mins', dest='mins', metavar='MIN', type=float, nargs='+', default=[],
+                        help='list of minimums of the max function to use to display the minimums function')
 
 args = arg_parser.parse_args()
 model_id: str = args.model_id
@@ -24,21 +27,22 @@ bounds: typ.Tuple[float, float] = args.bounds
 sampling_precision: int = args.sampling_precision
 raw: bool = args.raw
 reg: bool = args.regressions
+simple: bool = args.simple
+mins: typ.List[float] = args.mins
 
 model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
-if len(model.parameters_names) != 1:
-    raise ValueError('model has more than one parameter')
+params_nb = len(model.parameters_names)
+if params_nb > 2:
+    raise ValueError('model has more than two parameters')
 
-param_name = model.parameters_names[0]
-out_names = model.outputs_names
-p_min, p_max = bounds or model.get_parameter_domain(param_name)
-
-normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
-               for output_name in model.outputs_names}
 fig = plt.figure()
-title = 'Outputs' if raw else 'Normalized outputs'
-fig.suptitle(f'{title} of model {model.id} along ${plot.format_name(param_name)}$')
-subplot = fig.add_subplot(1, 1, 1)
-plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision, normalized=not raw, regressions=reg)
+title = ('Outputs' if raw else 'Normalized outputs') \
+        + f' of model {model.id} along ${plot.format_name(model.parameters_names[0])}$'
+if params_nb == 2:
+    title += f' and ${plot.format_name(model.parameters_names[1])}$'
+fig.suptitle(title)
+subplot = fig.add_subplot(1, 1, 1, projection='3d' if params_nb == 2 else None)
+plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision, normalized=not raw, regressions=reg,
+                        simple=simple, mins=mins)
 subplot.legend()
 plt.show()
