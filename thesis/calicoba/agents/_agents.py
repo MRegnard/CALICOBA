@@ -38,23 +38,26 @@ class Agent(abc.ABC):
 
     def log_error(self, message):
         if self._logger:
-            self._logger.error(self.name + ': ' + str(message))
+            self._logger.error(f'{self._get_logging_name()}: {message}')
 
     def log_critical(self, message):
         if self._logger:
-            self._logger.critical(self.name + ': ' + str(message))
+            self._logger.critical(f'{self._get_logging_name()}: {message}')
 
     def log_warning(self, message):
         if self._logger:
-            self._logger.warning(self.name + ': ' + str(message))
+            self._logger.warning(f'{self._get_logging_name()}: {message}')
 
     def log_info(self, message):
         if self._logger:
-            self._logger.info(self.name + ': ' + str(message))
+            self._logger.info(f'{self._get_logging_name()}: {message}')
 
     def log_debug(self, message):
         if self._logger:
-            self._logger.debug(self.name + ': ' + str(message))
+            self._logger.debug(f'{self._get_logging_name()}: {message}')
+
+    def _get_logging_name(self):
+        return self.name
 
     def __repr__(self):
         return f'{self.name}'
@@ -95,7 +98,7 @@ class ParameterAgent(Agent):
         self._init_step = (sup - inf) / 100
 
         self._chains: typ.List[PointAgent] = []
-        self._minima = []
+        self._minima: typ.List[PointAgent] = []
         self._last_point_id = 0
 
         self._value = math.nan
@@ -167,7 +170,7 @@ class PointAgent(Agent):
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
     SAME_POINT_THRESHOLD = 0.01
-    NULL_THRESHOLD = 0.005
+    NULL_THRESHOLD = 0.00005
 
     def __init__(self, name: str, parameter_agent: ParameterAgent, previous_point: typ.Optional[PointAgent],
                  init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
@@ -215,6 +218,9 @@ class PointAgent(Agent):
         self.create_new_chain_from_me = False
 
         self._all_points: typ.List[PointAgent] = []
+
+    def _get_logging_name(self):
+        return f'{self._param_agent.name}:{self.name}'
 
     def update_neighbors(self, points: typ.Iterable[PointAgent], threshold: float = 0):
         def value_in_list(v, vs):
@@ -335,7 +341,7 @@ class PointAgent(Agent):
                     point.is_extremum = True
                     extremum_max = point
 
-    def decide(self) -> typ.Optional[typ.Optional[Suggestion, GlobalMinimumFound]]:
+    def decide(self) -> typ.Optional[typ.Union[Suggestion, GlobalMinimumFound]]:
         if self.is_global_minimum:
             return GlobalMinimumFound()
         if not self._is_current_in_chain and not self.best_local_minimum:
