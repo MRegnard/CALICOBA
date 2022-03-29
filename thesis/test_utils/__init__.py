@@ -27,20 +27,19 @@ def gaussian_noise(mean: float = 0, stdev: float = 1):
 
 
 MODEL_SOLUTIONS = {
-    # 'model_1': [desired_parameters(-12)],
-    # 'model_2': [desired_parameters(-11, 12)],
-    # 'model_3': [desired_parameters(2, 12)],
+    'model_1': [desired_parameters(-12)],
+    'model_2': [desired_parameters(-11, 12)],
+    'model_3': [desired_parameters(2, 12)],
     # Partial solutions
-    # 'model_4': [desired_parameters(-21, 20), desired_parameters(-19, 20)]
-    # 'model_5': [desired_parameters(math.sqrt(3 - math.sqrt(3)))],
-    # 'square': [desired_parameters(0)],
-    'gramacy_and_lee_2012': [desired_parameters(0.548563)],
-    'ackley_function': [desired_parameters(0)],
-    'levy_function': [desired_parameters(1)],
-    'rastrigin_function': [desired_parameters(0)],
-    'weierstrass_function': [desired_parameters(1)],
-    # 'rosenbrock_function': [desired_parameters(1)],
-    # 'styblinski_tang_function': [desired_parameters(-39.16599)],
+    'model_4': [desired_parameters(-21, 20), desired_parameters(-19, 20)],
+    'model_5': [desired_parameters(math.sqrt(3 - math.sqrt(3)))],
+    'gc': [desired_parameters(0.548563)],
+    'ackley': [desired_parameters(0)],
+    'levy': [desired_parameters(1)],
+    'rastrigin': [desired_parameters(0)],
+    'weierstrass': [desired_parameters(1)],
+    'rosenbrock': [desired_parameters(1, 1)],
+    'styblinski_tang': [desired_parameters(-39.16599)],
     'multi_obj': [desired_parameters(0.95)],
     'zitzler_3': [desired_parameters(0.433)],
     'zitzler_6': [desired_parameters(0.248)],
@@ -48,6 +47,7 @@ MODEL_SOLUTIONS = {
     'gl_offset': [desired_parameters(0.548563)],
     'ackley_offset': [desired_parameters(0)],
     'rastrigin_offset': [desired_parameters(0)],
+    'ackley_2d': [desired_parameters(0, 0)],
 }
 
 

@@ -98,38 +98,10 @@ class Model5(_model.Model):
         }
 
 
-class DiscontinuousFunction(_model.Model):
-    def __init__(self):
-        super().__init__(
-            'discontinuous_function',
-            {'p1': (-20, 20)},
-            {'o1': (0, 0)}
-        )
-
-    def _evaluate(self, p1: float):
-        return {
-            'o1': 0
-        }
-
-
-class SquareFunction(_model.Model):
-    def __init__(self):
-        super().__init__(
-            'square',
-            {'p1': (-100, 100)},
-            {'o1': (0, 10_000)}
-        )
-
-    def _evaluate(self, p1: float):
-        return {
-            'o1': p1 ** 2
-        }
-
-
 class ModelGramacyAndLee2012(_model.Model):
     def __init__(self):
         super().__init__(
-            'gramacy_and_lee_2012',
+            'gc',
             {'p1': (0.5, 2.5)},
             {'o1': (-0.87, 5.1)}
         )
@@ -143,7 +115,7 @@ class ModelGramacyAndLee2012(_model.Model):
 class AckleyFunction(_model.Model):
     def __init__(self, dimensions: int = 1, a: float = 20, b: float = 0.2, c: float = 2 * math.pi):
         super().__init__(
-            'ackley_function',
+            'ackley',
             {f'p{i + 1}': (-32, 32) for i in range(dimensions)},
             {'o1': (0, 25)}
         )
@@ -163,9 +135,9 @@ class AckleyFunction(_model.Model):
 class LevyFunction(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'levy_function',
+            'levy',
             {f'p{i + 1}': (-10, 10) for i in range(dimensions)},
-            {'o1': (0, 100)}
+            {'o1': (0, 100 if dimensions == 1 else 175)}
         )
 
     def _evaluate(self, **params: float):
@@ -182,7 +154,7 @@ class LevyFunction(_model.Model):
 class RastriginFunction(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'rastrigin_function',
+            'rastrigin',
             {f'p{i + 1}': (-5.12, 5.12) for i in range(dimensions)},
             {'o1': (0, 90)}
         )
@@ -197,13 +169,13 @@ class RastriginFunction(_model.Model):
 class LangermannFunction(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'langermann_function',
+            'langermann',
             {f'p{i + 1}': (0, 10) for i in range(dimensions)},
             {'o1': (-6, 6)}
         )
         self.__m = 5
         self.__c = (1, 2, 5, 2, 3)
-        self.__a = ((3,), (5,), (2,), (1,), (7,))
+        self.__a = ((3, 5), (5, 2), (2, 1), (1, 4), (7, 9))
 
     def _evaluate(self, **params: float):
         x = [p for _, p in sorted(params.items(), key=lambda e: int(e[0][1:]))]
@@ -220,7 +192,7 @@ class LangermannFunction(_model.Model):
 class StyblinskiTangFunction(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'styblinski_tang_function',
+            'styblinski_tang',
             {f'p{i + 1}': (-5, 5) for i in range(dimensions)},
             {'o1': (-100, 250)}
         )
@@ -232,17 +204,20 @@ class StyblinskiTangFunction(_model.Model):
 
 
 class RosenbrockFunction(_model.Model):
-    def __init__(self, dimensions: int = 1):
+    def __init__(self):
         super().__init__(
-            'rosenbrock_function',
-            {f'p{i + 1}': (-5, 10) for i in range(dimensions)},
-            {'o1': (0, 18e4)}
+            'rosenbrock',
+            {
+                'p1': (-2, 2),
+                'p2': (-1, 3),
+            },
+            {'o1': (0, 2500)}
         )
 
-    def _evaluate(self, **kwargs: float):
-        params = [v for k, v in sorted(kwargs.items(), key=lambda e: int(e[0][1:]))]
+    def _evaluate(self, **params: float):
+        values = [v for _, v in sorted(params.items(), key=lambda e: int(e[0][1:]))]
         return {
-            'o1': scipy.optimize.rosen(params),
+            'o1': scipy.optimize.rosen(values),
         }
 
 
@@ -253,7 +228,7 @@ class WeierstrassFunction(_model.Model):
         if b <= 0 or b % 2 == 0:
             raise ValueError('b should be a positive odd integer')
         super().__init__(
-            'weierstrass_function',
+            'weierstrass',
             {'p1': (0, 2)},
             {'o1': (-1.998046875, 1.998046875)}  # Values for a = 0.5 and b = 3 and precision = 10
         )
@@ -280,7 +255,6 @@ class MultiObj(_model.Model):
                 'o2': (3.55, 10.22),
                 'o3': (1, 26.25),
                 'o4': (0, 2.1534276983111598),
-                # 'o5': (-20, 20),
             }
         )
 
@@ -300,34 +274,25 @@ class MultiObj(_model.Model):
         b2 = sum(((wi - 1) ** 2) * (1 + 10 * math.sin(math.pi * wi + 1) ** 2) for wi in w)
         c2 = ((w[d - 1] - 1) ** 2) * (1 + math.sin(2 * math.pi * w[d - 1]) ** 2)
 
-        a3 = 0.5
-        b3 = 3
-        k = 10
-        precision = 10
-
         return {
             'o1': (math.sin(10 * math.pi * p1) / (2 * p1)) + (p1 - 1) ** 4,  # Gramacy & Lee
             'o2': -a1 * math.exp(e1) - math.exp(e2) + a1 + math.exp(1),  # Ackley
             'o3': 10 * d + sum(p ** 2 - 10 * math.cos(2 * math.pi * p) for p in params.values()),  # Rastrigin
             'o4': a2 + b2 + c2,  # Levy
-            # 'o5': k * sum(
-            #     (a3 ** n) * math.cos((b3 ** n) * math.pi * p1)
-            #     for n in range(precision)
-            # )  # Weierstrass
         }
 
 
 class ZitzlerFunction3(_model.Model):
-    def __init__(self):
+    def __init__(self, dimensions: int = 1):
         super().__init__(
             'zitzler_3',
-            {'p1': (0, 1)},
+            {f'p{i + 1}': (0, 1) for i in range(dimensions)},
             {
                 'f1': (0, 1),
-                'f2': (-0.8, 1),
+                'f2': (-0.8, 1),  # FIXME for 2D
             }
         )
-        self._d = 1
+        self._d = dimensions
 
     def _evaluate(self, **params: float):
         x1 = params['p1']
@@ -342,16 +307,16 @@ class ZitzlerFunction3(_model.Model):
 
 
 class ZitzlerFunction6(_model.Model):
-    def __init__(self):
+    def __init__(self, dimensions: int = 1):
         super().__init__(
             'zitzler_6',
-            {'p1': (0, 1)},
+            {f'p{i + 1}': (0, 1) for i in range(dimensions)},
             {
-                'f1': (0, 1),
-                'f2': (0, 1),
+                'f1': (0, 1),  # FIXME for 2D
+                'f2': (0, 1),  # FIXME for 2D
             }
         )
-        self._d = 1
+        self._d = dimensions
 
     def _evaluate(self, **params: float):
         x1 = params['p1']
@@ -366,21 +331,21 @@ class ZitzlerFunction6(_model.Model):
 
 
 class ViennetFunction(_model.Model):
-    def __init__(self):
+    def __init__(self, dimensions: int = 1):
         super().__init__(
             'viennet',
-            {'p1': (-3, 3)},
+            {f'p{i + 1}': (-3, 3) for i in range(dimensions)},
             {
-                'f1': (0, 5.06),
-                'f2': (15, 36.717592592592595),
-                'f3': (-0.1, 0.2),
+                'f1': (0, 5.06),  # FIXME for 2D
+                'f2': (15, 36.717592592592595),  # FIXME for 2D
+                'f3': (-0.1, 0.2),  # FIXME for 2D
             }
         )
-        self._d = 1
+        self._d = dimensions
 
     def _evaluate(self, **params: float):
         x = params['p1']
-        y = 0
+        y = params['p2'] if self._d == 2 else 0
         return {
             'f1': 0.5 * (x ** 2 + y ** 2) + math.sin(x ** 2 + y ** 2),
             'f2': ((3 * x - 2 * y + 4) ** 2) / 8 + ((x - y + 1) ** 2) / 27 + 15,
@@ -439,27 +404,41 @@ class RastriginOffset(_model.Model):
 
 class SimpleModelsFactory(_model.ModelFactory):
     __models = {
+        # Mono-objective mono-variable
         'model_1': Model1,
-        'model_2': Model2,
-        'model_3': Model3,
-        'model_4': Model4,
         'model_5': Model5,
-        'square': SquareFunction,
-        'gramacy_and_lee_2012': ModelGramacyAndLee2012,
-        'ackley_function': AckleyFunction,
-        'levy_function': LevyFunction,
-        'rastrigin_function': RastriginFunction,
-        'weierstrass_function': WeierstrassFunction,
-        'rosenbrock_function': RosenbrockFunction,
-        'langermann_function': LangermannFunction,
-        'styblinski_tang_function': StyblinskiTangFunction,
-        'multi_obj': MultiObj,
-        'zitzler_3': ZitzlerFunction3,
-        'zitzler_6': ZitzlerFunction6,
-        'viennet': ViennetFunction,
+        'gc': ModelGramacyAndLee2012,
+        'ackley': AckleyFunction,
+        'levy': LevyFunction,
+        'rastrigin': RastriginFunction,
+        'weierstrass': WeierstrassFunction,
+        'rosenbrock': RosenbrockFunction,
+        'langermann': LangermannFunction,
+        'styblinski_tang': StyblinskiTangFunction,
         'gl_offset': GLOffset,
         'ackley_offset': AckleyOffset,
         'rastrigin_offset': RastriginOffset,
+
+        # Multi-objective mono-variable
+        'viennet': ViennetFunction,
+        'zitzler_3': ZitzlerFunction3,
+        'zitzler_6': ZitzlerFunction6,
+        'multi_obj': MultiObj,
+
+        # Mono-objective multi-variable
+        'ackley_2d': lambda: AckleyFunction(dimensions=2),
+        'levy_2d': lambda: LevyFunction(dimensions=2),
+        'rastrigin_2d': lambda: RastriginFunction(dimensions=2),
+        'langermann_2d': lambda: LangermannFunction(dimensions=2),
+        'styblinski_tang_2d': lambda: StyblinskiTangFunction(dimensions=2),
+
+        # Multi-objective multi-variable
+        'model_2': Model2,
+        'model_3': Model3,
+        'model_4': Model4,
+        'viennet_2d': lambda: ViennetFunction(dimensions=2),
+        'zitzler_3_2d': lambda: ZitzlerFunction3(dimensions=2),
+        'zitzler_6_2d': lambda: ZitzlerFunction6(dimensions=2),
     }
 
     def generate_model(self, model_id: str, *args, **kwargs):
