@@ -41,6 +41,8 @@ MODEL_SOLUTIONS = {
     'rosenbrock': [desired_parameters(1, 1)],
     'styblinski_tang': [desired_parameters(-39.16599)],
     'multi_obj': [desired_parameters(0.95)],
+    'himmelblau': [desired_parameters(3, 2), desired_parameters(-2.805118, 3.131312),
+                   desired_parameters(-3.779310, -3.283186), desired_parameters(3.584428, -1.848126)],
     'zitzler_3': [desired_parameters(0.433)],
     'zitzler_6': [desired_parameters(0.248)],
     'viennet': [desired_parameters(-1 / 3)],

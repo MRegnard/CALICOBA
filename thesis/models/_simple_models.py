@@ -353,6 +353,27 @@ class ViennetFunction(_model.Model):
         }
 
 
+class HimmelblauFunction(_model.Model):
+    def __init__(self):
+        super().__init__(
+            'himmelblau',
+            {
+                f'p1': (-6, 6),
+                f'p2': (-6, 6),
+            },
+            {
+                'o1': (0, 2200),
+            }
+        )
+
+    def _evaluate(self, **params: float):
+        x = params['p1']
+        y = params['p2']
+        return {
+            'o1': (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2,
+        }
+
+
 class GLOffset(_model.Model):
     def __init__(self):
         super().__init__(
@@ -424,6 +445,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         'zitzler_3': ZitzlerFunction3,
         'zitzler_6': ZitzlerFunction6,
         'multi_obj': MultiObj,
+        'himmelblau': HimmelblauFunction,
 
         # Mono-objective multi-variable
         'ackley_2d': lambda: AckleyFunction(dimensions=2),
