@@ -430,7 +430,7 @@ class PointAgent(Agent):
             else:
                 suggested_steps_number = abs(x - self_value) / self._step
                 if self.parameter_name == 'p2':  # TEST
-                    suggested_steps_number /= math.pi
+                    suggested_steps_number /= 2
 
         else:
             decision = '2 neighbors -> go to middle point'
