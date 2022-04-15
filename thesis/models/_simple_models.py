@@ -433,7 +433,6 @@ class SimpleModelsFactory(_model.ModelFactory):
         'levy': LevyFunction,
         'rastrigin': RastriginFunction,
         'weierstrass': WeierstrassFunction,
-        'rosenbrock': RosenbrockFunction,
         'langermann': LangermannFunction,
         'styblinski_tang': StyblinskiTangFunction,
         'gl_offset': GLOffset,
@@ -445,7 +444,6 @@ class SimpleModelsFactory(_model.ModelFactory):
         'zitzler_3': ZitzlerFunction3,
         'zitzler_6': ZitzlerFunction6,
         'multi_obj': MultiObj,
-        'himmelblau': HimmelblauFunction,
 
         # Mono-objective multi-variable
         'ackley_2d': lambda: AckleyFunction(dimensions=2),
@@ -453,6 +451,8 @@ class SimpleModelsFactory(_model.ModelFactory):
         'rastrigin_2d': lambda: RastriginFunction(dimensions=2),
         'langermann_2d': lambda: LangermannFunction(dimensions=2),
         'styblinski_tang_2d': lambda: StyblinskiTangFunction(dimensions=2),
+        'himmelblau': HimmelblauFunction,
+        'rosenbrock': RosenbrockFunction,
 
         # Multi-objective multi-variable
         'model_2': Model2,
