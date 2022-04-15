@@ -303,7 +303,6 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 break
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
-                # TODO update for multi-variable
                 solution_found = True
                 solution_cycle = i + 1
             else:
