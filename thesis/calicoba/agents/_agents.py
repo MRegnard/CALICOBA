@@ -429,8 +429,8 @@ class PointAgent(Agent):
                 suggested_point = self_value + self._step * direction
             else:
                 suggested_steps_number = abs(x - self_value) / self._step
-                if self.parameter_name == 'p2':  # TEST
-                    suggested_steps_number /= 2
+                # if self.parameter_name == 'p2':  # TEST
+                #     suggested_steps_number /= 2
 
         else:
             decision = '2 neighbors -> go to middle point'
@@ -602,7 +602,8 @@ class PointAgent(Agent):
                 self.create_new_chain_from_me = True
 
         elif self_on_bound and other_on_bound:
-            if self_crit < other_extremum_crit:
+            if self_crit < other_extremum_crit \
+                    or (self_crit == other_extremum_crit and self_value > other_extremum_value):
                 decision = 'both extrema on bounds -> go to middle; create new chain; explore'
                 suggested_point = (self._param_agent.inf + self._param_agent.sup) / 2
                 self._min_of_chain.go_up_mode = False
@@ -612,9 +613,11 @@ class PointAgent(Agent):
                 else:
                     self.create_new_chain_from_me = True
 
-        elif (self_crit < other_extremum_crit or other_on_bound) and not self_on_bound:
+        elif (self_crit < other_extremum_crit
+              or (self_crit == other_extremum_crit and self_value > other_extremum_value)
+              or other_on_bound) and not self_on_bound:
             direction = DIR_DECREASE if self_value < prev_value else DIR_INCREASE
-            if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or other_on_bound:
+            if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or self_crit == other_extremum_crit or other_on_bound:
                 decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
                 suggested_point = self_value + self._step * direction
 
