@@ -7,13 +7,23 @@ import random
 import time
 import typing as typ
 
+import jmetal.algorithm.multiobjective.omopso as jm_omopso
+import jmetal.core.problem as jm_pb
+import jmetal.operator as jm_op
+import jmetal.operator.mutation as jm_mut
+import jmetal.util.archive as jm_arch
+import jmetal.util.termination_criterion as jm_term
 import numpy as np
-import scipy.optimize as sp_opti
+import pymoo.algorithms.moo.nsga2 as pymoo_nsga2
+import pymoo.algorithms.moo.nsga3 as pymoo_nsga3
+import pymoo.core.problem as pymoo_pb
+import pymoo.factory as pymoo_f
+import pymoo.optimize as pymoo_opti
+from jmetal.core.problem import S
 
 import calicoba
 import experiments_utils as exp_utils
 import models
-import other_methods
 import test_utils
 
 DEFAULT_DIR = pathlib.Path('output/experiments')
@@ -33,7 +43,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
     arg_parser.add_argument('-c', '--config', dest='config_file', metavar='FILE', type=pathlib.Path,
                             help='path to config file')
     arg_parser.add_argument('--method', dest='method', metavar='METHOD', type=str, choices=(
-        'calicoba', 'SA', 'GSA', 'BH', 'NM', 'DE', 'PSO',
+        'calicoba', 'PSO', 'NSGA-II', 'NSGA-III',
     ), help='method to use to explore the model')
     arg_parser.add_argument('-m', '--model', dest='model_id', type=str, help='ID of the model to experiment on')
     arg_parser.add_argument('-p', '--params', metavar='VALUE', dest='param_values', type=float, nargs='+', default=[],
@@ -357,86 +367,188 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
-    def function(x):
-        return (model.evaluate(p1=x[0])['o1']
-                + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if noisy else 0))
+    # def function(x: typ.Sequence[float]) -> typ.Sequence[float]:
+    #     outputs = model.evaluate(**{input_name: x[i] for i, input_name in enumerate(model.parameters_names)})
+    #     return [out_value + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if noisy else 0)
+    #             for out_name, out_value in outputs.items()]
 
     if seed is not None:
         random.seed(seed)
 
-    x0 = np.asarray([p_init['p1']])
-    bounds = np.asarray([model.get_parameter_domain('p1')])
-    res = None
+    # x0 = np.asarray([v for v in p_init.values()])
+    # bounds = np.asarray(model.get_parameter_domain(param_name) for param_name in model.parameters_names)
 
     model.reset()
 
+    pymoo_problem = PyMOOProblemWrapper(model, noise_mean, noise_stdev)
+    pymoo_algorithm = None
+    jmetal_algorithm = None
+    jmetal_problem = JMetalProblemWrapper(model, noise_mean, noise_stdev)
+
     start_time = time.time()
 
-    if method == 'SA':  # Simulated Annealing
-        res = other_methods.simulated_annealing(
-            init_state=x0,
-            objective_function=function,
-            bounds=bounds,
-            n_iterations=max_steps,
-            step_size=0.1,
-            init_temp=10,
-        )
+    # if method == 'SA':  # Simulated Annealing
+    #     res = other_methods.simulated_annealing(
+    #         init_state=x0,
+    #         objective_function=function,
+    #         bounds=bounds,
+    #         n_iterations=max_steps,
+    #         step_size=0.1,
+    #         init_temp=10,
+    #     )
 
-    elif method == 'GSA':  # Generalized Simulated Annealing
-        res = sp_opti.dual_annealing(
-            func=function,
-            bounds=bounds,
-            maxiter=max_steps,
-            seed=seed,
-            x0=x0
-        )
+    # elif method == 'GSA':  # Generalized Simulated Annealing
+    #     res = sp_opti.dual_annealing(
+    #         func=function,
+    #         bounds=bounds,
+    #         maxiter=max_steps,
+    #         seed=seed,
+    #         x0=x0
+    #     )
 
-    elif method == 'BH':  # Basin-hopping
-        res = sp_opti.basinhopping(
-            func=function,
-            x0=x0,
-            niter=max_steps,
-            seed=seed
-        )
+    # if method == 'DE':  # Differential Evolution
+    #     pymoo_algorithm = pymoo_de.DE()
+    #     res = sp_opti.differential_evolution(
+    #         func=function,
+    #         x0=x0,
+    #         bounds=bounds,
+    #         maxiter=max_steps,
+    #         seed=seed
+    #     )
 
-    elif method == 'NM':  # Nelder-Mead
-        res = sp_opti.minimize(
-            method='Nelder-Mead',
-            fun=function,
-            x0=x0,
-            bounds=bounds,
-            options={'max_iter': max_steps}
+    if method == 'PSO':  # Particle Swarm Optimization
+        mutation_probability = 1.0 / len(model.parameters_names)
+        max_evaluations = 25000
+        swarm_size = 100
+        jmetal_algorithm = ProbedOMOPSO(
+            jmetal_problem,
+            swarm_size=swarm_size,
+            epsilon=0.0075,
+            uniform_mutation=jm_op.UniformMutation(probability=mutation_probability, perturbation=0.5),
+            non_uniform_mutation=jm_mut.NonUniformMutation(mutation_probability, perturbation=0.5,
+                                                           max_iterations=int(max_evaluations / swarm_size)),
+            leaders=jm_arch.CrowdingDistanceArchive(100),
+            termination_criterion=jm_term.StoppingByEvaluations(max_evaluations)
         )
+        # pymoo_algorithm = pymoo_pso.PSO()
+        # res = other_methods.pso(
+        #     func=function,
+        #     lb=[bounds[0][0]],
+        #     ub=[bounds[0][1]],
+        #     maxiter=max_steps,
+        # )
 
-    elif method == 'DE':  # Differential Evolution
-        res = sp_opti.differential_evolution(
-            func=function,
-            x0=x0,
-            bounds=bounds,
-            maxiter=max_steps,
-            seed=seed
-        )
+    elif method == 'NSGA-II':
+        pymoo_algorithm = pymoo_nsga2.NSGA2()
 
-    elif method == 'PSO':  # Particle Swarm Optimization
-        res = other_methods.pso(
-            func=function,
-            lb=[bounds[0][0]],
-            ub=[bounds[0][1]],
-            maxiter=max_steps,
-        )
+    elif method == 'NSGA-III':
+        # Reference directions taken from doc’s example at https://pymoo.org/algorithms/moo/nsga3.html#Example
+        ref_dirs = pymoo_f.get_reference_directions('das-dennis', 3, n_partitions=12)
+        pymoo_algorithm = pymoo_nsga3.NSGA3(ref_dirs=ref_dirs)
 
-    if res:
+    def is_expected_solution(solution: typ.Sequence[float]) -> bool:
+        """Checks whether the candidate solution is one of the expected solutions."""
+
+        def solution_matches(s):
+            return all(abs(s[pname] - solution[i]) < threshold for i, pname in enumerate(s.keys()))
+
+        return any(solution_matches(s) for s in solutions)
+
+    if pymoo_algorithm:
+        termination = pymoo_f.get_termination('n_iter', max_steps)
+        res = pymoo_opti.minimize(pymoo_problem, pymoo_algorithm, termination, seed=seed, verbose=False)
         threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
         return exp_utils.ExperimentResult(
-            solution_found=any(abs(solution['p1'] - res.x[0]) < threshold for solution in solutions),
+            solution_found=is_expected_solution(res.X),
             error=False,
-            cycles_number=res.nit,
+            cycles_number=pymoo_algorithm.n_gen,
             solution_cycle=-1,
             time=time.time() - start_time,
-            points_number=res.nfev,
-            unique_points_number=res.nfev,
+            points_number=len(pymoo_problem.points),
+            unique_points_number=len(pymoo_problem.unique_points),
+        )
+    elif jmetal_algorithm:
+        jmetal_algorithm.run()
+        solutions_ = jmetal_algorithm.get_result()
+        threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
+        return exp_utils.ExperimentResult(
+            solution_found=any(is_expected_solution(sol.variables) for sol in solutions_),
+            error=False,
+            cycles_number=jmetal_algorithm.cycles,
+            solution_cycle=-1,
+            time=time.time() - start_time,
+            points_number=len(jmetal_problem.points),
+            unique_points_number=len(jmetal_problem.unique_points),
         )
     raise ValueError(f'unknown method "{method}"')
+
+
+class ProbedOMOPSO(jm_omopso.OMOPSO):
+    """Adds a property for the number of cycles to the OMOPSO algorithm class."""
+
+    cycles = 0
+
+    def step(self):
+        super().step()
+        self.cycles += 1
+
+
+class ProblemWrapper:
+    def __init__(self, model: models.Model, noise_mean: float = None, noise_stdev: float = None):
+        self.model = model
+        self.noise_mean = noise_mean
+        self.noise_stdev = noise_stdev
+        self.noisy = noise_mean is not None and noise_stdev is not None
+        self.points = []
+        self.unique_points = []
+
+    def on_solution_evaluation(self, solution):
+        self.points.append(solution)
+        if solution not in self.unique_points:
+            self.unique_points.append(solution)
+
+
+class PyMOOProblemWrapper(pymoo_pb.ElementwiseProblem, ProblemWrapper):
+    def __init__(self, model: models.Model, noise_mean: float = None, noise_stdev: float = None):
+        super().__init__(
+            n_var=len(model.parameters_names),
+            n_obj=len(model.outputs_names),
+            xl=np.array([model.get_parameter_domain(param_name)[0] for param_name in model.parameters_names]),
+            xu=np.array([model.get_parameter_domain(param_name)[1] for param_name in model.parameters_names]),
+        )
+        ProblemWrapper.__init__(self, model, noise_mean, noise_stdev)
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        self.on_solution_evaluation(x)
+        outputs = self.model.evaluate(**{input_name: x[i] for i, input_name in enumerate(self.model.parameters_names)})
+        out['F'] = [
+            out_value + (test_utils.gaussian_noise(mean=self.noise_mean, stdev=self.noise_stdev) if self.noisy else 0)
+            for out_name, out_value in outputs.items()
+        ]
+
+
+class JMetalProblemWrapper(jm_pb.FloatProblem, ProblemWrapper):
+    def __init__(self, model: models.Model, noise_mean: float = None, noise_stdev: float = None):
+        super().__init__()
+        ProblemWrapper.__init__(self, model, noise_mean, noise_stdev)
+        self.number_of_variables = len(model.parameters_names)
+        self.number_of_objectives = len(model.outputs_names)
+        self.number_of_constraints = 0
+        self.lower_bound = [model.get_parameter_domain(pname)[0] for pname in model.parameters_names]
+        self.upper_bound = [model.get_parameter_domain(pname)[1] for pname in model.parameters_names]
+
+    def evaluate(self, solution: S) -> S:
+        x = solution.variables
+        self.on_solution_evaluation(x)
+        outputs = self.model.evaluate(**{input_name: x[i] for i, input_name in enumerate(self.model.parameters_names)})
+        solution.objectives = [
+            out_value + (test_utils.gaussian_noise(mean=self.noise_mean, stdev=self.noise_stdev) if self.noisy else 0)
+            for out_name, out_value in outputs.items()
+        ]
+        return solution
+
+    def get_name(self) -> str:
+        return self.model.id
 
 
 if __name__ == '__main__':

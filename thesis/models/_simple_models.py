@@ -282,10 +282,34 @@ class MultiObj(_model.Model):
         }
 
 
-class ZitzlerFunction3(_model.Model):
+class ZDT1(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'zitzler_3',
+            'ZDT1',
+            {f'p{i + 1}': (0, 1) for i in range(dimensions)},
+            {
+                'f1': (0, 1),
+                'f2': (0, 1),  # FIXME for 2D
+            }
+        )
+        self._d = dimensions
+
+    def _evaluate(self, **params: float):
+        x1 = params['p1']
+        f1 = x1
+        g = 1 + 9 / 29 * sum(params['p' + str(i + 1)] for i in range(1, self._d))
+        h = 1 - math.sqrt(f1 / g)
+        f2 = g * h
+        return {
+            'f1': f1,
+            'f2': f2,
+        }
+
+
+class ZDT3(_model.Model):
+    def __init__(self, dimensions: int = 1):
+        super().__init__(
+            'ZDT3',
             {f'p{i + 1}': (0, 1) for i in range(dimensions)},
             {
                 'f1': (0, 1),
@@ -306,10 +330,10 @@ class ZitzlerFunction3(_model.Model):
         }
 
 
-class ZitzlerFunction6(_model.Model):
+class ZDT6(_model.Model):
     def __init__(self, dimensions: int = 1):
         super().__init__(
-            'zitzler_6',
+            'ZDT6',
             {f'p{i + 1}': (0, 1) for i in range(dimensions)},
             {
                 'f1': (0, 1),  # FIXME for 2D
@@ -441,8 +465,9 @@ class SimpleModelsFactory(_model.ModelFactory):
 
         # Multi-objective mono-variable
         'viennet': ViennetFunction,
-        'zitzler_3': ZitzlerFunction3,
-        'zitzler_6': ZitzlerFunction6,
+        'ZDT1': ZDT1,
+        'ZDT3': ZDT3,
+        'ZDT6': ZDT6,
         'multi_obj': MultiObj,
 
         # Mono-objective multi-variable
@@ -459,8 +484,9 @@ class SimpleModelsFactory(_model.ModelFactory):
         'model_3': Model3,
         'model_4': Model4,
         'viennet_2d': lambda: ViennetFunction(dimensions=2),
-        'zitzler_3_2d': lambda: ZitzlerFunction3(dimensions=2),
-        'zitzler_6_2d': lambda: ZitzlerFunction6(dimensions=2),
+        'ZDT1_2d': lambda: ZDT1(dimensions=2),
+        'ZDT3_2d': lambda: ZDT3(dimensions=2),
+        'ZDT6_2d': lambda: ZDT6(dimensions=2),
     }
 
     def generate_model(self, model_id: str, *args, **kwargs):
