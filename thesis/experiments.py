@@ -62,7 +62,8 @@ def get_config() -> exp_utils.ExperimentsConfig:
                             help='seed for the random numbers generator')
     arg_parser.add_argument('-o', '--output-dir', metavar='PATH', dest='output_dir', type=pathlib.Path,
                             help=f'output directory for dumped files (default: {DEFAULT_DIR})')
-    arg_parser.add_argument('-d', '--dump', dest='dump', action='store_true', help='dump generated data to files')
+    arg_parser.add_argument('--no-dump', dest='dump', action='store_false', default=True,
+                            help='data files will not be generated')
     arg_parser.add_argument('-l', '--level', metavar='LEVEL', dest='logging_level', type=str,
                             choices=('debug', 'info', 'warning', 'error', 'critical'),
                             help='logging level among debug, info, warning, error and critical '
@@ -83,7 +84,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
     default_max_steps = DEFAULT_MAX_STEPS_NB
     default_step_by_step = False
     default_output_dir = DEFAULT_DIR
-    default_dump_data = False
+    default_dump_data = True
     default_log_level = DEFAULT_LOGGING_LEVEL
     default_noisy = False
     default_noise_mean = DEFAULT_NOISE_MEAN
@@ -173,17 +174,22 @@ def main():
 
         if config.dump_data and not output_dir.exists():
             output_dir.mkdir(parents=True)
+
+    # Model instanciation
     model_factory = models.get_model_factory(models.FACTORY_SIMPLE)
     models_ = {
         k: (model_factory.generate_model(k), v)
         for k, v in test_utils.MODEL_SOLUTIONS.items()
         if not config.model_id or k == config.model_id
     }
+
+    # Execution of each model
     global_results = {}
     for model, target_parameters in models_.values():
         logger.info(f'Testing model "{model.id}"')
         global_results[model.id] = []
         param_names = list(model.parameters_names)
+        # Generation of initial values
         if config.parameters_values:
             params_iterator = [config.parameters_values]
         else:
@@ -191,6 +197,8 @@ def main():
                 test_utils.sobol_to_param(v, *model.get_parameter_domain(param_names[i])) for i, v in enumerate(point))
                 for point in test_utils.SobolSequence(len(model.parameters_names), config.runs_number)
             )
+
+        # Runs
         tested_params = []
         for run, p in enumerate(params_iterator):
             p_init = {param_names[i]: v for i, v in enumerate(p)}
@@ -257,8 +265,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
     param_files = {}
     for param_name in model.parameters_names:
-        param_files[param_name] = (output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
-        param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,steps,decision\n')
+        if output_dir:
+            param_files[param_name] = (output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
+            param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,steps,decision\n')
         model.set_parameter(param_name, p_init[param_name])
         inf, sup = model.get_parameter_domain(param_name)
         if not free_param or free_param == param_name:
@@ -282,11 +291,14 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     for i in range(max_steps):
         cycles_number = i + 1
         model.update()
+
+        # Parameters
         params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
         p = sorted(params.items())
         points.append(p)
         if p not in unique_points:
             unique_points.append(p)
+        # Objectives
         objs = {
             obj_name: obj_function(**{
                 out_name: model.get_output(out_name)
@@ -297,9 +309,9 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
         logger.debug('Objectives: ' + str(objs.items()))
 
-        # noinspection PyBroadException
         try:
             logger.debug(params, objs)
+            # Execute one optimization step
             suggestions = system.suggest_new_point(params, objs)
         except BaseException as e:
             logger.exception(e)
@@ -313,15 +325,19 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 break
             s = suggestion[0]
             if isinstance(s, calicoba.agents.GlobalMinimumFound):
+                # Global minimum detection
                 solution_found = True
                 solution_cycle = i + 1
             else:
-                param_files[param_name].write(
-                    f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                    f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
-                    f'{s.step},{s.steps_number},{s.decision}\n'
-                )
+                if param_files:
+                    param_files[param_name].write(
+                        f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
+                        f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
+                        f'{s.step},{s.steps_number},{s.decision}\n'
+                    )
+                # Update model parameters
                 model.set_parameter(param_name, s.next_point)
+                # Global minimum detection
                 if s.local_min_found:
                     threshold = 0.1
                     solution_found = any(
@@ -418,7 +434,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
 
     if method == 'PSO':  # Particle Swarm Optimization
         mutation_probability = 1.0 / len(model.parameters_names)
-        max_evaluations = 25000
+        max_evaluations = 100_000
         swarm_size = 100
         jmetal_algorithm = ProbedOMOPSO(
             jmetal_problem,
@@ -470,6 +486,8 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     elif jmetal_algorithm:
         jmetal_algorithm.run()
         solutions_ = jmetal_algorithm.get_result()
+        print(solutions)  # DEBUG
+        print(solutions_[0].variables)
         threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
         return exp_utils.ExperimentResult(
             solution_found=any(is_expected_solution(sol.variables) for sol in solutions_),
