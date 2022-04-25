@@ -127,6 +127,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
         raise ValueError('missing method')
     dump_data = default_dump_data or args.dump
 
+    noisy = default_noisy or args.noisy
     return exp_utils.ExperimentsConfig(
         method=method,
         model_id=get_or_default(args.model_id, default_model_id),
@@ -140,9 +141,9 @@ def get_config() -> exp_utils.ExperimentsConfig:
         output_directory=get_or_default(args.output_dir, default_output_dir).absolute() if dump_data else None,
         dump_data=dump_data,
         log_level=vars(logging)[get_or_default(args.logging_level, default_log_level).upper()],
-        noisy_functions=default_noisy or args.noisy,
-        noise_mean=get_or_default(args.noise_mean, default_noise_mean),
-        noise_stdev=get_or_default(args.noise_stdev, default_noise_stdev),
+        noisy_functions=noisy,
+        noise_mean=get_or_default(args.noise_mean, default_noise_mean) if noisy else None,
+        noise_stdev=get_or_default(args.noise_stdev, default_noise_stdev) if noisy else None,
     )
 
 
@@ -207,19 +208,28 @@ def main():
                 logger.info('Already tested, skipped')
                 continue
             tested_params.append(p)
+
+            run_config = exp_utils.RunConfig(
+                method=config.method,
+                model=model,
+                p_init=p_init,
+                target_parameters=target_parameters,
+                max_steps=config.max_steps,
+                step_by_step=config.step_by_step,
+                seed=config.seed,
+                free_parameter=config.free_parameter,
+                noisy=config.noisy_functions,
+                noise_mean=config.noise_mean,
+                noise_stdev=config.noise_stdev,
+                output_dir=output_dir / model.id / test_utils.map_to_string(p_init) if output_dir else None,
+                logger=logger,
+                logging_level=config.log_level
+            )
             if config.method == 'calicoba':
-                result = evaluate_model_calicoba(model, p_init, target_parameters, free_param=config.free_parameter,
-                                                 step_by_step=config.step_by_step, max_steps=config.max_steps,
-                                                 seed=config.seed, noisy=config.noisy_functions,
-                                                 noise_mean=config.noise_mean, noise_stdev=config.noise_stdev,
-                                                 output_dir=output_dir / model.id / test_utils.map_to_string(
-                                                     p_init) if output_dir else None, logger=logger,
-                                                 logging_level=config.log_level)
+                result = evaluate_model_calicoba(run_config)
             else:
-                result = evaluate_model_other(config.method, model, p_init, target_parameters,
-                                              noisy=config.noisy_functions, noise_mean=config.noise_mean,
-                                              noise_stdev=config.noise_stdev, free_param=config.free_parameter,
-                                              max_steps=config.max_steps, seed=config.seed, logger=logger)
+                result = evaluate_model_other(run_config)
+
             global_results[model.id].append({
                 'p_init': p_init,
                 'result': result,
@@ -233,51 +243,47 @@ def main():
                 f.write('P(0),solution found,error,cycles_number,solution_cycle,speed,# of visited points,'
                         '# of unique visited points,error message\n')
                 for result in global_results[model.id]:
-                    exp_res: exp_utils.ExperimentResult = result['result']
+                    exp_res: exp_utils.RunResult = result['result']
                     f.write(f'{test_utils.map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
                             f'{int(exp_res.error)},{exp_res.cycles_number},{exp_res.solution_cycle},{exp_res.time},'
                             f'{exp_res.points_number},{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
 
 
-def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutions: typ.Sequence[test_utils.Map], *,
-                            free_param: str = None, step_by_step: bool = False, max_steps: int = DEFAULT_MAX_STEPS_NB,
-                            seed: int = None, noisy: bool = False, noise_mean: float = DEFAULT_NOISE_MEAN,
-                            noise_stdev: float = DEFAULT_NOISE_STDEV, output_dir: pathlib.Path = None,
-                            logger: logging.Logger = None, logging_level: int = logging.INFO) \
-        -> exp_utils.ExperimentResult:
+def evaluate_model_calicoba(config: exp_utils.RunConfig) \
+        -> exp_utils.RunResult:
     class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
-        def __init__(self, *outputs_names, noise=False):
-            super().__init__(*outputs_names)
-            self.noisy = noise
-
         def __call__(self, **outputs_values: float):
             return (outputs_values[self.outputs_names[0]]
-                    + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if self.noisy else 0))
+                    + (test_utils.gaussian_noise(mean=config.noise_mean,
+                                                 stdev=config.noise_stdev) if config.noisy else 0))
 
-    logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
+    logger = config.logger
+    model = config.model
+
+    logger.info(f'Starting from {test_utils.map_to_string(config.p_init)}')
 
     model.reset()
     system = calicoba.Calicoba(calicoba.CalicobaConfig(
-        dump_directory=output_dir,
-        seed=seed,
-        logging_level=logging_level,
+        dump_directory=config.output_dir,
+        seed=config.seed,
+        logging_level=config.logging_level,
     ))
 
     param_files = {}
     for param_name in model.parameters_names:
-        if output_dir:
-            param_files[param_name] = (output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
+        if config.output_dir:
+            param_files[param_name] = (config.output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
             param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,steps,decision\n')
-        model.set_parameter(param_name, p_init[param_name])
+        model.set_parameter(param_name, config.p_init[param_name])
         inf, sup = model.get_parameter_domain(param_name)
-        if not free_param or free_param == param_name:
+        if not config.free_parameter or config.free_parameter == param_name:
             system.add_parameter(param_name, inf, sup)
 
     obj_functions = {}
     for output_name in model.outputs_names:
         inf, sup = model.get_output_domain(output_name)
         objective_name = 'obj_' + output_name
-        obj_functions[objective_name] = SimpleObjectiveFunction(output_name, noise=noisy)
+        obj_functions[objective_name] = SimpleObjectiveFunction(output_name)
         system.add_objective(objective_name, inf, sup)
 
     system.setup()
@@ -288,7 +294,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     unique_points = []
     error_message = ''
     solution_cycle = -1
-    for i in range(max_steps):
+    for i in range(config.max_steps):
         cycles_number = i + 1
         model.update()
 
@@ -341,8 +347,8 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
                 if s.local_min_found:
                     threshold = 0.1
                     solution_found = any(
-                        all(abs(solution[pname] - params[pname]) < threshold for pname in solution)
-                        for solution in solutions
+                        all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
+                        for expected_solution in config.target_parameters
                     )
                     if solution_found:
                         solution_cycle = i + 1
@@ -350,7 +356,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
         if solution_found or error_message:
             break
 
-        if step_by_step:
+        if config.step_by_step:
             input('Paused')
 
     total_time = time.time() - start_time
@@ -359,7 +365,7 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     #     param_files[param_name].write(
     #         f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
-    return exp_utils.ExperimentResult(
+    return exp_utils.RunResult(
         solution_found=solution_found,
         error=error_message != '',
         cycles_number=cycles_number,
@@ -371,15 +377,16 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     )
 
 
-def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Map,
-                         solutions: typ.Sequence[test_utils.Map], *, noisy: bool = False,
-                         noise_mean: float = DEFAULT_NOISE_MEAN, noise_stdev: float = DEFAULT_NOISE_STDEV,
-                         free_param: str = None, max_steps: int = DEFAULT_MAX_STEPS_NB, seed: int = None,
-                         logger: logging.Logger = None) \
-        -> exp_utils.ExperimentResult:
+def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
+    logger = config.logger
+    method = config.method
+    model = config.model
+    p_init = dict(config.p_init)  # Copy to avoid eventual side effects
+
     for param_name in model.parameters_names:
-        if free_param and free_param != param_name:
-            p_init[param_name] = solutions[1][param_name]
+        # Set value of other parameters if config.free_parameter is set
+        if config.free_parameter and config.free_parameter != param_name:
+            p_init[param_name] = config.target_parameters[0][param_name]
 
     logger.info(f'Starting from {test_utils.map_to_string(p_init)}')
 
@@ -388,18 +395,18 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     #     return [out_value + (test_utils.gaussian_noise(mean=noise_mean, stdev=noise_stdev) if noisy else 0)
     #             for out_name, out_value in outputs.items()]
 
-    if seed is not None:
-        random.seed(seed)
+    if config.seed is not None:
+        random.seed(config.seed)
 
     # x0 = np.asarray([v for v in p_init.values()])
     # bounds = np.asarray(model.get_parameter_domain(param_name) for param_name in model.parameters_names)
 
     model.reset()
 
-    pymoo_problem = PyMOOProblemWrapper(model, noise_mean, noise_stdev)
+    pymoo_problem = PyMOOProblemWrapper(model, config.noise_mean, config.noise_stdev)
     pymoo_algorithm = None
     jmetal_algorithm = None
-    jmetal_problem = JMetalProblemWrapper(model, noise_mean, noise_stdev)
+    jmetal_problem = JMetalProblemWrapper(model, config.noise_mean, config.noise_stdev)
 
     start_time = time.time()
 
@@ -433,7 +440,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     #     )
 
     if method == 'PSO':  # Particle Swarm Optimization
-        mutation_probability = 1.0 / len(model.parameters_names)
+        mutation_probability = 1 / len(model.parameters_names)
         max_evaluations = 100_000
         swarm_size = 100
         jmetal_algorithm = ProbedOMOPSO(
@@ -442,7 +449,7 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
             epsilon=0.0075,
             uniform_mutation=jm_op.UniformMutation(probability=mutation_probability, perturbation=0.5),
             non_uniform_mutation=jm_mut.NonUniformMutation(mutation_probability, perturbation=0.5,
-                                                           max_iterations=int(max_evaluations / swarm_size)),
+                                                           max_iterations=max_evaluations // swarm_size),
             leaders=jm_arch.CrowdingDistanceArchive(100),
             termination_criterion=jm_term.StoppingByEvaluations(max_evaluations)
         )
@@ -466,15 +473,15 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
         """Checks whether the candidate solution is one of the expected solutions."""
 
         def solution_matches(s):
-            return all(abs(s[pname] - solution[i]) < threshold for i, pname in enumerate(s.keys()))
+            return all(abs(s[pname] - solution[i]) < calicoba.agents.PointAgent.NULL_THRESHOLD
+                       for i, pname in enumerate(s.keys()))
 
-        return any(solution_matches(s) for s in solutions)
+        return any(solution_matches(s) for s in config.target_parameters)
 
     if pymoo_algorithm:
-        termination = pymoo_f.get_termination('n_iter', max_steps)
-        res = pymoo_opti.minimize(pymoo_problem, pymoo_algorithm, termination, seed=seed, verbose=False)
-        threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
-        return exp_utils.ExperimentResult(
+        termination = pymoo_f.get_termination('n_gen', config.max_steps/10)
+        res = pymoo_opti.minimize(pymoo_problem, pymoo_algorithm, termination, seed=config.seed, verbose=False)
+        return exp_utils.RunResult(
             solution_found=is_expected_solution(res.X),
             error=False,
             cycles_number=pymoo_algorithm.n_gen,
@@ -486,10 +493,9 @@ def evaluate_model_other(method: str, model: models.Model, p_init: test_utils.Ma
     elif jmetal_algorithm:
         jmetal_algorithm.run()
         solutions_ = jmetal_algorithm.get_result()
-        print(solutions)  # DEBUG
+        print(config.target_parameters)  # DEBUG
         print(solutions_[0].variables)
-        threshold = calicoba.agents.PointAgent.NULL_THRESHOLD
-        return exp_utils.ExperimentResult(
+        return exp_utils.RunResult(
             solution_found=any(is_expected_solution(sol.variables) for sol in solutions_),
             error=False,
             cycles_number=jmetal_algorithm.cycles,

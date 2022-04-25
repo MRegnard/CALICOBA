@@ -1,6 +1,10 @@
 import dataclasses
+import logging
 import pathlib
 import typing as typ
+
+import models
+import test_utils
 
 
 @dataclasses.dataclass(frozen=True)
@@ -23,7 +27,25 @@ class ExperimentsConfig:
 
 
 @dataclasses.dataclass(frozen=True)
-class ExperimentResult:
+class RunConfig:
+    method: str
+    model: models.Model
+    p_init: test_utils.Map
+    target_parameters: typ.Sequence[test_utils.Map]
+    max_steps: int
+    step_by_step: bool = False
+    seed: typ.Optional[int] = None
+    free_parameter: typ.Optional[str] = None
+    noisy: bool = False
+    noise_mean: typ.Optional[float] = None
+    noise_stdev: typ.Optional[float] = None
+    output_dir: pathlib.Path = None
+    logger: logging.Logger = None
+    logging_level: int = logging.INFO
+
+
+@dataclasses.dataclass(frozen=True)
+class RunResult:
     solution_found: bool
     error: bool
     cycles_number: int
