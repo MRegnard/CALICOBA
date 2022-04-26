@@ -344,14 +344,15 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                 # Update model parameters
                 model.set_parameter(param_name, s.next_point)
                 # Global minimum detection
-                if s.local_min_found:
-                    threshold = 0.1
-                    solution_found = any(
-                        all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
-                        for expected_solution in config.target_parameters
-                    )
-                    if solution_found:
-                        solution_cycle = i + 1
+                # TEST
+                # if s.local_min_found:
+                #     threshold = calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
+                #     solution_found = any(
+                #         all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
+                #         for expected_solution in config.target_parameters
+                #     )
+                #     if solution_found:
+                #         solution_cycle = i + 1
 
         if solution_found or error_message:
             break
@@ -473,7 +474,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
         """Checks whether the candidate solution is one of the expected solutions."""
 
         def solution_matches(s):
-            return all(abs(s[pname] - solution[i]) < calicoba.agents.PointAgent.NULL_THRESHOLD
+            return all(abs(s[pname] - solution[i]) < calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
                        for i, pname in enumerate(s.keys()))
 
         return any(solution_matches(s) for s in config.target_parameters)
@@ -493,8 +494,6 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
     elif jmetal_algorithm:
         jmetal_algorithm.run()
         solutions_ = jmetal_algorithm.get_result()
-        print(config.target_parameters)  # DEBUG
-        print(solutions_[0].variables)
         return exp_utils.RunResult(
             solution_found=any(is_expected_solution(sol.variables) for sol in solutions_),
             error=False,

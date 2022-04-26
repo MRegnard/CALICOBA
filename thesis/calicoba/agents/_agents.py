@@ -170,7 +170,7 @@ class PointAgent(Agent):
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
     SAME_POINT_THRESHOLD = 0.01
-    NULL_THRESHOLD = 0.00005
+    NULL_THRESHOLD = 5e-5
 
     def __init__(self, name: str, parameter_agent: ParameterAgent, previous_point: typ.Optional[PointAgent],
                  init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
