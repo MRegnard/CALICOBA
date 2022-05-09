@@ -28,12 +28,13 @@ class DataSet:
         self.speeds = []
         self.visited_points_numbers = []
         self.unique_visited_points_number = []
+        self.created_chains = []
         self.error_messages = {}
 
         with file.open(encoding='utf8') as f:
             for line in f.readlines()[1:]:
                 (p0, solution_found, error, cycles_number, solution_cycle,
-                 speed, nb_points, unique_points, error_message) = line.split(',', maxsplit=8)
+                 speed, nb_points, unique_points, chains, error_message) = line.split(',', maxsplit=9)
                 if int(solution_found):
                     self.successes_number += 1
                 if int(error):
@@ -44,6 +45,8 @@ class DataSet:
                 self.speeds.append(float(speed))
                 self.visited_points_numbers.append(int(nb_points))
                 self.unique_visited_points_number.append(int(unique_points))
+                self.created_chains.append(int(chains))
+
                 if error_message:
                     self.error_messages[p0] = error_message
 
@@ -85,6 +88,10 @@ class DataSet:
     def unique_points_stats(self) -> StatsObject:
         return self._get_stats(self.unique_visited_points_number)
 
+    @property
+    def created_chains_stats(self) -> StatsObject:
+        return self._get_stats(self.created_chains)
+
     @staticmethod
     def _get_stats(values: typ.List[typ.Union[int, float]]) -> StatsObject:
         # noinspection PyTypeChecker
@@ -104,6 +111,7 @@ Solution cycles stats:       {self.solution_cycles_stats}
 Speed stats (s):             {self.speed_stats}
 Visited points stats:        {self.visited_points_stats}
 Unique visited points stats: {self.unique_points_stats}
+Created chains stats:        {self.created_chains_stats}
 """.strip()
 
 

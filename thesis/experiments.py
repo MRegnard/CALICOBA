@@ -241,12 +241,13 @@ def main():
             logger.info('Saving results')
             with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
                 f.write('P(0),solution found,error,cycles_number,solution_cycle,speed,# of visited points,'
-                        '# of unique visited points,error message\n')
+                        '# of unique visited points,# of created chains,error message\n')
                 for result in global_results[model.id]:
                     exp_res: exp_utils.RunResult = result['result']
                     f.write(f'{test_utils.map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
                             f'{int(exp_res.error)},{exp_res.cycles_number},{exp_res.solution_cycle},{exp_res.time},'
-                            f'{exp_res.points_number},{exp_res.unique_points_number},"{exp_res.error_message or ""}"\n')
+                            f'{exp_res.points_number},{exp_res.unique_points_number},{exp_res.created_chains},'
+                            f'"{exp_res.error_message or ""}"\n')
 
 
 def evaluate_model_calicoba(config: exp_utils.RunConfig) \
@@ -292,6 +293,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
     start_time = time.time()
     points = []
     unique_points = []
+    created_chains = 0
     error_message = ''
     solution_cycle = -1
     for i in range(config.max_steps):
@@ -341,18 +343,19 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                         f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
                         f'{s.step},{s.steps_number},{s.decision}\n'
                     )
+                if 'chain' in s.decision:
+                    created_chains += 1
                 # Update model parameters
                 model.set_parameter(param_name, s.next_point)
                 # Global minimum detection
-                # TEST
-                # if s.local_min_found:
-                #     threshold = calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
-                #     solution_found = any(
-                #         all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
-                #         for expected_solution in config.target_parameters
-                #     )
-                #     if solution_found:
-                #         solution_cycle = i + 1
+                if s.local_min_found:
+                    threshold = calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
+                    solution_found = any(
+                        all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
+                        for expected_solution in config.target_parameters
+                    )
+                    if solution_found:
+                        solution_cycle = i + 1
 
         if solution_found or error_message:
             break
@@ -374,6 +377,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         time=total_time,
         points_number=len(points),
         unique_points_number=len(unique_points),
+        created_chains=created_chains,
         error_message=error_message,
     )
 
@@ -442,7 +446,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
 
     if method == 'PSO':  # Particle Swarm Optimization
         mutation_probability = 1 / len(model.parameters_names)
-        max_evaluations = 100_000
+        max_evaluations = 10000
         swarm_size = 100
         jmetal_algorithm = ProbedOMOPSO(
             jmetal_problem,
@@ -463,7 +467,9 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
         # )
 
     elif method == 'NSGA-II':
-        pymoo_algorithm = pymoo_nsga2.NSGA2()
+        pymoo_algorithm = pymoo_nsga2.NSGA2(
+            # mutation=pymoo_pm.PolynomialMutation(prob=1 / len(model.parameters_names), eta=20)
+        )
 
     elif method == 'NSGA-III':
         # Reference directions taken from doc’s example at https://pymoo.org/algorithms/moo/nsga3.html#Example
@@ -480,28 +486,30 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
         return any(solution_matches(s) for s in config.target_parameters)
 
     if pymoo_algorithm:
-        termination = pymoo_f.get_termination('n_gen', config.max_steps/10)
+        termination = pymoo_f.get_termination('n_eval', 10000)
         res = pymoo_opti.minimize(pymoo_problem, pymoo_algorithm, termination, seed=config.seed, verbose=False)
         return exp_utils.RunResult(
-            solution_found=is_expected_solution(res.X),
+            solution_found=any(is_expected_solution(sol) for sol in res.X),
             error=False,
-            cycles_number=pymoo_algorithm.n_gen,
+            cycles_number=termination.n_max_evals // pymoo_algorithm.pop_size,
             solution_cycle=-1,
             time=time.time() - start_time,
             points_number=len(pymoo_problem.points),
             unique_points_number=len(pymoo_problem.unique_points),
+            created_chains=-1,
         )
     elif jmetal_algorithm:
         jmetal_algorithm.run()
-        solutions_ = jmetal_algorithm.get_result()
+        res = jmetal_algorithm.get_result()
         return exp_utils.RunResult(
-            solution_found=any(is_expected_solution(sol.variables) for sol in solutions_),
+            solution_found=any(is_expected_solution(sol.variables) for sol in res),
             error=False,
             cycles_number=jmetal_algorithm.cycles,
             solution_cycle=-1,
             time=time.time() - start_time,
             points_number=len(jmetal_problem.points),
             unique_points_number=len(jmetal_problem.unique_points),
+            created_chains=-1,
         )
     raise ValueError(f'unknown method "{method}"')
 

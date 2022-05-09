@@ -53,4 +53,5 @@ class RunResult:
     time: float
     points_number: int = None
     unique_points_number: int = None
+    created_chains: int = None
     error_message: str = None
