@@ -46,7 +46,7 @@ def load_data(param_name):
 
     with (path / f'{param_name}.csv').open(encoding='utf8') as f:
         for line in f.readlines()[1:]:
-            _, param_value, _, _, _, _, _, _, _ = line.strip().split(',', maxsplit=8)
+            _, param_value, _, _, _, _, _, _ = line.strip().split(',', maxsplit=7)
             xs.append(float(param_value))
 
     return xs

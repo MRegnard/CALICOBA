@@ -447,6 +447,25 @@ class RastriginOffset(_model.Model):
         }
 
 
+class Circles(_model.Model):
+    def __init__(self):
+        super().__init__(
+            'circles',
+            {
+                'p1': (-2, 4),
+                'p2': (-2, 4),
+            },
+            {
+                'o1': (0, 32),
+            }
+        )
+
+    def _evaluate(self, p1: float, p2: float):
+        return {
+            'o1': p1 ** 2 + p2 ** 2,
+        }
+
+
 class SimpleModelsFactory(_model.ModelFactory):
     __models = {
         # Mono-objective mono-variable
@@ -487,6 +506,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         'ZDT1_2d': lambda: ZDT1(dimensions=2),
         'ZDT3_2d': lambda: ZDT3(dimensions=2),
         'ZDT6_2d': lambda: ZDT6(dimensions=2),
+        'circles': Circles,
     }
 
     def generate_model(self, model_id: str, *args, **kwargs):

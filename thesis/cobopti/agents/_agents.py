@@ -132,7 +132,8 @@ class ParameterAgent(Agent):
     def add_minimum(self, point: PointAgent):
         self._minima.append(point)
 
-    def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float]) -> PointAgent:
+    def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float]) \
+            -> PointAgent:
         self._value = value
         prev_point = self._chains[-1] if self._chains else None
 
@@ -141,7 +142,6 @@ class ParameterAgent(Agent):
                 f'point_{self._last_point_id}',
                 self,
                 prev_point if not new_chain else None,
-                self.start_init_step,
                 criticalities,
                 logger=self._logger
             )
@@ -173,16 +173,17 @@ class PointAgent(Agent):
     NULL_THRESHOLD = 5e-5
 
     def __init__(self, name: str, parameter_agent: ParameterAgent, previous_point: typ.Optional[PointAgent],
-                 init_step: float, objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
+                 objective_criticalities: typ.Dict[str, float], *, logger: logging.Logger = None):
         super().__init__(name, logger=logger)
         self._param_agent = parameter_agent
         self._param_value = parameter_agent.value
 
         self._criticalities = objective_criticalities
 
-        self._step = init_step
-        self._last_direction = DIR_NONE
-        self._last_checked_direction = DIR_NONE
+        # noinspection PyTypeChecker
+        self._step: float = None
+        self._last_direction: int = DIR_NONE
+        self._last_checked_direction: int = DIR_NONE
 
         self.steps_mult = 1
         self.local_min_already_visited = False
@@ -257,9 +258,10 @@ class PointAgent(Agent):
             self._right_value = None
             self._right_crit = None
 
-    def perceive(self, current_point: PointAgent, last_direction: int):
+    def perceive(self, current_point: PointAgent, last_direction: int, last_step: float):
         self._is_current = self is current_point
         self._current_point = current_point
+        self._step = last_step
         self._last_direction = last_direction
         self._all_points = self._get_all_points_in_chain()
         if not self.is_local_minimum:
@@ -348,7 +350,7 @@ class PointAgent(Agent):
             return None
 
         direction = DIR_NONE
-        suggested_steps_number = None
+        suggested_step = None
         suggested_point = None
         new_chain_next = False
         check_for_out_of_bounds = False
@@ -356,20 +358,21 @@ class PointAgent(Agent):
         from_value = self.parameter_value
 
         if self.is_extremum and self._min_of_chain.go_up_mode:
-            decision, direction, new_chain_next, suggested_point, suggested_steps_number = self._hill_climb()
+            decision, direction, new_chain_next, suggested_point, suggested_step = self._hill_climb()
         elif self._is_current_min_of_chain:
             if not self.is_local_minimum:
-                decision, direction, suggested_point, suggested_steps_number = self._local_search()
+                decision, direction, suggested_point, suggested_step = self._local_search()
             elif self.best_local_minimum:
                 (check_for_out_of_bounds, decision, direction, from_value,
-                 new_chain_next, suggested_point, suggested_steps_number) = self._semi_local_search()
+                 new_chain_next, suggested_point, suggested_step) = self._semi_local_search()
 
         if decision:
             self.log_debug('Decision: ' + decision)
 
-        if suggested_steps_number is not None:  # Cap jump length
-            suggested_steps_number = min(self._param_agent.step_max, suggested_steps_number)
-            suggested_point = from_value + self._step * suggested_steps_number * direction
+        if suggested_step is not None:
+            # Cap jump length
+            # suggested_step = min(self._param_agent.step_max, suggested_step)
+            suggested_point = from_value + suggested_step * direction
             if (check_for_out_of_bounds
                     and (suggested_point < self._param_agent.inf or suggested_point > self._param_agent.sup)):
                 self.prev_suggestion_out_of_bounds = True
@@ -385,8 +388,7 @@ class PointAgent(Agent):
                 criticality=self._current_point.criticality,
                 local_min_found=self._param_agent.local_min_found,
                 direction=direction,
-                step=self._step,
-                steps_number=suggested_steps_number,
+                step=suggested_step,
                 new_chain_next=new_chain_next,
             )
         return None
@@ -394,7 +396,7 @@ class PointAgent(Agent):
     def _local_search(self):
         direction = DIR_NONE
         suggested_point = None
-        suggested_steps_number = None
+        suggested_step = self._step
         self_value = self.parameter_value
         self_crit = self.criticality
 
@@ -405,8 +407,7 @@ class PointAgent(Agent):
             elif self_value == self._param_agent.sup:
                 direction = DIR_DECREASE
             else:
-                direction = self._last_direction or DIR_INCREASE
-            suggested_steps_number = 1
+                direction = self._last_direction or DIR_INCREASE  # TODO random if _last_direction is undefined
 
         elif self_value in (self._param_agent.inf, self._param_agent.sup):
             decision = 'point on bound -> go to middle'
@@ -422,13 +423,15 @@ class PointAgent(Agent):
                 top_point = (self._left_value, self._left_crit)
             else:
                 top_point = (self._right_value, self._right_crit)
-            self._step = abs(self_value - top_point[0])
             x = utils.get_xc(top_point, intermediate_point=(self_value, self_crit), yc=0)
             direction = DIR_INCREASE if x > self_value else DIR_DECREASE
             if abs(x - self_value) < self.STUCK_THRESHOLD:
-                suggested_point = self_value + self._step * direction
+                suggested_step = self._step * direction
             else:
-                suggested_steps_number = abs(x - self_value) / self._step
+                if self._last_direction == direction:
+                    suggested_step = self._step * 2
+                else:
+                    suggested_step = self._step / 3
                 # if self.parameter_name == 'p2':  # TEST
                 #     suggested_steps_number /= 2
 
@@ -450,7 +453,7 @@ class PointAgent(Agent):
                 self._last_checked_direction = DIR_DECREASE
             suggested_point = (self_value + other_value) / 2
 
-        return decision, direction, suggested_point, suggested_steps_number
+        return decision, direction, suggested_point, suggested_step
 
     def _semi_local_search(self):
         self.best_local_minimum = False
@@ -458,7 +461,7 @@ class PointAgent(Agent):
         self_crit = self.criticality
         from_value = self_value
         suggested_point = None
-        suggested_steps_number = None
+        suggested_step = None
         check_for_out_of_bounds = False
         direction = DIR_NONE
         other_min: typ.Optional[PointAgent] = None
@@ -477,10 +480,9 @@ class PointAgent(Agent):
                 from_value = interm_point[0]
             else:
                 interm_point = (self_value, self_crit)
-            self._step = abs(interm_point[0] - top_point[0])
             x = utils.get_xc(top_point, intermediate_point=interm_point, yc=0)
             direction = DIR_INCREASE if x > self_value else DIR_DECREASE
-            suggested_steps_number = abs(x - interm_point[0]) / self._step
+            suggested_step = abs(x - interm_point[0])
             check_for_out_of_bounds = True
 
         else:
@@ -488,23 +490,21 @@ class PointAgent(Agent):
             if self._left_crit < self_crit < self._right_crit:
                 decision += 'left lower, right higher -> follow left slope'
                 from_value = self._left_value
-                self._step = abs(self_value - self._left_value)
                 x = utils.get_xc(top_point=(self_value, self_crit),
                                  intermediate_point=(self._left_value, self._left_crit), yc=0)
                 direction = DIR_DECREASE
                 other_min = self._left_point
-                suggested_steps_number = abs(x - self._left_value) / self._step
+                suggested_step = abs(x - self._left_value)
                 check_for_out_of_bounds = True
 
             elif self._left_crit > self_crit > self._right_crit:
                 decision += 'left higher, right lower -> follow right slope'
                 from_value = self._right_value
-                self._step = abs(self_value - self._right_value)
                 x = utils.get_xc(top_point=(self_value, self_crit),
                                  intermediate_point=(self._right_value, self._right_crit), yc=0)
                 direction = DIR_INCREASE
                 other_min = self._right_point
-                suggested_steps_number = abs(x - self._right_value) / self._step
+                suggested_step = abs(x - self._right_value)
                 check_for_out_of_bounds = True
 
             elif self._left_crit < self_crit > self._right_crit:
@@ -517,11 +517,10 @@ class PointAgent(Agent):
                     from_value = self._left_value
                     crit = self._left_crit
                     other_min = self._left_point
-                self._step = abs(self_value - from_value)
                 x = utils.get_xc(top_point=(self_value, self_crit),
                                  intermediate_point=(from_value, crit), yc=0)
                 direction = DIR_INCREASE
-                suggested_steps_number = abs(x - from_value) / self._step
+                suggested_step = abs(x - from_value)
                 check_for_out_of_bounds = True
 
             else:
@@ -542,24 +541,24 @@ class PointAgent(Agent):
                     self._last_checked_direction = DIR_DECREASE
                 suggested_point = (self_value + other_value) / 2
 
-        if suggested_steps_number is not None and self.local_min_already_visited:
+        if suggested_step is not None and self.local_min_already_visited:
             prev_min = self._param_agent.minima[-2]  # -1 is current minimum
             if (abs(self.parameter_value - prev_min.parameter_value) <= self.SAME_POINT_THRESHOLD
                     and prev_min.prev_suggestion_out_of_bounds):
                 decision += ' -> previous was OOB -> cancel jump and go to middle'
-                suggested_steps_number = None
+                suggested_step = None
                 suggested_point = (self_value + other_min.parameter_value) / 2
                 check_for_out_of_bounds = False
             else:
                 # We came back to an already visited local minimum, go twice as far than previously
                 decision += ' and jump twice as far'
                 self.steps_mult *= 2
-                suggested_steps_number *= self.steps_mult
+                suggested_step *= self.steps_mult
 
         new_chain_next = True
 
         return (check_for_out_of_bounds, decision, direction, from_value,
-                new_chain_next, suggested_point, suggested_steps_number)
+                new_chain_next, suggested_point, suggested_step)
 
     def _hill_climb(self):
         decision = ''
@@ -567,7 +566,7 @@ class PointAgent(Agent):
         self_value = self.parameter_value
         self_crit = self.criticality
         suggested_point = None
-        suggested_steps_number = None
+        suggested_step = self._step
         direction = DIR_NONE
 
         other_extremum = [p for p in self._all_points if p.is_extremum and p is not self][0]
@@ -593,7 +592,6 @@ class PointAgent(Agent):
                 direction = DIR_DECREASE
             else:
                 direction = self._last_direction or DIR_INCREASE
-            suggested_steps_number = 1
             self._min_of_chain.go_up_mode = False
             self._min_of_chain.already_went_up = True
             if self._min_of_chain.first_point or self_on_bound:
@@ -617,7 +615,8 @@ class PointAgent(Agent):
               or (self_crit == other_extremum_crit and self_value > other_extremum_value)
               or other_on_bound) and not self_on_bound:
             direction = DIR_DECREASE if self_value < prev_value else DIR_INCREASE
-            if abs(self_value - prev_value) <= self.STUCK_THRESHOLD or self_crit == other_extremum_crit or other_on_bound:
+            if (abs(self_value - prev_value) <= self.STUCK_THRESHOLD
+                    or self_crit == other_extremum_crit or other_on_bound):
                 decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
                 suggested_point = self_value + self._step * direction
 
@@ -627,7 +626,7 @@ class PointAgent(Agent):
                                                intermediate_point=(self_value, self_crit),
                                                yc=other_extremum_crit)
 
-        return decision, direction, new_chain_next, suggested_point, suggested_steps_number
+        return decision, direction, new_chain_next, suggested_point, suggested_step
 
     def get_minimum(self) -> typ.Optional[PointAgent]:
         if self.is_local_minimum:
@@ -700,7 +699,6 @@ class Suggestion:
     local_min_found: bool
     new_chain_next: bool = False
     step: float = None
-    steps_number: float = None
     direction: int = None
 
 

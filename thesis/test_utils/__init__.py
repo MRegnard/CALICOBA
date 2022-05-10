@@ -52,6 +52,7 @@ MODEL_SOLUTIONS = {
     'rastrigin_offset': [desired_parameters(0)],
     'ackley_2d': [desired_parameters(0, 0)],
     'rastrigin_2d': [desired_parameters(0, 0)],
+    'circles': [desired_parameters(0, 0)],
 }
 
 

@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import math
 import pathlib
 import random
 import typing as typ
@@ -68,7 +69,7 @@ class CoBOpti:
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
         self._cycle = 0
         with (self._config.dump_directory / 'feedback.csv').open(mode='w') as f:
-            f.write(f'cycle,{",".join(sorted(a.name for a in self._parameter_agents))}')
+            f.write(f'cycle,{",".join(sorted(a.name for a in self._parameter_agents))}\n')
         self._logger.info('CoBOpti setup finished.')
 
     def suggest_new_point(self, parameter_values: typ.Dict[str, float], objective_values: typ.Dict[str, float]) \
@@ -86,27 +87,34 @@ class CoBOpti:
         current_points = {}
         suggestions = {}
         last_directions = {}
-        for parameter in self._parameter_agents:
-            p_name = parameter.name
-            suggestions[p_name] = []
-            diff = parameter_values[p_name] - parameter.value
-            if diff > 0:
-                last_directions[p_name] = agents.DIR_INCREASE
-            elif diff < 0:
-                last_directions[p_name] = agents.DIR_DECREASE
-            else:
-                last_directions[p_name] = agents.DIR_NONE
-            new_chain = p_name in self._create_new_chain_for_params
-            new_point = parameter.perceive(parameter_values[p_name], new_chain, crits)
-            current_points[p_name] = new_point
-            if new_point not in self._agents_registry:
-                self.add_agent(new_point)
+        last_steps = {}
+        with (self._config.dump_directory / 'feedback.csv').open(mode='a') as f:
+            line = []
+            for parameter in self._parameter_agents:
+                p_name = parameter.name
+                suggestions[p_name] = []
+                diff = parameter_values[p_name] - parameter.value
+                last_steps[p_name] = abs(diff) if not math.isnan(diff) else parameter.start_init_step
+                if diff > 0:
+                    last_directions[p_name] = agents.DIR_INCREASE
+                elif diff < 0:
+                    last_directions[p_name] = agents.DIR_DECREASE
+                else:
+                    last_directions[p_name] = agents.DIR_NONE
+                new_chain = p_name in self._create_new_chain_for_params
+                new_point = parameter.perceive(parameter_values[p_name], new_chain, crits)
+                current_points[p_name] = new_point
+                if new_point not in self._agents_registry:
+                    self.add_agent(new_point)
+                line.append(f'{last_directions[p_name]}/{diff}')
+            f.write(f'{self._cycle},' + ','.join(map(str, line)) + '\n')
         self._create_new_chain_for_params.clear()
 
         # Update point agents
         point_agents = self.get_agents_for_type(agents.PointAgent)
         for point in point_agents:
-            point.perceive(current_points[point.parameter_name], last_directions[point.parameter_name])
+            p_name = point.parameter_name
+            point.perceive(current_points[p_name], last_directions[p_name], last_steps[p_name])
 
         # Let point agents decide where to go next
         for point in point_agents:

@@ -274,7 +274,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
     for param_name in model.parameters_names:
         if config.output_dir:
             param_files[param_name] = (config.output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
-            param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,steps,decision\n')
+            param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,decision\n')
         model.set_parameter(param_name, config.p_init[param_name])
         inf, sup = model.get_parameter_domain(param_name)
         if not config.free_parameter or config.free_parameter == param_name:
@@ -341,7 +341,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                     param_files[param_name].write(
                         f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
                         f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
-                        f'{s.step},{s.steps_number},{s.decision}\n'
+                        f'{s.step},{s.decision}\n'
                     )
                 if 'chain' in s.decision:
                     created_chains += 1
