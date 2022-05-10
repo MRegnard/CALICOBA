@@ -19,7 +19,7 @@ import test_utils
 DEFAULT_DIR = pathlib.Path('output/experiments')
 DEFAULT_LOGGING_LEVEL = 'info'
 DEFAULT_RUNS_NB = 200
-DEFAULT_MAX_STEPS_NB = 1000
+DEFAULT_MAX_STEPS_NB = -1
 DEFAULT_NULL_THRESHOLD = 0.005
 DEFAULT_NOISE_MEAN = 0
 DEFAULT_NOISE_STDEV = 0.01
@@ -45,7 +45,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
     arg_parser.add_argument('-r', '--runs', metavar='NB', dest='runs', type=int,
                             help=f'number of runs (default: {DEFAULT_RUNS_NB})')
     arg_parser.add_argument('--max-steps', metavar='NB', dest='max_steps', type=int,
-                            help=f'maximum number of simulation steps (default: {DEFAULT_MAX_STEPS_NB})')
+                            help=f'maximum number of simulation steps, a negative number means there is no limit (default: {DEFAULT_MAX_STEPS_NB})')
     arg_parser.add_argument('--step-by-step', dest='step_by_step', action='store_true',
                             help='enable step by step for CALICOBA')
     arg_parser.add_argument('-s', '--seed', dest='seed', type=int,
@@ -269,7 +269,10 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
     unique_points = []
     error_message = ''
     solution_cycle = -1
-    for i in range(max_steps):
+    
+    i = 0
+    
+    while (max_steps != i):
         cycles_number = i + 1
         model.update()
         params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
@@ -323,6 +326,8 @@ def evaluate_model_calicoba(model: models.Model, p_init: test_utils.Map, solutio
 
         if step_by_step:
             input('Paused')
+            
+        i += 1
 
     total_time = time.time() - start_time
 
