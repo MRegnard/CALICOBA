@@ -5,7 +5,7 @@ import typing as typ
 import matplotlib.pyplot as plt
 from PIL import Image
 
-import calicoba.agents as calicoba
+import cobopti.agents as calicoba
 import models
 import plot
 

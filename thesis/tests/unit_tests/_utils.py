@@ -1,6 +1,6 @@
 import unittest
 
-from calicoba import utils
+from cobopti import utils
 
 
 class GetXCTestCase(unittest.TestCase):

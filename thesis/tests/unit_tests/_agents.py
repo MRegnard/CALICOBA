@@ -1,9 +1,9 @@
 import unittest
 
-import calicoba
+import cobopti
 
 
-class DummyDataOutput(calicoba.data_sources.DataOutput):
+class DummyDataOutput(cobopti.data_sources.DataOutput):
     def __init__(self):
         super().__init__(0, 2, 'out')
 
@@ -11,7 +11,7 @@ class DummyDataOutput(calicoba.data_sources.DataOutput):
         return 1
 
 
-class DummyDataInput(calicoba.data_sources.DataInput):
+class DummyDataInput(cobopti.data_sources.DataInput):
     def __init__(self):
         super().__init__(0, 2, 'p')
         self._data = 0
@@ -23,7 +23,7 @@ class DummyDataInput(calicoba.data_sources.DataInput):
         self._data = value
 
 
-class DummyCriticalityFunction(calicoba.agents.ObjectiveFunction):
+class DummyCriticalityFunction(cobopti.agents.ObjectiveFunction):
     def __init__(self):
         super().__init__('out')
 
@@ -36,7 +36,7 @@ class AgentTestCase(unittest.TestCase):
         self.agent = self.DummyAgent('agent')
 
     def test_get_and_set_world(self):
-        c = calicoba.Calicoba(calicoba.CalicobaConfig())
+        c = cobopti.CoBOpti(cobopti.CoBOptiConfig())
         self.agent.world = c
         self.assertIs(c, self.agent.world)
 
@@ -47,7 +47,7 @@ class AgentTestCase(unittest.TestCase):
     def test_name(self):
         self.assertEqual('agent', self.agent.name)
 
-    class DummyAgent(calicoba.agents.Agent):
+    class DummyAgent(cobopti.agents.Agent):
         pass
 
 
@@ -73,22 +73,22 @@ class AgentWithDataSourceTestCase(unittest.TestCase):
         self.assertEqual(1, len(messages))
         self.assertIn(m, messages)
 
-    class DummyAgent(calicoba.agents.AgentWithDataSource[DummyDataOutput]):
+    class DummyAgent(cobopti.agents.AgentWithDataSource[DummyDataOutput]):
         pass
 
-    class DummyMessage(calicoba.agents.Message):
+    class DummyMessage(cobopti.agents.Message):
         pass
 
 
 class ObjectiveAgentTestCase(unittest.TestCase):
     def setUp(self):
-        c = calicoba.Calicoba(calicoba.CalicobaConfig())
+        c = cobopti.CoBOpti(cobopti.CoBOptiConfig())
         self.out = DummyDataOutput()
         c.add_output(self.out)
-        self.output_agent = c.get_agents_for_type(calicoba.agents.OutputAgent)[0]
+        self.output_agent = c.get_agents_for_type(cobopti.agents.OutputAgent)[0]
         self.function = DummyCriticalityFunction()
         c.add_objective('obj_out', self.function)
-        self.obj_agent = c.get_agents_for_type(calicoba.agents.ObjectiveAgent)[0]
+        self.obj_agent = c.get_agents_for_type(cobopti.agents.ObjectiveAgent)[0]
 
     def test_name(self):
         self.assertEqual('obj_out', self.obj_agent.name)
@@ -106,7 +106,7 @@ class ObjectiveAgentTestCase(unittest.TestCase):
 class OutputAgentTestCase(unittest.TestCase):
     def setUp(self):
         self.out = DummyDataOutput()
-        self.agent = calicoba.agents.OutputAgent(self.out)
+        self.agent = cobopti.agents.OutputAgent(self.out)
 
     def test_name(self):
         self.assertEqual(self.out.name, self.agent.name)
@@ -125,8 +125,8 @@ class OutputAgentTestCase(unittest.TestCase):
 class ParameterAgentTestCase(unittest.TestCase):
     def setUp(self):
         self.input = DummyDataInput()
-        self.agent = calicoba.agents.ParameterAgent(self.input)
-        self.agent.world = calicoba.Calicoba(calicoba.CalicobaConfig())
+        self.agent = cobopti.agents.ParameterAgent(self.input)
+        self.agent.world = cobopti.CoBOpti(cobopti.CoBOptiConfig())
 
     def test_name(self):
         self.assertEqual(self.input.name, self.agent.name)

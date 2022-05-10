@@ -10,16 +10,16 @@ _T = typ.TypeVar('_T', bound=agents.Agent)
 
 
 @dataclasses.dataclass(frozen=True)
-class CalicobaConfig:
+class CoBOptiConfig:
     dump_directory: pathlib.Path = None
     seed: typ.Optional[int] = None
     logging_level: int = logging.INFO
 
 
-class Calicoba:
-    def __init__(self, config: CalicobaConfig):
+class CoBOpti:
+    def __init__(self, config: CoBOptiConfig):
         self._config = config
-        self._logger = logging.getLogger('CALICOBA')
+        self._logger = logging.getLogger('CoBOpti')
         self._logger.setLevel(self._config.logging_level)
         self._rng = random.Random(self._config.seed)
         if self._config.dump_directory and not self._config.dump_directory.exists():
@@ -31,7 +31,7 @@ class Calicoba:
         self._create_new_chain_for_params = set()
 
     @property
-    def config(self) -> CalicobaConfig:
+    def config(self) -> CoBOptiConfig:
         return self._config
 
     @property
@@ -63,11 +63,13 @@ class Calicoba:
         self._agents_registry.remove(agent)
 
     def setup(self):
-        self._logger.info('Setting up CALICOBA…')
+        self._logger.info('Setting up CoBOpti…')
         self._parameter_agents = self.get_agents_for_type(agents.ParameterAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
         self._cycle = 0
-        self._logger.info('CALICOBA setup finished.')
+        with (self._config.dump_directory / 'feedback.csv').open(mode='w') as f:
+            f.write(f'cycle,{",".join(sorted(a.name for a in self._parameter_agents))}')
+        self._logger.info('CoBOpti setup finished.')
 
     def suggest_new_point(self, parameter_values: typ.Dict[str, float], objective_values: typ.Dict[str, float]) \
             -> typ.Dict[str, typ.List[agents.Suggestion]]:
@@ -125,6 +127,6 @@ class Calicoba:
 
 
 __all__ = [
-    'Calicoba',
-    'CalicobaConfig',
+    'CoBOpti',
+    'CoBOptiConfig',
 ]

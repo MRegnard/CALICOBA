@@ -21,7 +21,7 @@ import pymoo.factory as pymoo_f
 import pymoo.optimize as pymoo_opti
 from jmetal.core.problem import S
 
-import calicoba
+import cobopti
 import experiments_utils as exp_utils
 import models
 import test_utils
@@ -252,7 +252,7 @@ def main():
 
 def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         -> exp_utils.RunResult:
-    class SimpleObjectiveFunction(calicoba.agents.ObjectiveFunction):
+    class SimpleObjectiveFunction(cobopti.agents.ObjectiveFunction):
         def __call__(self, **outputs_values: float):
             return (outputs_values[self.outputs_names[0]]
                     + (test_utils.gaussian_noise(mean=config.noise_mean,
@@ -264,7 +264,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
     logger.info(f'Starting from {test_utils.map_to_string(config.p_init)}')
 
     model.reset()
-    system = calicoba.Calicoba(calicoba.CalicobaConfig(
+    system = cobopti.CoBOpti(cobopti.CoBOptiConfig(
         dump_directory=config.output_dir,
         seed=config.seed,
         logging_level=config.logging_level,
@@ -332,7 +332,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                 error_message = 'no suggestions for parameter ' + param_name
                 break
             s = suggestion[0]
-            if isinstance(s, calicoba.agents.GlobalMinimumFound):
+            if isinstance(s, cobopti.agents.GlobalMinimumFound):
                 # Global minimum detection
                 solution_found = True
                 solution_cycle = i + 1
@@ -349,7 +349,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                 model.set_parameter(param_name, s.next_point)
                 # Global minimum detection
                 if s.local_min_found:
-                    threshold = calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
+                    threshold = cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
                     solution_found = any(
                         all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
                         for expected_solution in config.target_parameters
@@ -480,7 +480,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
         """Checks whether the candidate solution is one of the expected solutions."""
 
         def solution_matches(s):
-            return all(abs(s[pname] - solution[i]) < calicoba.agents.PointAgent.SAME_POINT_THRESHOLD
+            return all(abs(s[pname] - solution[i]) < cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
                        for i, pname in enumerate(s.keys()))
 
         return any(solution_matches(s) for s in config.target_parameters)

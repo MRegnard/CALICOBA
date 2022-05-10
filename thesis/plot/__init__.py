@@ -8,7 +8,7 @@ import sklearn.linear_model as sk_lin
 import sklearn.metrics as sk_metrics
 import sklearn.preprocessing as sk_pre
 
-import calicoba.agents as calicoba
+import cobopti.agents as calicoba
 import models
 
 
