@@ -340,7 +340,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
                 if param_files:
                     param_files[param_name].write(
                         f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                        f'{s.criticality},{s.agent.parameter_value},{int(s.agent.is_local_minimum)},'
+                        f'{s.criticality},{s.agent.variable_value},{int(s.agent.is_local_minimum)},'
                         f'{s.step},{s.decision}\n'
                     )
                 if 'chain' in s.decision:

@@ -28,7 +28,7 @@ class PointAgentTest(unittest.TestCase):
         self.input = DummyDataInput()
         self.world = cobopti.CoBOpti(cobopti.CoBOptiConfig())
         self.world.add_parameter(self.input)
-        self.param = self.world.get_agents_for_type(cobopti.agents.ParameterAgent)[0]
+        self.param = self.world.get_agents_for_type(cobopti.agents.VariableAgent)[0]
 
     def test_no_previous(self):
         agent = cobopti.agents.PointAgent('p', self.param, None, {'o': 0.5})

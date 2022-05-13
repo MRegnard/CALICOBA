@@ -125,7 +125,7 @@ class OutputAgentTestCase(unittest.TestCase):
 class ParameterAgentTestCase(unittest.TestCase):
     def setUp(self):
         self.input = DummyDataInput()
-        self.agent = cobopti.agents.ParameterAgent(self.input)
+        self.agent = cobopti.agents.VariableAgent(self.input)
         self.agent.world = cobopti.CoBOpti(cobopti.CoBOptiConfig())
 
     def test_name(self):

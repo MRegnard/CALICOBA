@@ -27,7 +27,7 @@ class CoBOpti:
             self._config.dump_directory.mkdir(parents=True)
         self._cycle = 0
         self._agents_registry: typ.List[agents.Agent] = []
-        self._parameter_agents: typ.List[agents.ParameterAgent] = []
+        self._parameter_agents: typ.List[agents.VariableAgent] = []
         self._objective_agents: typ.List[agents.ObjectiveAgent] = []
         self._create_new_chain_for_params = set()
 
@@ -51,7 +51,7 @@ class CoBOpti:
 
     def add_parameter(self, name: str, inf: float, sup: float):
         self._logger.info(f'Creating parameter "{name}".')
-        self.add_agent(agents.ParameterAgent(name, inf, sup, logger=self._logger))
+        self.add_agent(agents.VariableAgent(name, inf, sup, logger=self._logger))
 
     def add_objective(self, name: str, inf: float, sup: float):
         self._logger.info(f'Creating objective "{name}".')
@@ -59,13 +59,14 @@ class CoBOpti:
 
     def add_agent(self, agent: agents.Agent):
         self._agents_registry.append(agent)
+        agent.world = self
 
     def remove_agent(self, agent: agents.Agent):
         self._agents_registry.remove(agent)
 
     def setup(self):
         self._logger.info('Setting up CoBOpti…')
-        self._parameter_agents = self.get_agents_for_type(agents.ParameterAgent)
+        self._parameter_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
         self._cycle = 0
         with (self._config.dump_directory / 'feedback.csv').open(mode='w') as f:
@@ -84,37 +85,34 @@ class CoBOpti:
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
 
         # Update parameters, current points, and directions
-        current_points = {}
         suggestions = {}
-        last_directions = {}
-        last_steps = {}
         with (self._config.dump_directory / 'feedback.csv').open(mode='a') as f:
             line = []
             for parameter in self._parameter_agents:
                 p_name = parameter.name
                 suggestions[p_name] = []
                 diff = parameter_values[p_name] - parameter.value
-                last_steps[p_name] = abs(diff) if not math.isnan(diff) else parameter.start_init_step
+                last_step = abs(diff) if not math.isnan(diff) else parameter.default_step
                 if diff > 0:
-                    last_directions[p_name] = agents.DIR_INCREASE
+                    last_direction = agents.DIR_INCREASE
                 elif diff < 0:
-                    last_directions[p_name] = agents.DIR_DECREASE
+                    last_direction = agents.DIR_DECREASE
                 else:
-                    last_directions[p_name] = agents.DIR_NONE
+                    last_direction = agents.DIR_NONE
                 new_chain = p_name in self._create_new_chain_for_params
-                new_point = parameter.perceive(parameter_values[p_name], new_chain, crits)
-                current_points[p_name] = new_point
-                if new_point not in self._agents_registry:
-                    self.add_agent(new_point)
-                line.append(f'{last_directions[p_name]}/{diff}')
+                parameter.perceive(parameter_values[p_name], new_chain, crits, last_step, last_direction)
+                line.append(f'{last_direction}/{diff}')
             f.write(f'{self._cycle},' + ','.join(map(str, line)) + '\n')
         self._create_new_chain_for_params.clear()
+
+        # Update chain agents
+        for chain in self.get_agents_for_type(agents.ChainAgent):
+            chain.perceive()
 
         # Update point agents
         point_agents = self.get_agents_for_type(agents.PointAgent)
         for point in point_agents:
-            p_name = point.parameter_name
-            point.perceive(current_points[p_name], last_directions[p_name], last_steps[p_name])
+            point.perceive()
 
         # Let point agents decide where to go next
         for point in point_agents:
@@ -123,11 +121,8 @@ class CoBOpti:
                 self.remove_agent(point)
             elif suggestion:
                 if isinstance(suggestion, agents.Suggestion) and suggestion.new_chain_next:
-                    self._create_new_chain_for_params.add(point.parameter_name)
-                suggestions[point.parameter_name].append(suggestion)
-
-        for parameter in self._parameter_agents:
-            parameter.local_min_found = False
+                    self._create_new_chain_for_params.add(point.variable_name)
+                suggestions[point.variable_name].append(suggestion)
 
         self._cycle += 1
 
