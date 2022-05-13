@@ -55,3 +55,5 @@ class RunResult:
     unique_points_number: int = None
     created_chains: int = None
     error_message: str = None
+    last_point: str = None
+    difference_with_expected: str = None # 'str' and not 'float' to have a void string if there is an error
