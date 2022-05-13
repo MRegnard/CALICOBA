@@ -6,6 +6,7 @@ import pathlib
 import random
 import time
 import typing as typ
+import math
 
 import jmetal.algorithm.multiobjective.omopso as jm_omopso
 import jmetal.core.problem as jm_pb
@@ -187,7 +188,7 @@ def main():
     # Execution of each model
     global_results = {}
     for model, target_parameters in models_.values():
-        logger.info(f'Testing model "{model.id}"')
+        logger.info(f'Testing model "{model.nameForFiles}"')
         global_results[model.id] = []
         param_names = list(model.parameters_names)
         # Generation of initial values
@@ -203,7 +204,7 @@ def main():
         tested_params = []
         for run, p in enumerate(params_iterator):
             p_init = {param_names[i]: v for i, v in enumerate(p)}
-            logger.info(f'Model "{model.id}": run {run + 1}/{config.runs_number}')
+            logger.info(f'Model "{model.nameForFiles}": run {run + 1}/{config.runs_number}')
             if p in tested_params:
                 logger.info('Already tested, skipped')
                 continue
@@ -221,7 +222,7 @@ def main():
                 noisy=config.noisy_functions,
                 noise_mean=config.noise_mean,
                 noise_stdev=config.noise_stdev,
-                output_dir=output_dir / model.id / test_utils.map_to_string(p_init) if output_dir else None,
+                output_dir=output_dir / model.nameForFiles() / test_utils.map_to_string(p_init) if output_dir else None,
                 logger=logger,
                 logging_level=config.log_level
             )
@@ -239,7 +240,7 @@ def main():
 
         if config.dump_data and output_dir and config.runs_number > 1:
             logger.info('Saving results')
-            with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
+            with (output_dir / (model.nameForFiles() + '.csv')).open(mode='w', encoding='utf8') as f:
                 f.write('P(0),solution found,error,cycles_number,solution_cycle,speed,# of visited points,'
                         '# of unique visited points,# of created chains,error message\n')
                 for result in global_results[model.id]:
@@ -296,7 +297,10 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
     created_chains = 0
     error_message = ''
     solution_cycle = -1
-    for i in range(config.max_steps):
+    
+    i = 0
+    
+    while (config.max_steps != i):
         cycles_number = i + 1
         model.update()
 
@@ -362,6 +366,8 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
 
         if config.step_by_step:
             input('Paused')
+            
+        i += 1
 
     total_time = time.time() - start_time
 
@@ -369,6 +375,26 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
     #     param_files[param_name].write(
     #         f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
 
+    
+    if(error_message) :
+        last_point = ''
+        difference = ''
+    else :
+        model.update()
+        params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
+        p = sorted(params.items())
+        last_point = ''
+        for aPoint in p :
+            last_point += aPoint[0] + ':' + str(aPoint[1]) + ';'
+        last_point = last_point[:len(last_point)-1]
+        
+        difference = 0
+        for i in range(len(p)) :
+            difference += math.pow((p[i][1] - test_utils.MODEL_SOLUTIONS[model.id][0]['p' + str(i+1)]) , 2)
+        difference = str(math.sqrt(difference))
+        
+        
+    
     return exp_utils.RunResult(
         solution_found=solution_found,
         error=error_message != '',
@@ -379,6 +405,8 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         unique_points_number=len(unique_points),
         created_chains=created_chains,
         error_message=error_message,
+        last_point = last_point,
+        difference_with_expected = difference,
     )
 
 
