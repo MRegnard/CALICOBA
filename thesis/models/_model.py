@@ -15,6 +15,10 @@ class Model(abc.ABC):
     def id(self) -> str:
         return self.__id
 
+    @property
+    def nameForFiles(self) -> str:
+        return self._id     # Sometimes overrided
+
     def update(self):
         self.__outputs = self.evaluate(**self.__parameters)
 
