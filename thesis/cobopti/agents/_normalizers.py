@@ -6,6 +6,11 @@ class Normalizer(abc.ABC):
 
     @abc.abstractmethod
     def __call__(self, value: float) -> float:
+        """Normalizes the given value.
+
+        :param value: The value to normalize.
+        :return: The normalized value.
+        """
         pass
 
 
@@ -39,14 +44,14 @@ class SlidingNormalizer(Normalizer):
 
 
 class BoundNormalizer(Normalizer):
-    def __init__(self, inf: float, sup: float):
+    def __init__(self, lower_bound: float, upper_bound: float):
         """A normalizer that uses the given lower and upper bounds.
 
-        :param inf: The lower bound.
-        :param sup: The upper bound.
+        :param lower_bound: The lower bound.
+        :param upper_bound: The upper bound.
         """
-        self.__inf = inf
-        self.__sup = sup
+        self.__lower_bound = lower_bound
+        self.__upper_bound = upper_bound
 
     def __call__(self, value):
-        return abs(value - self.__inf) / abs(self.__sup - self.__inf)
+        return abs(value - self.__lower_bound) / abs(self.__upper_bound - self.__lower_bound)

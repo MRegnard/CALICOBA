@@ -4,7 +4,7 @@ Point = typ.Tuple[float, float]
 
 
 def get_xc(top_point: Point, intermediate_point: Point, yc: float) -> float:
-    """Return the x component of point C (xc), relative to point A = (xa, ya),
+    """Returns the x component of point C (xc), relative to point A = (xa, ya),
     of a 2D ABC rectangle triangle of hypothenus AC, whose yc and point A are know
     as well as a point E = (xe, ye) on the AC side paired with another point D of same y component on the AB side.
     As such, sides DE and BC are parallel and we can use Thales’s theorem to compute xc.

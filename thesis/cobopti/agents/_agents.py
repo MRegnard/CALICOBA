@@ -16,6 +16,8 @@ DIR_NONE = 0
 
 
 class Agent(abc.ABC):
+    """Base class for agents."""
+
     def __init__(self, name: str, *, logger: logging.Logger = None):
         self.__name = name
         self.__dead = False
@@ -24,7 +26,7 @@ class Agent(abc.ABC):
 
     @property
     def world(self):
-        """The world this agent lives in.
+        """The environment this agent lives in, i.e. the CoBOpti instances that manages it.
 
         :rtype: cobopti.CoBOpti
         """
@@ -32,7 +34,7 @@ class Agent(abc.ABC):
 
     @world.setter
     def world(self, w):
-        """Set the world this agent lives in.
+        """Set the environment this agent lives in, i.e. the CoBOpti instances that manages it.
 
         :type w: cobopti.CoBOpti
         """
@@ -42,40 +44,70 @@ class Agent(abc.ABC):
 
     @property
     def name(self) -> str:
+        """The name of this agent."""
         return self.__name
 
     def die(self):
+        """Flags this agent for deletion at the end of the current cycle."""
         self.__dead = True
 
     @property
     def dead(self) -> bool:
+        """Whether this agent has been removed from the environment."""
         return self.__dead
 
     def log_exception(self, exception):
+        """Logs an exception.
+
+        :param exception: The exception to log.
+        """
         if self._logger:
             self._logger.exception(exception)
 
     def log_error(self, message):
+        """Logs a message with the error level.
+
+        :param message: The message to log.
+        """
         if self._logger:
             self._logger.error(f'{self._get_logging_name()}: {message}')
 
     def log_critical(self, message):
+        """Logs a message with the critical level.
+
+        :param message: The message to log.
+        """
         if self._logger:
             self._logger.critical(f'{self._get_logging_name()}: {message}')
 
     def log_warning(self, message):
+        """Logs a message with the warning level.
+
+        :param message: The message to log.
+        """
         if self._logger:
             self._logger.warning(f'{self._get_logging_name()}: {message}')
 
     def log_info(self, message):
+        """Logs a message with the info level.
+
+        :param message: The message to log.
+        """
         if self._logger:
             self._logger.info(f'{self._get_logging_name()}: {message}')
 
     def log_debug(self, message):
+        """Logs a message with the debug level.
+
+        :param message: The message to log.
+        """
         if self._logger:
             self._logger.debug(f'{self._get_logging_name()}: {message}')
 
     def _get_logging_name(self):
+        """Returns the string to use as the name for this agent in log messages.
+        Defaults to this agent’s name property.
+        """
         return self.name
 
     def __repr__(self):
@@ -83,17 +115,34 @@ class Agent(abc.ABC):
 
 
 class ObjectiveAgent(Agent):
-    def __init__(self, name: str, inf: float, sup: float):
+    """Dummy agent that acts as a holder of the current value and criticality
+    of the objective function it represents.
+    """
+
+    def __init__(self, name: str, lower_bound: float, upper_bound: float):
+        """Creates an objective agents.
+        
+        :param name: Objective’s name.
+        :param lower_bound: Objective’s lower bound.
+        :param upper_bound: Objective’s upper bound.
+        """
         super().__init__(name)
         self._criticality = 0
-        self._normalizer = _normalizers.BoundNormalizer(inf, sup)
+        self._normalizer = _normalizers.BoundNormalizer(lower_bound, upper_bound)
         self._file = None
 
     @property
     def criticality(self) -> float:
+        """The criticality of this objective."""
         return self._criticality
 
     def perceive(self, cycle: int, objective_value: float, *, dump_dir: pathlib.Path = None):
+        """Updates the objective value and criticality of this objective agent.
+
+        :param cycle: Current optimization cycle.
+        :param objective_value: New value of the associated objective.
+        :param dump_dir: Directory where to dump data to. May be null.
+        """
         self._criticality = self._normalizer(objective_value)
 
         if dump_dir:  # TODO move outside
@@ -109,12 +158,21 @@ class ObjectiveAgent(Agent):
 
 
 class VariableAgent(Agent):
-    def __init__(self, name: str, inf: float, sup: float, *, logger: logging.Logger = None):
+    """A variable agent represents a model variable to optimize."""
+
+    def __init__(self, name: str, lower_bound: float, upper_bound: float, *, logger: logging.Logger = None):
+        """Creates a variable agent.
+
+        :param name: Variable’s name.
+        :param lower_bound: Variable’s lower bound.
+        :param upper_bound: Variable’s upper bound.
+        :param logger: The logger instance to use to log things.
+        """
         super().__init__(name, logger=logger)
-        self._inf = inf
-        self._sup = sup
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
         self._max_step_number = 2
-        self._default_step = (sup - inf) / 100
+        self._default_step = (upper_bound - lower_bound) / 100
         self.last_step = 0
         self.last_direction = DIR_NONE
 
@@ -126,34 +184,52 @@ class VariableAgent(Agent):
         self._value = math.nan
 
     @property
-    def inf(self) -> float:
-        return self._inf
+    def lower_bound(self) -> float:
+        """The variable’s lower bound."""
+        return self._lower_bound
 
     @property
-    def sup(self) -> float:
-        return self._sup
+    def upper_bound(self) -> float:
+        """The variable’s upper bound."""
+        return self._upper_bound
 
     @property
     def value(self) -> float:
+        """The variable’s current value."""
         return self._value
 
     @property
     def default_step(self) -> float:
+        """The default variation step."""
         return self._default_step
 
     @property
     def max_step(self) -> int:
+        """The maximum variation step."""
         return self._max_step_number
 
     @property
     def minima(self) -> typ.Sequence[PointAgent]:
-        return self._minima
+        """The list of all point agents that represent a local minimum."""
+        return list(self._minima)
 
     def add_minimum(self, point: PointAgent):
+        """Adds a new point agent to the local minima list.
+
+        :param point: The agent to add.
+        """
         self._minima.append(point)
 
     def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float],
                  previous_step: float, previous_direction: float):
+        """Updates this variable agent.
+
+        :param value: The variable’s new value.
+        :param new_chain: Whether to create a new chain agent.
+        :param criticalities: The criticalities of each objective.
+        :param previous_step: The previous variation amount.
+        :param previous_direction: The previous variation direction.
+        """
         self._value = value
         self.last_step = previous_step
         self.last_direction = previous_direction
@@ -188,8 +264,17 @@ class VariableAgent(Agent):
 
 
 class ChainAgent(Agent):
+    """A chain agent manages a set of point agents and is managed by a variable agent."""
+
     def __init__(self, name: str, variable_agent: VariableAgent, first_point: PointAgent,
                  *, logger: logging.Logger = None):
+        """Creates a chain agent.
+
+        :param name: Chain’s name.
+        :param variable_agent: The variable agent that manages this chain.
+        :param first_point: The first point agent that this chain will manage.
+        :param logger: The logger to use to log things.
+        """
         super().__init__(name, logger=logger)
         self._var_agent = variable_agent
         self._points = []
@@ -203,26 +288,35 @@ class ChainAgent(Agent):
         self.go_up_mode = False
 
     @property
-    def points(self) -> typ.List[PointAgent]:
+    def points(self) -> typ.Sequence[PointAgent]:
+        """The list of all point agents managed by this chain."""
         return list(self._points)
 
     @property
-    def current_point(self):
+    def current_point(self) -> PointAgent:
+        """The point agent that represents the current model state."""
         return self._current_point
 
     @property
     def minimum(self) -> PointAgent:
+        """The point agent that has the lowest associated criticality."""
         return self._minimum
 
     @property
     def lower_extremum(self) -> PointAgent:
+        """The agent that has the lowest variable value."""
         return self._lower_extremum
 
     @property
     def upper_extremum(self) -> PointAgent:
+        """The agent that has the highest variable value."""
         return self._upper_extremum
 
     def add_point(self, p: PointAgent):
+        """Adds a point agent to this chain.
+
+        :param p: The point to add.
+        """
         if p in self._points:
             raise ValueError(f'point {p} already in chain {self}')
         if self._current_point:
@@ -238,11 +332,16 @@ class ChainAgent(Agent):
         self._points.append(p)
 
     def remove_last_point(self):
+        """Removes the last point from this chain.
+
+        :raise ValueError: If this chain contains a single point.
+        """
         if len(self._points) == 1:
             raise ValueError(f'cannot remove point from chain {self}')
         self._points.pop()
 
     def perceive(self):
+        """Updates this chain."""
         if not self.is_active:
             return
         self._detect_minimum()
@@ -271,6 +370,7 @@ class ChainAgent(Agent):
 
 
 class PointAgent(Agent):
+    """A point agent represents the value of a variable at a given time along with the states of all objectives."""
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
     SAME_POINT_THRESHOLD = 0.01
@@ -278,6 +378,13 @@ class PointAgent(Agent):
 
     def __init__(self, name: str, variable_agent: VariableAgent, objective_criticalities: typ.Dict[str, float],
                  *, logger: logging.Logger = None):
+        """Creates a point agent.
+
+        :param name: Point’s name.
+        :param variable_agent: Variable agent this point is be associated with. Used to gather the current variable value.
+        :param objective_criticalities: The current objectives criticalities.
+        :param logger: The logger to use to log things.
+        """
         super().__init__(name, logger=logger)
         self._var_agent = variable_agent
         self._var_value = variable_agent.value
@@ -323,10 +430,15 @@ class PointAgent(Agent):
 
     @property
     def chain(self):
+        """The chain that this point belongs to."""
         return self._chain
 
     @chain.setter
     def chain(self, chain):
+        """Set the chain this point belongs to.
+
+        :raise ValueError: If this point is already assigned to a chain.
+        """
         if self._chain:
             raise ValueError(f'point {self} already has a chain')
         self._chain = chain
@@ -373,6 +485,7 @@ class PointAgent(Agent):
             self._right_crit = None
 
     def perceive(self):
+        """Updates this point agent."""
         self._suggested_step = self._var_agent.last_step
         self._last_direction = self._var_agent.last_direction
         all_points = self._chain.points
@@ -431,7 +544,11 @@ class PointAgent(Agent):
             if self._chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
 
-    def decide(self) -> typ.Optional[typ.Union[_suggestions.VariationSuggestion, _suggestions.GlobalMinimumFound]]:
+    def decide(self) -> typ.Union[_suggestions.VariationSuggestion, _suggestions.GlobalMinimumFound, None]:
+        """Makes this point agent decide what to do.
+
+        :return: A suggestion or None if this agent decided to suggest nothing.
+        """
         if self.is_global_minimum:
             return _suggestions.GlobalMinimumFound()
         if not self._chain.is_active or not self.best_local_minimum:
@@ -477,13 +594,14 @@ class PointAgent(Agent):
             # suggested_step = min(self._param_agent.max_step, suggested_step)
             suggested_point = from_value + suggested_step * suggested_direction
             if (check_for_out_of_bounds
-                    and (suggested_point < self._var_agent.inf or suggested_point > self._var_agent.sup)):
+                    and (
+                            suggested_point < self._var_agent.lower_bound or suggested_point > self._var_agent.upper_bound)):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
             return _suggestions.VariationSuggestion(
                 agent=self,
-                next_point=min(self._var_agent.sup, max(self._var_agent.inf, suggested_point)),
+                next_point=min(self._var_agent.upper_bound, max(self._var_agent.lower_bound, suggested_point)),
                 decision=decision,
                 selected_objective='',
                 criticality=self.criticality,
@@ -497,7 +615,7 @@ class PointAgent(Agent):
     def _local_search(self) -> ic.LocalSearchSuggestion:
         if self.previous_point is None and self.next_point is None:
             return self._local_search__explore_from_first_point()
-        elif self.variable_value in (self._var_agent.inf, self._var_agent.sup):
+        elif self.variable_value in (self._var_agent.lower_bound, self._var_agent.upper_bound):
             return self._local_search__point_on_bound_go_to_middle()
         elif (self._left_point is not None) != (self._right_point is not None):
             return self._local_search__follow_slope()
@@ -506,9 +624,9 @@ class PointAgent(Agent):
 
     def _local_search__explore_from_first_point(self) -> ic.LocalSearchSuggestion:
         decision = 'first point in chain -> explore'
-        if self.variable_value == self._var_agent.inf:
+        if self.variable_value == self._var_agent.lower_bound:
             direction = DIR_INCREASE
-        elif self.variable_value == self._var_agent.sup:
+        elif self.variable_value == self._var_agent.upper_bound:
             direction = DIR_DECREASE
         else:
             direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
@@ -516,7 +634,7 @@ class PointAgent(Agent):
 
     def _local_search__point_on_bound_go_to_middle(self) -> ic.LocalSearchSuggestion:
         decision = 'point on bound -> go to middle'
-        if self.variable_value == self._var_agent.inf:
+        if self.variable_value == self._var_agent.lower_bound:
             other_value = self._right_value
         else:
             other_value = self._left_value
@@ -718,8 +836,8 @@ class PointAgent(Agent):
         other_extremum = lower_extremum if self is upper_extremum else upper_extremum
         other_extremum_value = other_extremum.variable_value
         other_extremum_crit = other_extremum.criticality
-        self_on_bound = self.variable_value in [self._var_agent.inf, self._var_agent.sup]
-        other_on_bound = other_extremum_value in [self._var_agent.inf, self._var_agent.sup]
+        self_on_bound = self.variable_value in [self._var_agent.lower_bound, self._var_agent.upper_bound]
+        other_on_bound = other_extremum_value in [self._var_agent.lower_bound, self._var_agent.upper_bound]
 
         if other_extremum_value < self.variable_value:
             prev_value = self._left_value
@@ -745,9 +863,9 @@ class PointAgent(Agent):
 
     def _hill_climb__new_slope_found_stop_climbing(self, prev_point: PointAgent, self_on_bound: bool) \
             -> ic.HillClimbSuggestion:
-        if prev_point is self._left_point or self._var_value == self._var_agent.inf:
+        if prev_point is self._left_point or self._var_value == self._var_agent.lower_bound:
             direction = DIR_INCREASE
-        elif prev_point is self._right_point or self._var_value == self._var_agent.sup:
+        elif prev_point is self._right_point or self._var_value == self._var_agent.upper_bound:
             direction = DIR_DECREASE
         else:
             direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
@@ -764,7 +882,7 @@ class PointAgent(Agent):
         )
 
     def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ic.HillClimbSuggestion:
-        suggested_point = (self._var_agent.inf + self._var_agent.sup) / 2
+        suggested_point = (self._var_agent.lower_bound + self._var_agent.upper_bound) / 2
         self._chain.go_up_mode = False
         self._chain.minimum.already_went_up = True
         new_chain_next = self is self._chain.minimum or self_on_bound
@@ -795,18 +913,22 @@ class PointAgent(Agent):
 
     @property
     def variable_name(self) -> str:
+        """Name of the associated variable."""
         return self._var_agent.name
 
     @property
     def variable_value(self) -> float:
+        """Value of the associated variable when this agent was created."""
         return self._var_value
 
     @property
     def criticalities(self) -> typ.Dict[str, float]:
+        """Objectives criticalities when this agent was created."""
         return dict(self._criticalities)
 
     @property
     def criticality(self) -> float:
+        """Criticality of this agent."""
         return max(self._criticalities.values())
 
     def __repr__(self):
