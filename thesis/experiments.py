@@ -22,6 +22,7 @@ import pymoo.optimize as pymoo_opti
 from jmetal.core.problem import S
 
 import cobopti
+import cobopti.objectives
 import experiments_utils as exp_utils
 import models
 import test_utils
@@ -252,7 +253,7 @@ def main():
 
 def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         -> exp_utils.RunResult:
-    class SimpleObjectiveFunction(cobopti.agents.ObjectiveFunction):
+    class SimpleObjectiveFunction(cobopti.objectives.ObjectiveFunction):
         def __call__(self, **outputs_values: float):
             return (outputs_values[self.outputs_names[0]]
                     + (test_utils.gaussian_noise(mean=config.noise_mean,

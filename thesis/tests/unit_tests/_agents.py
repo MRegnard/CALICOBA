@@ -1,6 +1,7 @@
 import unittest
 
 import cobopti
+import cobopti.objectives
 
 
 class DummyDataOutput(cobopti.data_sources.DataOutput):
@@ -23,7 +24,7 @@ class DummyDataInput(cobopti.data_sources.DataInput):
         self._data = value
 
 
-class DummyCriticalityFunction(cobopti.agents.ObjectiveFunction):
+class DummyCriticalityFunction(cobopti.objectives.ObjectiveFunction):
     def __init__(self):
         super().__init__('out')
 

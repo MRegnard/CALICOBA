@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import abc
-import dataclasses
 import logging
 import math
 import pathlib
 import random
 import typing as typ
 
-from . import _normalizers, _internal_classes as ic
+from . import _normalizers, _internal_classes as ic, _suggestions
 from .. import utils
 
 DIR_INCREASE = 1
@@ -97,7 +96,7 @@ class ObjectiveAgent(Agent):
     def perceive(self, cycle: int, objective_value: float, *, dump_dir: pathlib.Path = None):
         self._criticality = self._normalizer(objective_value)
 
-        if dump_dir:
+        if dump_dir:  # TODO move outside
             if not self._file:
                 self._file = (dump_dir / (self.name + '.csv')).open(mode='w', encoding='UTF-8')
                 self._file.write('cycle,raw value,criticality\n')
@@ -426,9 +425,9 @@ class PointAgent(Agent):
             if self._chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
 
-    def decide(self) -> typ.Optional[typ.Union[VariationSuggestion, GlobalMinimumFound]]:
+    def decide(self) -> typ.Optional[typ.Union[_suggestions.VariationSuggestion, _suggestions.GlobalMinimumFound]]:
         if self.is_global_minimum:
-            return GlobalMinimumFound()
+            return _suggestions.GlobalMinimumFound()
         if not self._chain.is_active or not self.best_local_minimum:
             return None
 
@@ -476,7 +475,7 @@ class PointAgent(Agent):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
-            return VariationSuggestion(
+            return _suggestions.VariationSuggestion(
                 agent=self,
                 next_point=min(self._var_agent.sup, max(self._var_agent.inf, suggested_point)),
                 decision=decision,
@@ -809,33 +808,3 @@ class PointAgent(Agent):
             f'Point{{{self.name}={self.variable_value},minimum={self.is_local_minimum},extremum={self.is_extremum},'
             f'min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )
-
-
-@dataclasses.dataclass(frozen=True)
-class VariationSuggestion:
-    agent: PointAgent
-    next_point: float
-    decision: str
-    selected_objective: str
-    criticality: float
-    local_min_found: bool
-    new_chain_next: bool = False
-    step: float = None
-    direction: int = None
-
-
-class GlobalMinimumFound:
-    pass
-
-
-class ObjectiveFunction(abc.ABC):
-    def __init__(self, *outputs_names: str):
-        self._outputs_names = outputs_names
-
-    @property
-    def outputs_names(self) -> typ.Tuple[str]:
-        return self._outputs_names
-
-    @abc.abstractmethod
-    def __call__(self, **outputs_values: float) -> float:
-        pass
