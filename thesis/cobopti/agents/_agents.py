@@ -8,7 +8,7 @@ import pathlib
 import random
 import typing as typ
 
-from . import _normalizers
+from . import _normalizers, _internal_classes as ic
 from .. import utils
 
 DIR_INCREASE = 1
@@ -266,31 +266,6 @@ class ChainAgent(Agent):
         return f'Chain{{name={self.name},variable={self._var_agent.name},points={self._points}}}'
 
 
-@dataclasses.dataclass(frozen=True)
-class _Suggestion:
-    decision: str
-    next_point: typ.Optional[float] = None
-    direction: typ.Optional[float] = None
-    step: typ.Optional[float] = None
-
-
-@dataclasses.dataclass(frozen=True)
-class LocalSearchSuggestion(_Suggestion):
-    pass
-
-
-@dataclasses.dataclass(frozen=True)
-class SemiLocalSearchSuggestion(_Suggestion):
-    from_value: typ.Optional[float] = None
-    new_chain_next: bool = False
-    check_for_out_of_bounds: bool = False
-
-
-@dataclasses.dataclass(frozen=True)
-class HillClimbSuggestion(_Suggestion):
-    new_chain_next: bool = False
-
-
 class PointAgent(Agent):
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
@@ -504,7 +479,7 @@ class PointAgent(Agent):
             )
         return None
 
-    def _local_search(self) -> LocalSearchSuggestion:
+    def _local_search(self) -> ic.LocalSearchSuggestion:
         if self.previous_point is None and self.next_point is None:
             return self._local_search__explore_from_first_point()
         elif self.variable_value in (self._var_agent.inf, self._var_agent.sup):
@@ -514,7 +489,7 @@ class PointAgent(Agent):
         else:
             return self._local_search__go_to_middle()
 
-    def _local_search__explore_from_first_point(self) -> LocalSearchSuggestion:
+    def _local_search__explore_from_first_point(self) -> ic.LocalSearchSuggestion:
         decision = 'first point in chain -> explore'
         if self.variable_value == self._var_agent.inf:
             direction = DIR_INCREASE
@@ -522,18 +497,18 @@ class PointAgent(Agent):
             direction = DIR_DECREASE
         else:
             direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
-        return LocalSearchSuggestion(decision=decision, direction=direction, step=self._suggested_step)
+        return ic.LocalSearchSuggestion(decision=decision, direction=direction, step=self._suggested_step)
 
-    def _local_search__point_on_bound_go_to_middle(self) -> LocalSearchSuggestion:
+    def _local_search__point_on_bound_go_to_middle(self) -> ic.LocalSearchSuggestion:
         decision = 'point on bound -> go to middle'
         if self.variable_value == self._var_agent.inf:
             other_value = self._right_value
         else:
             other_value = self._left_value
         suggested_point = (self.variable_value + other_value) / 2
-        return LocalSearchSuggestion(decision=decision, next_point=suggested_point)
+        return ic.LocalSearchSuggestion(decision=decision, next_point=suggested_point)
 
-    def _local_search__follow_slope(self) -> LocalSearchSuggestion:
+    def _local_search__follow_slope(self) -> ic.LocalSearchSuggestion:
         decision = '1 neighbor -> follow slope'
         if self._left_point:
             top_point = (self._left_value, self._left_crit)
@@ -551,9 +526,9 @@ class PointAgent(Agent):
                 suggested_step = self._suggested_step / 3
             # if self.parameter_name == 'p2':  # TEST
             #     suggested_steps_number /= 2
-        return LocalSearchSuggestion(decision=decision, direction=direction, step=suggested_step)
+        return ic.LocalSearchSuggestion(decision=decision, direction=direction, step=suggested_step)
 
-    def _local_search__go_to_middle(self) -> LocalSearchSuggestion:
+    def _local_search__go_to_middle(self) -> ic.LocalSearchSuggestion:
         decision = '2 neighbors -> go to middle point'
         if self._last_checked_direction == DIR_INCREASE and self._right_crit > self.criticality:
             other_value = self._left_value
@@ -570,9 +545,9 @@ class PointAgent(Agent):
             other_value = self._left_value
             self._last_checked_direction = DIR_DECREASE
         suggested_point = (self.variable_value + other_value) / 2
-        return LocalSearchSuggestion(decision=decision, next_point=suggested_point)
+        return ic.LocalSearchSuggestion(decision=decision, next_point=suggested_point)
 
-    def _semi_local_search(self) -> SemiLocalSearchSuggestion:
+    def _semi_local_search(self) -> ic.SemiLocalSearchSuggestion:
         self.best_local_minimum = False
         self_value = self.variable_value
         self_crit = self.criticality
@@ -619,7 +594,7 @@ class PointAgent(Agent):
 
         new_chain_next = True
 
-        return SemiLocalSearchSuggestion(
+        return ic.SemiLocalSearchSuggestion(
             decision=decision,
             direction=direction,
             step=suggested_step,
@@ -629,7 +604,7 @@ class PointAgent(Agent):
             new_chain_next=new_chain_next,
         )
 
-    def _semi_local_search__follow_only_slope(self) -> typ.Tuple[PointAgent, SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_only_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
         if self._left_point:
             top_point = (self._left_value, self._left_crit)
             other_min = self._left_point
@@ -646,7 +621,7 @@ class PointAgent(Agent):
         x = utils.get_xc(top_point, intermediate_point=interm_point, yc=0)
         direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
         suggested_step = abs(x - interm_point[0])
-        return other_min, SemiLocalSearchSuggestion(
+        return other_min, ic.SemiLocalSearchSuggestion(
             decision='1 minimum neighbor -> follow slope',
             direction=direction,
             step=suggested_step,
@@ -654,11 +629,11 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True
         )
 
-    def _semi_local_search__follow_left_slope(self) -> typ.Tuple[PointAgent, SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_left_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
         x = utils.get_xc(top_point=(self.variable_value, self.criticality),
                          intermediate_point=(self._left_value, self._left_crit), yc=0)
         suggested_step = abs(x - self._left_value)
-        return self._left_point, SemiLocalSearchSuggestion(
+        return self._left_point, ic.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: left lower, right higher -> follow left slope',
             direction=DIR_DECREASE,
             step=suggested_step,
@@ -666,11 +641,11 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True
         )
 
-    def _semi_local_search__follow_right_slope(self) -> typ.Tuple[PointAgent, SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_right_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
         x = utils.get_xc(top_point=(self.variable_value, self.criticality),
                          intermediate_point=(self._right_value, self._right_crit), yc=0)
         suggested_step = abs(x - self._right_value)
-        return self._right_point, SemiLocalSearchSuggestion(
+        return self._right_point, ic.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: left higher, right lower -> follow right slope',
             direction=DIR_INCREASE,
             step=suggested_step,
@@ -678,7 +653,7 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True
         )
 
-    def _semi_local_search__follow_slope_on_lowest_side(self) -> typ.Tuple[PointAgent, SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_slope_on_lowest_side(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
         if self._right_crit < self._left_crit:
             from_value = self._right_value
             crit = self._right_crit
@@ -691,7 +666,7 @@ class PointAgent(Agent):
                          intermediate_point=(from_value, crit), yc=0)
         direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
         suggested_step = abs(x - from_value)
-        return other_min, SemiLocalSearchSuggestion(
+        return other_min, ic.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: both lower -> follow slope on lowest’s side',
             direction=direction,
             step=suggested_step,
@@ -699,7 +674,7 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True
         )
 
-    def _semi_local_search__go_to_middle(self) -> SemiLocalSearchSuggestion:
+    def _semi_local_search__go_to_middle(self) -> ic.SemiLocalSearchSuggestion:
         if self._last_checked_direction == DIR_INCREASE and self._right_crit > self.criticality:
             other_value = self._left_value
             self._last_checked_direction = DIR_DECREASE
@@ -715,12 +690,12 @@ class PointAgent(Agent):
             other_value = self._left_value
             self._last_checked_direction = DIR_DECREASE
         suggested_point = (self.variable_value + other_value) / 2
-        return SemiLocalSearchSuggestion(
+        return ic.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: both higher -> go to middle point',
             next_point=suggested_point
         )
 
-    def _hill_climb(self):
+    def _hill_climb(self) -> ic.HillClimbSuggestion:
         suggestion = None
 
         lower_extremum = self._chain.lower_extremum
@@ -754,7 +729,7 @@ class PointAgent(Agent):
         return suggestion
 
     def _hill_climb__new_slope_found_stop_climbing(self, prev_point: PointAgent, self_on_bound: bool) \
-            -> HillClimbSuggestion:
+            -> ic.HillClimbSuggestion:
         if prev_point is self._left_point or self._var_value == self._var_agent.inf:
             direction = DIR_INCREASE
         elif prev_point is self._right_point or self._var_value == self._var_agent.sup:
@@ -766,28 +741,28 @@ class PointAgent(Agent):
         new_chain_next = self is self._chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
-        return HillClimbSuggestion(
+        return ic.HillClimbSuggestion(
             decision='opposite slope found -> stop climbing; create new chain; explore',
             direction=direction,
             step=self._suggested_step,
             new_chain_next=new_chain_next,
         )
 
-    def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> HillClimbSuggestion:
+    def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ic.HillClimbSuggestion:
         suggested_point = (self._var_agent.inf + self._var_agent.sup) / 2
         self._chain.go_up_mode = False
         self._chain.minimum.already_went_up = True
         new_chain_next = self is self._chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
-        return HillClimbSuggestion(
+        return ic.HillClimbSuggestion(
             decision='both extrema on bounds -> go to middle; create new chain; explore',
             next_point=suggested_point,
             new_chain_next=new_chain_next,
         )
 
     def _hill_climbing__climb(self, prev_value: float, prev_crit: float, other_extremum_criticality: float,
-                              other_on_bound: bool):
+                              other_on_bound: bool) -> ic.HillClimbSuggestion:
         direction = DIR_DECREASE if self.variable_value < prev_value else DIR_INCREASE
         if (abs(self.variable_value - prev_value) <= self.STUCK_THRESHOLD
                 or self.criticality == other_extremum_criticality or other_on_bound):
@@ -798,7 +773,7 @@ class PointAgent(Agent):
             suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
                                            intermediate_point=(self.variable_value, self.criticality),
                                            yc=other_extremum_criticality)
-        return HillClimbSuggestion(
+        return ic.HillClimbSuggestion(
             decision=decision,
             next_point=suggested_point,
         )
