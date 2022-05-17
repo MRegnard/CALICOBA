@@ -193,11 +193,12 @@ class ChainAgent(Agent):
                  *, logger: logging.Logger = None):
         super().__init__(name, logger=logger)
         self._var_agent = variable_agent
-        self._points = [first_point]
+        self._points = []
         self._minimum = first_point
         self._lower_extremum = first_point
         self._upper_extremum = first_point
-        self._current_point = first_point
+        self._current_point = None  # Set by add_point
+        self.add_point(first_point)
         self.is_active = True
         self.local_min_found = False
         self.go_up_mode = False
@@ -225,12 +226,16 @@ class ChainAgent(Agent):
     def add_point(self, p: PointAgent):
         if p in self._points:
             raise ValueError(f'point {p} already in chain {self}')
-        self._current_point.is_current = False
-        prev_point = self._points[-1]
-        prev_point.next_point = p
+        if self._current_point:
+            self._current_point.is_current = False
+            prev_point = self._points[-1]
+            prev_point.next_point = p
+        else:
+            prev_point = None
         p.is_current = True
         p.next_point = None
         p.previous_point = prev_point
+        p.chain = self
         self._points.append(p)
 
     def remove_last_point(self):
@@ -317,7 +322,12 @@ class PointAgent(Agent):
     def _get_logging_name(self):
         return f'{self._var_agent.name}:{self.name}'
 
-    def set_chain(self, chain: ChainAgent):
+    @property
+    def chain(self):
+        return self._chain
+
+    @chain.setter
+    def chain(self, chain):
         if self._chain:
             raise ValueError(f'point {self} already has a chain')
         self._chain = chain
