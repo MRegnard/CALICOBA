@@ -334,7 +334,6 @@ class PointAgent(Agent):
         self.is_global_minimum = False
         self.is_extremum = False
         self.already_went_up = False
-        self.first_point = False  # Is this point the first when going up the slope?
 
         self.best_local_minimum = False
 
@@ -388,10 +387,11 @@ class PointAgent(Agent):
         self._last_direction = self._var_agent.last_direction
         all_points = self._chain.points
         self._is_current_min_of_chain = self._chain.minimum is self
-        wait = False
 
         self.update_neighbors(all_points)
 
+        # FIXME dans le cas où il existe plusieurs agents variables,
+        #  tous ne vont pas nécessairement converger en même temps
         if (self._is_current_min_of_chain and not self.is_local_minimum and (self._left_point or self._right_point)
                 and (not self._left_point
                      or (self._left_point and abs(self._left_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD))
@@ -428,8 +428,6 @@ class PointAgent(Agent):
 
             if self._chain.go_up_mode:
                 self.log_debug('-> go up slope')
-                self.first_point = True
-                wait = True
 
         if self.is_local_minimum and not self._chain.go_up_mode:
             self.update_neighbors(self._var_agent.minima, threshold=self.SAME_POINT_THRESHOLD)
@@ -442,10 +440,6 @@ class PointAgent(Agent):
                 self._sorted_minima = []
             if self._chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
-
-        if self._chain.go_up_mode:
-            if not wait:
-                self.first_point = False
 
     def decide(self) -> typ.Optional[typ.Union[VariationSuggestion, GlobalMinimumFound]]:
         if self.is_global_minimum:
@@ -769,7 +763,7 @@ class PointAgent(Agent):
             direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
         self._chain.go_up_mode = False
         self._chain.minimum.already_went_up = True
-        new_chain_next = self._chain.minimum.first_point or self_on_bound
+        new_chain_next = self is self._chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
         return HillClimbSuggestion(
@@ -783,7 +777,7 @@ class PointAgent(Agent):
         suggested_point = (self._var_agent.inf + self._var_agent.sup) / 2
         self._chain.go_up_mode = False
         self._chain.minimum.already_went_up = True
-        new_chain_next = self._chain.minimum.first_point or self_on_bound
+        new_chain_next = self is self._chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
         return HillClimbSuggestion(
