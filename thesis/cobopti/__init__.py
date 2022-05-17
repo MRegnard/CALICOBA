@@ -74,7 +74,7 @@ class CoBOpti:
         self._logger.info('CoBOpti setup finished.')
 
     def suggest_new_point(self, parameter_values: typ.Dict[str, float], objective_values: typ.Dict[str, float]) \
-            -> typ.Dict[str, typ.List[agents.Suggestion]]:
+            -> typ.Dict[str, typ.List[agents.VariationSuggestion]]:
         self._logger.debug(f'Cycle {self._cycle}')
 
         # Update criticalities
@@ -120,7 +120,7 @@ class CoBOpti:
             if point.dead:
                 self.remove_agent(point)
             elif suggestion:
-                if isinstance(suggestion, agents.Suggestion) and suggestion.new_chain_next:
+                if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.variable_name)
                 suggestions[point.variable_name].append(suggestion)
 

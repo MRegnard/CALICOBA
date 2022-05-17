@@ -267,7 +267,7 @@ class ChainAgent(Agent):
 
 
 @dataclasses.dataclass(frozen=True)
-class LocalSearchSuggestion:
+class _Suggestion:
     decision: str
     next_point: typ.Optional[float] = None
     direction: typ.Optional[float] = None
@@ -275,14 +275,20 @@ class LocalSearchSuggestion:
 
 
 @dataclasses.dataclass(frozen=True)
-class SemiLocalSearchSuggestion:
-    decision: str
-    next_point: typ.Optional[float] = None
-    direction: typ.Optional[float] = None
-    step: typ.Optional[float] = None
+class LocalSearchSuggestion(_Suggestion):
+    pass
+
+
+@dataclasses.dataclass(frozen=True)
+class SemiLocalSearchSuggestion(_Suggestion):
     from_value: typ.Optional[float] = None
     new_chain_next: bool = False
     check_for_out_of_bounds: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class HillClimbSuggestion(_Suggestion):
+    new_chain_next: bool = False
 
 
 class PointAgent(Agent):
@@ -441,7 +447,7 @@ class PointAgent(Agent):
             if not wait:
                 self.first_point = False
 
-    def decide(self) -> typ.Optional[typ.Union[Suggestion, GlobalMinimumFound]]:
+    def decide(self) -> typ.Optional[typ.Union[VariationSuggestion, GlobalMinimumFound]]:
         if self.is_global_minimum:
             return GlobalMinimumFound()
         if not self._chain.is_active or not self.best_local_minimum:
@@ -456,7 +462,12 @@ class PointAgent(Agent):
         check_for_out_of_bounds = False
 
         if self.is_extremum and self._chain.go_up_mode:
-            decision, suggested_direction, new_chain_next, suggested_point, suggested_step = self._hill_climb()
+            suggestion = self._hill_climb()
+            decision = suggestion.decision
+            suggested_direction = suggestion.direction
+            suggested_step = suggestion.step
+            suggested_point = suggestion.next_point
+            new_chain_next = suggestion.new_chain_next
         elif self._is_current_min_of_chain:
             if not self.is_local_minimum:
                 suggestion = self._local_search()
@@ -486,7 +497,7 @@ class PointAgent(Agent):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
-            return Suggestion(
+            return VariationSuggestion(
                 agent=self,
                 next_point=min(self._var_agent.sup, max(self._var_agent.inf, suggested_point)),
                 decision=decision,
@@ -716,24 +727,17 @@ class PointAgent(Agent):
         )
 
     def _hill_climb(self):
-        # TODO extract each case in own method
-        decision = ''
-        new_chain_next = False
-        self_value = self.variable_value
-        self_crit = self.criticality
-        suggested_point = None
-        suggested_step = self._suggested_step
-        direction = DIR_NONE
+        suggestion = None
 
         lower_extremum = self._chain.lower_extremum
         upper_extremum = self._chain.upper_extremum
         other_extremum = lower_extremum if self is upper_extremum else upper_extremum
         other_extremum_value = other_extremum.variable_value
         other_extremum_crit = other_extremum.criticality
-        self_on_bound = self_value in [self._var_agent.inf, self._var_agent.sup]
+        self_on_bound = self.variable_value in [self._var_agent.inf, self._var_agent.sup]
         other_on_bound = other_extremum_value in [self._var_agent.inf, self._var_agent.sup]
 
-        if other_extremum_value < self_value:
+        if other_extremum_value < self.variable_value:
             prev_value = self._left_value
             prev_crit = self._left_crit
             prev = self._left_point
@@ -742,49 +746,68 @@ class PointAgent(Agent):
             prev_crit = self._right_crit
             prev = self._right_point
 
-        if self_crit < prev_crit and not self_on_bound:
-            decision = 'opposite slope found -> stop climbing; create new chain; explore'
-            if prev is self._left_point or self_value == self._var_agent.inf:
-                direction = DIR_INCREASE
-            elif prev is self._right_point or self_value == self._var_agent.sup:
-                direction = DIR_DECREASE
-            else:
-                direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
-            self._chain.go_up_mode = False
-            self._chain.minimum.already_went_up = True
-            if self._chain.minimum.first_point or self_on_bound:
-                new_chain_next = True
-            else:
-                self.create_new_chain_from_me = True
-
+        if self.criticality < prev_crit and not self_on_bound:
+            suggestion = self._hill_climb__new_slope_found_stop_climbing(prev, self_on_bound)
         elif self_on_bound and other_on_bound:
-            if self_crit < other_extremum_crit \
-                    or (self_crit == other_extremum_crit and self_value > other_extremum_value):
-                decision = 'both extrema on bounds -> go to middle; create new chain; explore'
-                suggested_point = (self._var_agent.inf + self._var_agent.sup) / 2
-                self._chain.go_up_mode = False
-                self._chain.minimum.already_went_up = True
-                if self._chain.minimum.first_point or self_on_bound:
-                    new_chain_next = True
-                else:
-                    self.create_new_chain_from_me = True
-
-        elif (self_crit < other_extremum_crit
-              or (self_crit == other_extremum_crit and self_value > other_extremum_value)
+            if self.criticality < other_extremum_crit \
+                    or (self.criticality == other_extremum_crit and self.variable_value > other_extremum_value):
+                suggestion = self._hill_climbing__both_extrema_on_bounds_stop_climbing(self_on_bound)
+        elif (self.criticality < other_extremum_crit
+              or (self.criticality == other_extremum_crit and self.variable_value > other_extremum_value)
               or other_on_bound) and not self_on_bound:
-            direction = DIR_DECREASE if self_value < prev_value else DIR_INCREASE
-            if (abs(self_value - prev_value) <= self.STUCK_THRESHOLD
-                    or self_crit == other_extremum_crit or other_on_bound):
-                decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
-                suggested_point = self_value + self._suggested_step * direction
+            suggestion = self._hill_climbing__climb(prev_value, prev_crit, other_extremum_crit, other_on_bound)
 
-            else:
-                decision = 'go up slope'
-                suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
-                                               intermediate_point=(self_value, self_crit),
-                                               yc=other_extremum_crit)
+        return suggestion
 
-        return decision, direction, new_chain_next, suggested_point, suggested_step
+    def _hill_climb__new_slope_found_stop_climbing(self, prev_point: PointAgent, self_on_bound: bool) \
+            -> HillClimbSuggestion:
+        if prev_point is self._left_point or self._var_value == self._var_agent.inf:
+            direction = DIR_INCREASE
+        elif prev_point is self._right_point or self._var_value == self._var_agent.sup:
+            direction = DIR_DECREASE
+        else:
+            direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
+        self._chain.go_up_mode = False
+        self._chain.minimum.already_went_up = True
+        new_chain_next = self._chain.minimum.first_point or self_on_bound
+        if not new_chain_next:
+            self.create_new_chain_from_me = True
+        return HillClimbSuggestion(
+            decision='opposite slope found -> stop climbing; create new chain; explore',
+            direction=direction,
+            step=self._suggested_step,
+            new_chain_next=new_chain_next,
+        )
+
+    def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> HillClimbSuggestion:
+        suggested_point = (self._var_agent.inf + self._var_agent.sup) / 2
+        self._chain.go_up_mode = False
+        self._chain.minimum.already_went_up = True
+        new_chain_next = self._chain.minimum.first_point or self_on_bound
+        if not new_chain_next:
+            self.create_new_chain_from_me = True
+        return HillClimbSuggestion(
+            decision='both extrema on bounds -> go to middle; create new chain; explore',
+            next_point=suggested_point,
+            new_chain_next=new_chain_next,
+        )
+
+    def _hill_climbing__climb(self, prev_value: float, prev_crit: float, other_extremum_criticality: float,
+                              other_on_bound: bool):
+        direction = DIR_DECREASE if self.variable_value < prev_value else DIR_INCREASE
+        if (abs(self.variable_value - prev_value) <= self.STUCK_THRESHOLD
+                or self.criticality == other_extremum_criticality or other_on_bound):
+            decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
+            suggested_point = self.variable_value + self._suggested_step * direction
+        else:
+            decision = 'go up slope'
+            suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
+                                           intermediate_point=(self.variable_value, self.criticality),
+                                           yc=other_extremum_criticality)
+        return HillClimbSuggestion(
+            decision=decision,
+            next_point=suggested_point,
+        )
 
     @property
     def variable_name(self) -> str:
@@ -810,7 +833,7 @@ class PointAgent(Agent):
 
 
 @dataclasses.dataclass(frozen=True)
-class Suggestion:
+class VariationSuggestion:
     agent: PointAgent
     next_point: float
     decision: str
