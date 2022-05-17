@@ -378,10 +378,10 @@ class PointAgent(Agent):
             self.is_local_minimum = True
             if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
-            similar_minima = [mini for mini in self._var_agent.minima
-                              if abs(mini.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
-            already_went_up = any(mini.already_went_up for mini in similar_minima)
-            max_steps_mult = max((mini.steps_mult for mini in similar_minima), default=1)
+            similar_minima = [other_min for other_min in self._var_agent.minima
+                              if abs(other_min.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
+            already_went_up = any(other_min.already_went_up for other_min in similar_minima)
+            max_steps_mult = max((other_min.steps_mult for other_min in similar_minima), default=1)
             other_minima = set(self._var_agent.minima) - set(similar_minima)
 
             if similar_minima:
