@@ -331,9 +331,15 @@ class PointAgent(Agent):
             raise ValueError(f'point {self} already has a chain')
         self._chain = chain
 
-    def update_neighbors(self, points: typ.Iterable[PointAgent], threshold: float = 0):
+    def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0):
+        """Updates the neighbors of this point from the given list of point agents.
+
+        :param points: The point agents to gather the neighbors from.
+        :param min_distance: The minimum distance between this point and its potential neighbors.
+        """
+
         def value_in_list(v, vs):
-            return any(abs(v - e) <= threshold for e in vs)
+            return any(abs(v - e) <= min_distance for e in vs)
 
         sorted_points = sorted(points, key=lambda p: p.variable_value)
         # Remove duplicates
@@ -343,7 +349,7 @@ class PointAgent(Agent):
             if not value_in_list(point.variable_value, values) or point is self:  # Keep self in list
                 # If another point with the same value as self is in the list, remove it and append self instead
                 if (point is self and sorted_points_
-                        and abs(sorted_points_[-1].variable_value - self.variable_value) <= threshold):
+                        and abs(sorted_points_[-1].variable_value - self.variable_value) <= min_distance):
                     del sorted_points_[-1]
                 sorted_points_.append(point)
                 values.add(point.variable_value)
@@ -414,7 +420,7 @@ class PointAgent(Agent):
                 self.log_debug('-> go up slope')
 
         if self.is_local_minimum and not self._chain.go_up_mode:
-            self.update_neighbors(self._var_agent.minima, threshold=self.SAME_POINT_THRESHOLD)
+            self.update_neighbors(self._var_agent.minima, min_distance=self.SAME_POINT_THRESHOLD)
             if self._var_agent.minima:
                 filtered = filter(lambda mini: mini is self or abs(
                     mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self._var_agent.minima)
