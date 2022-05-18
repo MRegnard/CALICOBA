@@ -111,7 +111,7 @@ class Agent(abc.ABC):
         return self.name
 
     def __repr__(self):
-        return f'{self.name}'
+        return f'Agent{{name={self.name}}}'
 
 
 class ObjectiveAgent(Agent):
@@ -155,6 +155,9 @@ class ObjectiveAgent(Agent):
     def __del__(self):
         if self._file:
             self._file.close()
+
+    def __repr__(self):
+        return f'ObjectiveAgent{{name={self.name},criticality={self._criticality}}}'
 
 
 class VariableAgent(Agent):
@@ -260,7 +263,8 @@ class VariableAgent(Agent):
         self._last_chain_id += 1
 
     def __repr__(self):
-        return f'{self.name}={self.value}'
+        return (f'VariableAgent{{{self.name}={self.value},value={self._value},'
+                f'lb={self._lower_bound},ub={self._upper_bound}}}')
 
 
 class ChainAgent(Agent):
@@ -365,8 +369,11 @@ class ChainAgent(Agent):
                 point.is_extremum = True
                 extremum_max = point
 
+    def _get_logging_name(self):
+        return f'{self._var_agent.name}:{self.name}'
+
     def __repr__(self):
-        return f'Chain{{name={self.name},variable={self._var_agent.name},points={self._points}}}'
+        return f'ChainAgent{{name={self.name},variable={self._var_agent.name},points={self._points}}}'
 
 
 class PointAgent(Agent):
@@ -381,7 +388,8 @@ class PointAgent(Agent):
         """Creates a point agent.
 
         :param name: Point’s name.
-        :param variable_agent: Variable agent this point is be associated with. Used to gather the current variable value.
+        :param variable_agent: Variable agent this point is be associated with.
+         Used to gather the current variable value.
         :param objective_criticalities: The current objectives criticalities.
         :param logger: The logger to use to log things.
         """
@@ -443,6 +451,33 @@ class PointAgent(Agent):
             raise ValueError(f'point {self} already has a chain')
         self._chain = chain
 
+    @property
+    def variable(self) -> VariableAgent:
+        """The variable agent this chain is managed by."""
+        return self._var_agent
+
+    @property
+    def variable_name(self) -> str:
+        """Name of the associated variable."""
+        return self._var_agent.name
+
+    @property
+    def variable_value(self) -> float:
+        """Value of the associated variable when this agent was created."""
+        return self._var_value
+
+    @property
+    def criticalities(self) -> typ.Dict[str, float]:
+        """Objectives’ criticalities when this agent was created.
+        The returned object is a copy of the internal data.
+        """
+        return dict(self._criticalities)
+
+    @property
+    def criticality(self) -> float:
+        """Criticality of this agent."""
+        return max(self._criticalities.values())
+
     def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0):
         """Updates the neighbors of this point from the given list of point agents.
 
@@ -488,8 +523,8 @@ class PointAgent(Agent):
         """Updates this point agent."""
         self._suggested_step = self._var_agent.last_step
         self._last_direction = self._var_agent.last_direction
-        all_points = self._chain.points
-        self._is_current_min_of_chain = self._chain.minimum is self
+        all_points = self.chain.points
+        self._is_current_min_of_chain = self.chain.minimum is self
 
         self.update_neighbors(all_points)
 
@@ -502,7 +537,7 @@ class PointAgent(Agent):
                      or self._right_point and abs(
                             self._right_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD)):
             self.log_debug('local min found')
-            self._chain.local_min_found = True
+            self.chain.local_min_found = True
             self.is_local_minimum = True
             if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
@@ -525,23 +560,23 @@ class PointAgent(Agent):
 
             self.steps_mult = max_steps_mult
             # Toggle go up mode if this minimum is alone or has already been visited before
-            self._chain.go_up_mode = (len(self._var_agent.minima) == 0
-                                      or similar_minima and (not already_went_up or not other_minima))
+            self.chain.go_up_mode = (len(self._var_agent.minima) == 0
+                                     or similar_minima and (not already_went_up or not other_minima))
             self._var_agent.add_minimum(self)
 
-            if self._chain.go_up_mode:
+            if self.chain.go_up_mode:
                 self.log_debug('-> go up slope')
 
-        if self.is_local_minimum and not self._chain.go_up_mode:
+        if self.is_local_minimum and not self.chain.go_up_mode:
             self.update_neighbors(self._var_agent.minima, min_distance=self.SAME_POINT_THRESHOLD)
             if self._var_agent.minima:
                 filtered = filter(lambda mini: mini is self or abs(
                     mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self._var_agent.minima)
                 self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
-                    mini.variable_value - self._chain.current_point.variable_value))
+                    mini.variable_value - self.chain.current_point.variable_value))
             else:
                 self._sorted_minima = []
-            if self._chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
+            if self.chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
 
     def decide(self) -> typ.Union[_suggestions.VariationSuggestion, _suggestions.GlobalMinimumFound, None]:
@@ -551,7 +586,7 @@ class PointAgent(Agent):
         """
         if self.is_global_minimum:
             return _suggestions.GlobalMinimumFound()
-        if not self._chain.is_active or not self.best_local_minimum:
+        if not self.chain.is_active or not self.best_local_minimum:
             return None
 
         decision = ''
@@ -562,7 +597,7 @@ class PointAgent(Agent):
         new_chain_next = False
         check_for_out_of_bounds = False
 
-        if self.is_extremum and self._chain.go_up_mode:
+        if self.is_extremum and self.chain.go_up_mode:
             suggestion = self._hill_climb()
             decision = suggestion.decision
             suggested_direction = suggestion.direction
@@ -594,8 +629,8 @@ class PointAgent(Agent):
             # suggested_step = min(self._param_agent.max_step, suggested_step)
             suggested_point = from_value + suggested_step * suggested_direction
             if (check_for_out_of_bounds
-                    and (
-                            suggested_point < self._var_agent.lower_bound or suggested_point > self._var_agent.upper_bound)):
+                    and (suggested_point < self._var_agent.lower_bound
+                         or suggested_point > self._var_agent.upper_bound)):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
@@ -605,7 +640,7 @@ class PointAgent(Agent):
                 decision=decision,
                 selected_objective='',
                 criticality=self.criticality,
-                local_min_found=self._chain.local_min_found,
+                local_min_found=self.chain.local_min_found,
                 direction=suggested_direction,
                 step=suggested_step,
                 new_chain_next=new_chain_next,
@@ -831,8 +866,8 @@ class PointAgent(Agent):
     def _hill_climb(self) -> ic.HillClimbSuggestion:
         suggestion = None
 
-        lower_extremum = self._chain.lower_extremum
-        upper_extremum = self._chain.upper_extremum
+        lower_extremum = self.chain.lower_extremum
+        upper_extremum = self.chain.upper_extremum
         other_extremum = lower_extremum if self is upper_extremum else upper_extremum
         other_extremum_value = other_extremum.variable_value
         other_extremum_crit = other_extremum.criticality
@@ -869,9 +904,9 @@ class PointAgent(Agent):
             direction = DIR_DECREASE
         else:
             direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
-        self._chain.go_up_mode = False
-        self._chain.minimum.already_went_up = True
-        new_chain_next = self is self._chain.minimum or self_on_bound
+        self.chain.go_up_mode = False
+        self.chain.minimum.already_went_up = True
+        new_chain_next = self is self.chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
         return ic.HillClimbSuggestion(
@@ -883,9 +918,9 @@ class PointAgent(Agent):
 
     def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ic.HillClimbSuggestion:
         suggested_point = (self._var_agent.lower_bound + self._var_agent.upper_bound) / 2
-        self._chain.go_up_mode = False
-        self._chain.minimum.already_went_up = True
-        new_chain_next = self is self._chain.minimum or self_on_bound
+        self.chain.go_up_mode = False
+        self.chain.minimum.already_went_up = True
+        new_chain_next = self is self.chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
         return ic.HillClimbSuggestion(
@@ -910,26 +945,6 @@ class PointAgent(Agent):
             decision=decision,
             next_point=suggested_point,
         )
-
-    @property
-    def variable_name(self) -> str:
-        """Name of the associated variable."""
-        return self._var_agent.name
-
-    @property
-    def variable_value(self) -> float:
-        """Value of the associated variable when this agent was created."""
-        return self._var_value
-
-    @property
-    def criticalities(self) -> typ.Dict[str, float]:
-        """Objectives criticalities when this agent was created."""
-        return dict(self._criticalities)
-
-    @property
-    def criticality(self) -> float:
-        """Criticality of this agent."""
-        return max(self._criticalities.values())
 
     def __repr__(self):
         return (
