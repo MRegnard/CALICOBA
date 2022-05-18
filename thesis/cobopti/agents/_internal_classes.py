@@ -9,7 +9,7 @@ class Suggestion:
     next_point: typ.Optional[float] = None
     direction: typ.Optional[float] = None
     step: typ.Optional[float] = None
-    distance: typ.Optional[float] = None
+    from_value: typ.Optional[float] = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -21,7 +21,6 @@ class LocalSearchSuggestion(Suggestion):
 @dataclasses.dataclass(frozen=True)
 class SemiLocalSearchSuggestion(Suggestion):
     """Object containing an action suggestion for the semi-local search phase."""
-    from_value: typ.Optional[float] = None
     new_chain_next: bool = False
     check_for_out_of_bounds: bool = False
 

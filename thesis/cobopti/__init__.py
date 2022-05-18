@@ -18,6 +18,7 @@ class CoBOptiConfig:
     logging_level: int = logging.INFO
 
 
+# TODO réintégrer le controle du modèle dans CoBOpti
 class CoBOpti:
     """CoBOpti is a global optimizer based on a self-adaptive multi-agent system."""
 
@@ -37,6 +38,7 @@ class CoBOpti:
         self._parameter_agents: typ.List[agents.VariableAgent] = []
         self._objective_agents: typ.List[agents.ObjectiveAgent] = []
         self._create_new_chain_for_params = set()
+        self._search_phases: typ.Dict[str, agents.SearchPhase] = {}
 
     @property
     def config(self) -> CoBOptiConfig:
@@ -136,7 +138,7 @@ class CoBOpti:
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
 
         # Update parameters, current points, and directions
-        suggestions = {}
+        suggestions: typ.Dict[str, typ.List[agents.VariationSuggestion]] = {}
         with (self._config.dump_directory / 'feedback.csv').open(mode='a') as f:
             line = []
             for parameter in self._parameter_agents:
@@ -151,7 +153,8 @@ class CoBOpti:
                 else:
                     last_direction = agents.DIR_NONE
                 new_chain = p_name in self._create_new_chain_for_params
-                parameter.perceive(variables_values[p_name], new_chain, crits, last_step, last_direction)
+                parameter.perceive(variables_values[p_name], new_chain, crits, last_step, last_direction,
+                                   self._search_phases[p_name])
                 line.append(f'{last_direction}/{diff}')
             f.write(f'{self._cycle},' + ','.join(map(str, line)) + '\n')
         self._create_new_chain_for_params.clear()
@@ -174,6 +177,9 @@ class CoBOpti:
                 if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.variable_name)
                 suggestions[point.variable_name].append(suggestion)
+
+        for parameter in self._parameter_agents:
+            self._search_phases[parameter.name] = suggestions[parameter.name][0].search_phase
 
         self._cycle += 1
 

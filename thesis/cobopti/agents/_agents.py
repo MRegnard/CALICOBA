@@ -176,8 +176,10 @@ class VariableAgent(Agent):
         self._upper_bound = upper_bound
         self._max_step_number = 2
         self._default_step = (upper_bound - lower_bound) / 100
-        self.last_step = 0
-        self.last_direction = DIR_NONE
+        self.last_local_step = 0
+        self.last_local_direction = DIR_NONE
+        self.last_semi_local_step = 0
+        self.last_semi_local_direction = DIR_NONE
 
         self._chains: typ.List[ChainAgent] = []
         self._minima: typ.List[PointAgent] = []
@@ -224,7 +226,7 @@ class VariableAgent(Agent):
         self._minima.append(point)
 
     def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float],
-                 previous_step: float, previous_direction: float):
+                 previous_step: float, previous_direction: float, previous_search_phase: _suggestions.SearchPhase):
         """Updates this variable agent.
 
         :param value: The variable’s new value.
@@ -232,10 +234,17 @@ class VariableAgent(Agent):
         :param criticalities: The criticalities of each objective.
         :param previous_step: The previous variation amount.
         :param previous_direction: The previous variation direction.
+        :param previous_search_phase: The previous search phase.
         """
         self._value = value
-        self.last_step = previous_step
-        self.last_direction = previous_direction
+        if previous_search_phase != _suggestions.SearchPhase.SEMI_LOCAL:
+            self.last_local_step = previous_step
+            self.last_local_direction = previous_direction
+        else:
+            self.last_local_step = self.default_step
+            self.last_local_direction = previous_direction
+            self.last_semi_local_step = previous_step
+            self.last_semi_local_direction = previous_direction
         prev_point = self._chains[-1].current_point if self._chains else None
 
         if not prev_point or prev_point.variable_value != value or prev_point.criticalities != criticalities:
@@ -263,8 +272,7 @@ class VariableAgent(Agent):
         self._last_chain_id += 1
 
     def __repr__(self):
-        return (f'VariableAgent{{{self.name}={self.value},value={self._value},'
-                f'lb={self._lower_bound},ub={self._upper_bound}}}')
+        return f'VariableAgent{{{self.name},value={self.value},lb={self.lower_bound},ub={self.upper_bound}}}'
 
 
 class ChainAgent(Agent):
@@ -401,8 +409,6 @@ class PointAgent(Agent):
         self._chain: ChainAgent = None
 
         # noinspection PyTypeChecker
-        self._suggested_step: float = None
-        self._last_direction: int = DIR_NONE
         self._last_checked_direction: int = DIR_NONE
 
         self.steps_mult = 1
@@ -434,7 +440,7 @@ class PointAgent(Agent):
         self.create_new_chain_from_me = False
 
     def _get_logging_name(self):
-        return f'{self._var_agent.name}:{self.name}'
+        return f'{self.variable.name}:{self.name}'
 
     @property
     def chain(self):
@@ -459,7 +465,7 @@ class PointAgent(Agent):
     @property
     def variable_name(self) -> str:
         """Name of the associated variable."""
-        return self._var_agent.name
+        return self.variable.name
 
     @property
     def variable_value(self) -> float:
@@ -476,7 +482,7 @@ class PointAgent(Agent):
     @property
     def criticality(self) -> float:
         """Criticality of this agent."""
-        return max(self._criticalities.values())
+        return max(self.criticalities.values())
 
     def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0):
         """Updates the neighbors of this point from the given list of point agents.
@@ -521,8 +527,6 @@ class PointAgent(Agent):
 
     def perceive(self):
         """Updates this point agent."""
-        self._suggested_step = self._var_agent.last_step
-        self._last_direction = self._var_agent.last_direction
         all_points = self.chain.points
         self._is_current_min_of_chain = self.chain.minimum is self
 
@@ -541,11 +545,11 @@ class PointAgent(Agent):
             self.is_local_minimum = True
             if self.criticality < self.NULL_THRESHOLD:
                 self.is_global_minimum = True
-            similar_minima = [other_min for other_min in self._var_agent.minima
+            similar_minima = [other_min for other_min in self.variable.minima
                               if abs(other_min.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
             already_went_up = any(other_min.already_went_up for other_min in similar_minima)
             max_steps_mult = max((other_min.steps_mult for other_min in similar_minima), default=1)
-            other_minima = set(self._var_agent.minima) - set(similar_minima)
+            other_minima = set(self.variable.minima) - set(similar_minima)
 
             if similar_minima:
                 self.log_debug('local min already visited')
@@ -560,18 +564,18 @@ class PointAgent(Agent):
 
             self.steps_mult = max_steps_mult
             # Toggle go up mode if this minimum is alone or has already been visited before
-            self.chain.go_up_mode = (len(self._var_agent.minima) == 0
+            self.chain.go_up_mode = (len(self.variable.minima) == 0
                                      or similar_minima and (not already_went_up or not other_minima))
-            self._var_agent.add_minimum(self)
+            self.variable.add_minimum(self)
 
             if self.chain.go_up_mode:
                 self.log_debug('-> go up slope')
 
         if self.is_local_minimum and not self.chain.go_up_mode:
-            self.update_neighbors(self._var_agent.minima, min_distance=self.SAME_POINT_THRESHOLD)
-            if self._var_agent.minima:
+            self.update_neighbors(self.variable.minima, min_distance=self.SAME_POINT_THRESHOLD)
+            if self.variable.minima:
                 filtered = filter(lambda mini: mini is self or abs(
-                    mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self._var_agent.minima)
+                    mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self.variable.minima)
                 self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
                     mini.variable_value - self.chain.current_point.variable_value))
             else:
@@ -590,9 +594,9 @@ class PointAgent(Agent):
             return None
 
         decision = ''
+        search_phase = None
         suggested_direction = DIR_NONE
         suggested_step = None
-        distance_between_points = None
         from_value = self.variable_value
         suggested_point = None
         new_chain_next = False
@@ -603,45 +607,48 @@ class PointAgent(Agent):
             decision = suggestion.decision
             suggested_direction = suggestion.direction
             suggested_step = suggestion.step
-            distance_between_points = suggestion.distance
             suggested_point = suggestion.next_point
+            from_value = suggestion.from_value
             new_chain_next = suggestion.new_chain_next
+            search_phase = _suggestions.SearchPhase.HILL_CLIMBING
         elif self._is_current_min_of_chain:
             if not self.is_local_minimum:
                 suggestion = self._local_search()
                 decision = suggestion.decision
                 suggested_direction = suggestion.direction
                 suggested_step = suggestion.step
-                distance_between_points = suggestion.distance
                 suggested_point = suggestion.next_point
+                from_value = suggestion.from_value
+                search_phase = _suggestions.SearchPhase.LOCAL
             elif self.best_local_minimum:
                 suggestion = self._semi_local_search()
                 decision = suggestion.decision
                 suggested_direction = suggestion.direction
                 suggested_step = suggestion.step
-                distance_between_points = suggestion.distance
                 from_value = suggestion.from_value
                 suggested_point = suggestion.next_point
                 new_chain_next = suggestion.new_chain_next
                 check_for_out_of_bounds = suggestion.check_for_out_of_bounds
+                search_phase = _suggestions.SearchPhase.SEMI_LOCAL
 
         if decision:
             self.log_debug('Decision: ' + decision)
 
         if suggested_step is not None:
             # Cap jump length
-            if distance_between_points is not None:
-                suggested_step = min(2 * distance_between_points, suggested_step)
+            if from_value is not None:
+                suggested_step = min(2 * abs(from_value - suggested_step), suggested_step)
             suggested_point = from_value + suggested_step * suggested_direction
             if (check_for_out_of_bounds
-                    and (suggested_point < self._var_agent.lower_bound
-                         or suggested_point > self._var_agent.upper_bound)):
+                    and (suggested_point < self.variable.lower_bound
+                         or suggested_point > self.variable.upper_bound)):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
             return _suggestions.VariationSuggestion(
                 agent=self,
-                next_point=min(self._var_agent.upper_bound, max(self._var_agent.lower_bound, suggested_point)),
+                search_phase=search_phase,
+                next_point=min(self.variable.upper_bound, max(self.variable.lower_bound, suggested_point)),
                 decision=decision,
                 selected_objective='',
                 criticality=self.criticality,
@@ -655,31 +662,37 @@ class PointAgent(Agent):
     def _local_search(self) -> ic.LocalSearchSuggestion:
         if self.previous_point is None and self.next_point is None:
             return self._local_search__explore_from_first_point()
-        elif self.variable_value in (self._var_agent.lower_bound, self._var_agent.upper_bound):
-            return self._local_search__point_on_bound_go_to_middle()
+        elif self.variable_value in (self.variable.lower_bound, self.variable.upper_bound):
+            return self._local_search__go_to_middle_from_bound()
         elif (self._left_point is not None) != (self._right_point is not None):
             return self._local_search__follow_slope()
         else:
             return self._local_search__go_to_middle()
 
     def _local_search__explore_from_first_point(self) -> ic.LocalSearchSuggestion:
-        decision = 'first point in chain -> explore'
-        if self.variable_value == self._var_agent.lower_bound:
+        if self.variable_value == self.variable.lower_bound:
             direction = DIR_INCREASE
-        elif self.variable_value == self._var_agent.upper_bound:
+        elif self.variable_value == self.variable.upper_bound:
             direction = DIR_DECREASE
         else:
-            direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
-        return ic.LocalSearchSuggestion(decision=decision, direction=direction, step=self._suggested_step)
+            direction = self.variable.last_local_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
+        return ic.LocalSearchSuggestion(
+            decision='first point in chain -> explore',
+            direction=direction,
+            step=self.variable.last_local_step,
+            from_value=self.variable_value,
+        )
 
-    def _local_search__point_on_bound_go_to_middle(self) -> ic.LocalSearchSuggestion:
-        decision = 'point on bound -> go to middle'
-        if self.variable_value == self._var_agent.lower_bound:
+    def _local_search__go_to_middle_from_bound(self) -> ic.LocalSearchSuggestion:
+        if self.variable_value == self.variable.lower_bound:
             other_value = self._right_value
         else:
             other_value = self._left_value
         suggested_point = (self.variable_value + other_value) / 2
-        return ic.LocalSearchSuggestion(decision=decision, next_point=suggested_point)
+        return ic.LocalSearchSuggestion(
+            decision='point on bound -> go to middle',
+            next_point=suggested_point,
+        )
 
     def _local_search__follow_slope(self) -> ic.LocalSearchSuggestion:
         if self._left_point:
@@ -691,8 +704,8 @@ class PointAgent(Agent):
         return ic.LocalSearchSuggestion(
             decision='1 neighbor -> follow slope',
             direction=direction,
-            step=self._get_variation_step(direction),
-            distance=abs(x - self.variable_value)
+            step=self._get_variation_step(self.variable.last_local_direction, direction, self.variable.last_local_step),
+            from_value=self.variable_value,
         )
 
     def _local_search__go_to_middle(self) -> ic.LocalSearchSuggestion:
@@ -713,7 +726,7 @@ class PointAgent(Agent):
         suggested_point = (self.variable_value + other_value) / 2
         return ic.LocalSearchSuggestion(
             decision='2 neighbors -> go to middle point',
-            next_point=suggested_point
+            next_point=suggested_point,
         )
 
     def _semi_local_search(self) -> ic.SemiLocalSearchSuggestion:
@@ -743,13 +756,12 @@ class PointAgent(Agent):
         decision = suggestion.decision
         direction = suggestion.direction
         suggested_step = suggestion.step
-        distance = suggestion.distance
         from_value = suggestion.from_value
         suggested_point = suggestion.next_point
         check_for_out_of_bounds = suggestion.check_for_out_of_bounds
 
         if suggested_step is not None and self.local_min_already_visited:
-            prev_min = self._var_agent.minima[-2]  # -1 is current minimum
+            prev_min = self.variable.minima[-2]  # -1 is current minimum
             if (abs(self.variable_value - prev_min.variable_value) <= self.SAME_POINT_THRESHOLD
                     and prev_min.prev_suggestion_out_of_bounds):
                 decision += ' -> previous was OOB -> cancel jump and go to middle'
@@ -766,7 +778,6 @@ class PointAgent(Agent):
             decision=decision,
             direction=direction,
             step=suggested_step,
-            distance=distance,
             from_value=from_value,
             next_point=suggested_point,
             check_for_out_of_bounds=check_for_out_of_bounds,
@@ -794,7 +805,6 @@ class PointAgent(Agent):
             decision='1 minimum neighbor -> follow slope',
             direction=direction,
             step=suggested_step,
-            distance=abs(from_value - self.variable_value),
             from_value=from_value,
             check_for_out_of_bounds=True
         )
@@ -807,7 +817,6 @@ class PointAgent(Agent):
             decision='2 minima neighbors: left lower, right higher -> follow left slope',
             direction=DIR_DECREASE,
             step=suggested_step,
-            distance=abs(self._left_value - self.variable_value),
             from_value=self._left_value,
             check_for_out_of_bounds=True
         )
@@ -820,7 +829,6 @@ class PointAgent(Agent):
             decision='2 minima neighbors: left higher, right lower -> follow right slope',
             direction=DIR_INCREASE,
             step=suggested_step,
-            distance=abs(self._right_value - self.variable_value),
             from_value=self._right_value,
             check_for_out_of_bounds=True
         )
@@ -842,8 +850,7 @@ class PointAgent(Agent):
             decision='2 minima neighbors: both lower -> follow slope on lowest’s side',
             direction=direction,
             step=suggested_step,
-            distance=abs(from_value - self.variable_value),
-            from_value=self._right_value,
+            from_value=from_value,
             check_for_out_of_bounds=True
         )
 
@@ -876,8 +883,8 @@ class PointAgent(Agent):
         other_extremum = lower_extremum if self is upper_extremum else upper_extremum
         other_extremum_value = other_extremum.variable_value
         other_extremum_crit = other_extremum.criticality
-        self_on_bound = self.variable_value in [self._var_agent.lower_bound, self._var_agent.upper_bound]
-        other_on_bound = other_extremum_value in [self._var_agent.lower_bound, self._var_agent.upper_bound]
+        self_on_bound = self.variable_value in [self.variable.lower_bound, self.variable.upper_bound]
+        other_on_bound = other_extremum_value in [self.variable.lower_bound, self.variable.upper_bound]
 
         if other_extremum_value < self.variable_value:
             prev_value = self._left_value
@@ -903,12 +910,12 @@ class PointAgent(Agent):
 
     def _hill_climb__new_slope_found_stop_climbing(self, prev_point: PointAgent, self_on_bound: bool) \
             -> ic.HillClimbSuggestion:
-        if prev_point is self._left_point or self._var_value == self._var_agent.lower_bound:
+        if prev_point is self._left_point or self.variable_value == self.variable.lower_bound:
             direction = DIR_INCREASE
-        elif prev_point is self._right_point or self._var_value == self._var_agent.upper_bound:
+        elif prev_point is self._right_point or self.variable_value == self.variable.upper_bound:
             direction = DIR_DECREASE
         else:
-            direction = self._last_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
+            direction = self.variable.last_local_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
         self.chain.go_up_mode = False
         self.chain.minimum.already_went_up = True
         new_chain_next = self is self.chain.minimum or self_on_bound
@@ -917,12 +924,12 @@ class PointAgent(Agent):
         return ic.HillClimbSuggestion(
             decision='opposite slope found -> stop climbing; create new chain; explore',
             direction=direction,
-            step=self._suggested_step,
+            step=self.variable.default_step,
             new_chain_next=new_chain_next,
         )
 
     def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ic.HillClimbSuggestion:
-        suggested_point = (self._var_agent.lower_bound + self._var_agent.upper_bound) / 2
+        suggested_point = (self.variable.lower_bound + self.variable.upper_bound) / 2
         self.chain.go_up_mode = False
         self.chain.minimum.already_went_up = True
         new_chain_next = self is self.chain.minimum or self_on_bound
@@ -940,7 +947,7 @@ class PointAgent(Agent):
         if (abs(self.variable_value - prev_value) <= self.STUCK_THRESHOLD
                 or self.criticality == other_extremum_criticality or other_on_bound):
             decision = 'stuck -> move a bit' if not other_on_bound else 'other on bound -> move a bit'
-            suggested_point = self.variable_value + self._suggested_step * direction
+            suggested_point = self.variable_value + self.variable.default_step * direction
         else:
             decision = 'go up slope'
             suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
@@ -951,19 +958,22 @@ class PointAgent(Agent):
             next_point=suggested_point,
         )
 
-    def _get_variation_step(self, direction: float) -> float:
-        """Returns the suggested variation amount based on the selected and previous variation directions.
-
-        :param direction: The selected variation direction.
-        :return: The suggested variation amount.
-        """
-        if self._last_direction == direction:
-            return self._suggested_step * 2
-        else:
-            return self._suggested_step / 3
-
     def __repr__(self):
         return (
             f'Point{{{self.name}={self.variable_value},minimum={self.is_local_minimum},extremum={self.is_extremum},'
             f'min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )
+
+    @staticmethod
+    def _get_variation_step(last_direction: float, direction: float, last_step: float) -> float:
+        """Returns the suggested variation amount based on the selected and previous variation directions.
+
+        :param last_direction: The previous variation direction.
+        :param direction: The selected variation direction.
+        :param last_step: The previous variation amount.
+        :return: The suggested variation amount.
+        """
+        if last_direction == direction:
+            return last_step * 2
+        else:
+            return last_step / 3
