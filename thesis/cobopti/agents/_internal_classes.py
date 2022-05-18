@@ -9,6 +9,7 @@ class Suggestion:
     next_point: typ.Optional[float] = None
     direction: typ.Optional[float] = None
     step: typ.Optional[float] = None
+    distance: typ.Optional[float] = None
 
 
 @dataclasses.dataclass(frozen=True)
