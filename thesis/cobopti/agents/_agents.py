@@ -4,7 +4,6 @@ import abc
 import logging
 import math
 import pathlib
-import random
 import typing as typ
 
 from . import _normalizers, _internal_classes as ic, _suggestions
@@ -681,7 +680,7 @@ class PointAgent(Agent):
         elif self.variable_value == self.variable.upper_bound:
             direction = DIR_DECREASE
         else:
-            direction = self.variable.last_local_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
+            direction = self.variable.last_local_direction or self.world.rng.choice([DIR_DECREASE, DIR_INCREASE])
         return ic.LocalSearchSuggestion(
             decision='first point in chain -> explore',
             direction=direction,
@@ -921,7 +920,7 @@ class PointAgent(Agent):
         elif prev_point is self._right_point or self.variable_value == self.variable.upper_bound:
             direction = DIR_DECREASE
         else:
-            direction = self.variable.last_local_direction or random.choice([DIR_DECREASE, DIR_INCREASE])
+            direction = self.variable.last_local_direction or self.world.rng.choice([DIR_DECREASE, DIR_INCREASE])
         self.chain.go_up_mode = False
         self.chain.minimum.already_went_up = True
         new_chain_next = self is self.chain.minimum or self_on_bound
