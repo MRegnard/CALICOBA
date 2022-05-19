@@ -42,10 +42,10 @@ class ObjectiveFunction(Metadata):
     """This abstract class represents an objective function used internally by CoBOpti."""
 
     @abc.abstractmethod
-    def __call__(self, **args) -> float:
+    def __call__(self, **kwargs) -> float:
         """Evaluates this objective function.
 
-        :param args: Values to evaluate the function on.
+        :param kwargs: Values to evaluate the function on.
         :return: The objective’s value.
         """
 
