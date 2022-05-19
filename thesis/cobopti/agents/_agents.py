@@ -300,8 +300,12 @@ class ChainAgent(Agent):
         self.go_up_mode = False
 
     @property
+    def variable(self) -> VariableAgent:
+        return self._var_agent
+
+    @property
     def points(self) -> typ.Sequence[PointAgent]:
-        """The list of all point agents managed by this chain."""
+        """The list of all point agents managed by this chain. The returned value is a copy of internal data."""
         return list(self._points)
 
     @property
@@ -360,9 +364,11 @@ class ChainAgent(Agent):
         self._detect_extrema()
 
     def _detect_minimum(self):
+        """Detects the point agent with the lowest criticality of this chain."""
         self._minimum = min(self._points, key=lambda p: p.criticality)
 
     def _detect_extrema(self):
+        """Detects the points with the lowest and highest variable values of this chain."""
         extremum_min = None
         extremum_max = None
         for point in self._points:
@@ -378,10 +384,10 @@ class ChainAgent(Agent):
                 extremum_max = point
 
     def _get_logging_name(self):
-        return f'{self._var_agent.name}:{self.name}'
+        return f'{self.variable.name}:{self.name}'
 
     def __repr__(self):
-        return f'ChainAgent{{name={self.name},variable={self._var_agent.name},points={self._points}}}'
+        return f'ChainAgent{{name={self.name},variable={self.variable.name},points={self._points}}}'
 
 
 class PointAgent(Agent):
@@ -443,12 +449,12 @@ class PointAgent(Agent):
         return f'{self.variable.name}:{self.name}'
 
     @property
-    def chain(self):
+    def chain(self) -> ChainAgent:
         """The chain that this point belongs to."""
         return self._chain
 
     @chain.setter
-    def chain(self, chain):
+    def chain(self, chain: ChainAgent):
         """Set the chain this point belongs to.
 
         :raise ValueError: If this point is already assigned to a chain.
