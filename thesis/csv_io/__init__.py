@@ -50,7 +50,7 @@ class CSVWriter(CSVIO):
                  **kwargs):
         super().__init__(file_name, mode='a' if append else 'w', **kwargs)
         self._columns = columns
-        if write_header:
+        if not append and write_header:
             self._file.write(self._separator.join(self._sanitize_data(c) for c in self._columns) + '\n')
 
     def write_line(self, **data):
@@ -58,6 +58,9 @@ class CSVWriter(CSVIO):
 
     def write_lines(self, *lines: typ.Dict[str, typ.Any]):
         self._file.writelines(self._format_line(**data) for data in lines)
+
+    def write_comment(self, message: str):
+        self._file.write(f'# {message}\n')
 
     def _format_line(self, **data) -> str:
         columns_nb = len(self._columns)
@@ -116,6 +119,7 @@ class CSVReader(CSVIO):
                 yield self._line_to_dict(*values, missing_column_prefix)
 
     def _parse_line(self, line: str) -> typ.Optional[typ.List[str]]:
+        # TODO commentaires -> attention si séparateur est un \s
         if line[-1] in '\r\n':
             line = line[:-1]
         elif line[-2:] == '\r\n':
