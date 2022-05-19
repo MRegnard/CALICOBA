@@ -1,4 +1,3 @@
-import pathlib
 import typing as typ
 
 Point = typ.Tuple[float, float]
@@ -18,32 +17,3 @@ def get_xc(top_point: Point, intermediate_point: Point, yc: float) -> float:
     xa, ya = top_point
     xe, ye = intermediate_point
     return xa + (yc - ya) * (xe - xa) / (ye - ya)
-
-
-class CSVWriter:  # TODO autoclosable
-    def __init__(self, file_name: pathlib.Path, *columns: str, append: bool = False, encoding: str = 'utf8'):
-        self._file = file_name.open(mode='a' if append else 'w', encoding=encoding)
-        self._columns = columns
-
-    def write_line(self, **data):
-        pass  # TODO
-
-    def flush(self):
-        self._file.flush()
-
-    def __del__(self):
-        self._file.close()
-
-
-class CSVReader:  # TODO autoclosable
-    def __init__(self, file_name: pathlib.Path, encoding: str = 'utf8'):
-        self._file = file_name.open(mode='r', encoding=encoding)
-
-    def read_lines(self) -> typ.Iterable[typ.Dict[str, str]]:
-        pass  # TODO
-
-    def close(self):
-        self._file.close()
-
-    def __del__(self):
-        self._file.close()

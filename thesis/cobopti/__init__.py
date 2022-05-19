@@ -1,5 +1,4 @@
 import dataclasses
-import io
 import logging
 import math
 import random
@@ -58,9 +57,9 @@ class CoBOpti:
         self._best_solution = {}
         self._best_crits = {}
 
-        # TODO create CSV file wrapper
-        self._params_files: typ.Dict[str, io.TextIOBase] = {}
-        self._objs_files: typ.Dict[str, io.TextIOBase] = {}
+        # TODO use CSVWriter
+        self._params_files: typ.Dict[str, typ.TextIO] = {}
+        self._objs_files: typ.Dict[str, typ.TextIO] = {}
 
     @property
     def config(self) -> cfg.CoBOptiConfig:
@@ -135,7 +134,6 @@ class CoBOpti:
         for variable in self.config.variables_metadata:
             self._add_variable(variable)
             if self.config.output_directory:
-                # noinspection PyTypeChecker
                 self._params_files[variable.name] = (self.config.output_directory / (variable.name + '.csv')) \
                     .open(mode='w', encoding='utf8')
                 self._params_files[variable.name] \
@@ -144,7 +142,6 @@ class CoBOpti:
         for obj in self.config.objective_functions:
             self._add_objective(obj)
             if self.config.output_directory:
-                # noinspection PyTypeChecker
                 self._objs_files[obj.name] = (self.config.output_directory / (obj.name + '.csv')) \
                     .open(mode='w', encoding='utf8')
                 self._objs_files[obj.name] \
@@ -153,6 +150,7 @@ class CoBOpti:
         self._variable_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
 
+        # TODO use CSVWriter
         with (self._config.output_directory / 'feedback.csv').open(mode='w') as f:  # DEBUG
             f.write(f'cycle,{",".join(sorted(a.name for a in self._variable_agents))}\n')
 
@@ -254,6 +252,7 @@ class CoBOpti:
 
         # Update variable agents, current points, and directions
         suggestions: typ.Dict[str, agents.VariationSuggestion] = {}
+        # TODO use CSVWriter
         with (self._config.output_directory / 'feedback.csv').open(mode='a') as f:  # DEBUG
             line = []
             for parameter in self._variable_agents:
