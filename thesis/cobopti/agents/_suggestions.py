@@ -22,11 +22,3 @@ class VariationSuggestion:
     new_chain_next: bool = False
     step: float = None
     direction: int = None
-
-
-@dataclasses.dataclass(frozen=True)
-class GlobalMinimumFound:
-    """When a point agent returns an instance of this class,
-    this means that it represents a global minimum of the optimization problem.
-    """
-    pass

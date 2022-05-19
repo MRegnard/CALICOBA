@@ -185,21 +185,21 @@ class CoBOpti:
                 if not suggestion:
                     error_message = 'no suggestions for parameter ' + param_name
                     break
-                if isinstance(suggestion, agents.GlobalMinimumFound):
+                if self.config.output_directory:
+                    self._params_files[param_name].write(
+                        f'{self._cycle},{self._variables[param_name]},'
+                        f'{suggestion.criticality},{suggestion.agent.variable_value},'
+                        f'{int(suggestion.agent.is_local_minimum)},{suggestion.step},{suggestion.decision}\n'
+                    )
+                    self._params_files[param_name].flush()
+                # Update variables
+                self._variables[param_name] = suggestion.next_point
+                if suggestion.local_min_found:
                     # Global minimum detection
-                    solution_found = True
-                else:
-                    if self.config.output_directory:
-                        self._params_files[param_name].write(
-                            f'{self._cycle},{self._variables[param_name]},'
-                            f'{suggestion.criticality},{suggestion.agent.variable_value},'
-                            f'{int(suggestion.agent.is_local_minimum)},{suggestion.step},{suggestion.decision}\n'
-                        )
-                        self._params_files[param_name].flush()
-                    # Update variables
-                    self._variables[param_name] = suggestion.next_point
-                    # Global minimum detection
-                    if suggestion.local_min_found:
+                    if suggestion.step == 0:
+                        solution_found = True
+                    else:
+                        # TEMP until a better criterion has been defined
                         threshold = agents.PointAgent.SAME_POINT_THRESHOLD
                         solution_found = any(
                             all(abs(expected_solution[pname] - self._variables[pname]) < threshold for pname in
@@ -207,16 +207,15 @@ class CoBOpti:
                             for expected_solution in self.config.expected_solutions
                         )
 
+            self._cycle += 1
             if solution_found or error_message:
                 break
             if self.config.step_by_step:
                 input('Paused')
-            self._cycle += 1
 
         total_time = time.time() - start_time
         # All objective agents are called for the exact same points, no need to check more than one
-        points = len(self._objective_agents[0].points)
-        unique_points = len([])  # TODO
+        all_points = self._objective_agents[0].points
 
         return OptimizationResult(
             solution=self._best_solution,
@@ -224,8 +223,8 @@ class CoBOpti:
             obj_evals=sum(obj.evaluations for obj in self._objective_agents),
             chains=sum(len(var.chains) for var in self._variable_agents),
             time=total_time if not self.config.step_by_step else math.nan,
-            points=points,
-            unique_points=unique_points,
+            points=len(all_points),
+            unique_points=len(dict.fromkeys(all_points)),
             error=error_message != '',
             error_message=error_message,
         )

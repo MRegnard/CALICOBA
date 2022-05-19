@@ -142,21 +142,23 @@ class ObjectiveAgent(Agent):
 
     @property
     def evaluations(self) -> int:
+        """The number of times the associated function has been evaluated."""
         return self._evaluations
 
     @property
     def points(self) -> typ.List[typ.Dict[str, float]]:
-        return self._points
+        """The list of all points the associated function has been evaluated on. May contain duplicates."""
+        return list(self._points)
 
-    def evaluate_function(self, *, update: bool = True, **args: float):
+    def evaluate_function(self, *, update: bool = True, **kwargs: float):
         """Evaluates the objective function wrapped by this agent.
 
         :param update: Whether to update this agent after function evaluation.
         :param args: Arguments to pass to the objective function.
         """
         self._evaluations += 1
-        self._points.append(args)
-        objective_value = self._function(**args)
+        self._points.append(kwargs)
+        objective_value = self._function(**kwargs)
         criticality = self._normalizer(objective_value)
         if update:
             self._objective_value = objective_value
@@ -598,13 +600,22 @@ class PointAgent(Agent):
             if self.chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
                 self.best_local_minimum = True
 
-    def decide(self) -> typ.Union[_suggestions.VariationSuggestion, _suggestions.GlobalMinimumFound, None]:
+    def decide(self) -> typ.Optional[_suggestions.VariationSuggestion]:
         """Makes this point agent decide what to do.
 
         :return: A suggestion or None if this agent decided to suggest nothing.
         """
         if self.is_global_minimum:
-            return _suggestions.GlobalMinimumFound()
+            return _suggestions.VariationSuggestion(
+                agent=self,
+                search_phase=_suggestions.SearchPhase.LOCAL,
+                decision='global min found -> do nothing',
+                criticality=self.criticality,
+                local_min_found=True,
+                step=0,
+                direction=DIR_NONE,
+                next_point=self.variable_value,
+            )
         if not self.chain.is_active or not self.best_local_minimum:
             return None
 
