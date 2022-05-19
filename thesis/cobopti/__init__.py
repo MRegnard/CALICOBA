@@ -1,47 +1,69 @@
 import dataclasses
+import io
 import logging
 import math
-import pathlib
 import random
+import time
 import typing as typ
 
-from . import agents
+from . import agents, config as cfg
 
 _T = typ.TypeVar('_T', bound=agents.Agent)
 
 
 @dataclasses.dataclass(frozen=True)
-class CoBOptiConfig:
-    """Configuration object for CoBOpti."""
-    dump_directory: pathlib.Path = None
-    seed: typ.Optional[int] = None
-    logging_level: int = logging.INFO
+class OptimizationResult:
+    solution: typ.Dict[str, float]
+    cycles: int
+    obj_evals: int
+    chains: int
+    time: float
+    points: int
+    unique_points: int
+    error: bool
+    error_message: typ.Optional[str] = None
 
 
-# TODO réintégrer le controle du modèle dans CoBOpti
+def minimize(config: cfg.CoBOptiConfig) -> OptimizationResult:
+    """Runs the optimizer.
+
+    :return: An object containing the found solution and various metrics.
+    """
+    c = CoBOpti(config)
+    return c.minimize()
+
+
 class CoBOpti:
     """CoBOpti is a global optimizer based on a self-adaptive multi-agent system."""
 
-    def __init__(self, config: CoBOptiConfig):
+    def __init__(self, config: cfg.CoBOptiConfig):
         """Creates a new optimizer instance with the given configuration.
 
         :param config: The configuration object.
         """
         self._config = config
+        self._objectives = list(config.objective_functions)  # Copy value for easier access
         self._logger = logging.getLogger('CoBOpti')
         self._logger.setLevel(self._config.logging_level)
         self._rng = random.Random(self._config.seed)
-        if self._config.dump_directory and not self._config.dump_directory.exists():
-            self._config.dump_directory.mkdir(parents=True)
+        if self._config.output_directory and not self._config.output_directory.exists():
+            self._config.output_directory.mkdir(parents=True)
         self._cycle = 0
+        self._variables = {}
         self._agents_registry: typ.List[agents.Agent] = []
-        self._parameter_agents: typ.List[agents.VariableAgent] = []
         self._objective_agents: typ.List[agents.ObjectiveAgent] = []
+        self._variable_agents: typ.List[agents.VariableAgent] = []
         self._create_new_chain_for_params = set()
         self._search_phases: typ.Dict[str, agents.SearchPhase] = {}
+        self._best_solution = {}
+        self._best_crits = {}
+
+        # TODO create CSV file wrapper
+        self._params_files: typ.Dict[str, io.TextIOBase] = {}
+        self._objs_files: typ.Dict[str, io.TextIOBase] = {}
 
     @property
-    def config(self) -> CoBOptiConfig:
+    def config(self) -> cfg.CoBOptiConfig:
         """The configuration object."""
         return self._config
 
@@ -71,26 +93,6 @@ class CoBOpti:
         """
         return next(filter(predicate, self._agents_registry), None)
 
-    def add_parameter(self, name: str, lower: float, upper: float):
-        """Declares a variable to optimize.
-
-        :param name: Variable’s name.
-        :param lower: Variable’s lower bound.
-        :param upper: Variable’s upper bound.
-        """
-        self._logger.info(f'Creating parameter "{name}".')
-        self.add_agent(agents.VariableAgent(name, lower, upper, logger=self._logger))
-
-    def add_objective(self, name: str, lower: float, upper: float):
-        """Declares an objective function.
-
-        :param name: Objective’s name.
-        :param lower: Objective’s lower bound.
-        :param upper: Objective’s upper bound.
-        """
-        self._logger.info(f'Creating objective "{name}".')
-        self.add_agent(agents.ObjectiveAgent(name, lower, upper))
-
     def add_agent(self, agent: agents.Agent):
         """Adds an agent to the environment managed by this optimizer.
         Sets the agent’s world property to this instance.
@@ -110,41 +112,154 @@ class CoBOpti:
         """
         self._agents_registry.remove(agent)
 
-    def setup(self):
-        """Sets up this instance. Must be called before suggest_new_point method."""
+    def _add_variable(self, metadata: cfg.Variable):
+        """Declares a variable to optimize.
+
+        :param metadata: Variable’s metadata.
+        """
+        self._logger.info(f'Creating variable "{metadata.name}".')
+        self.add_agent(agents.VariableAgent(metadata, logger=self._logger))
+
+    def _add_objective(self, function: cfg.ObjectiveFunction):
+        """Declares an objective function.
+
+        :param function: The objective function.
+        """
+        self._logger.info(f'Creating objective "{function.name}".')
+        self.add_agent(agents.ObjectiveAgent(function))
+
+    def _setup(self):
+        """Sets up this instance. Must be called before minimize method."""
         self._logger.info('Setting up CoBOpti…')
-        self._parameter_agents = self.get_agents_for_type(agents.VariableAgent)
+
+        for variable in self.config.variables_metadata:
+            self._add_variable(variable)
+            if self.config.output_directory:
+                # noinspection PyTypeChecker
+                self._params_files[variable.name] = (self.config.output_directory / (variable.name + '.csv')) \
+                    .open(mode='w', encoding='utf8')
+                self._params_files[variable.name] \
+                    .write('cycle,value,criticality,decider,is min,step,decision\n')
+
+        for obj in self.config.objective_functions:
+            self._add_objective(obj)
+            if self.config.output_directory:
+                # noinspection PyTypeChecker
+                self._objs_files[obj.name] = (self.config.output_directory / (obj.name + '.csv')) \
+                    .open(mode='w', encoding='utf8')
+                self._objs_files[obj.name] \
+                    .write('cycle,raw value,criticality\n')
+
+        self._variable_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
-        self._cycle = 0
-        with (self._config.dump_directory / 'feedback.csv').open(mode='w') as f:
-            f.write(f'cycle,{",".join(sorted(a.name for a in self._parameter_agents))}\n')
+
+        with (self._config.output_directory / 'feedback.csv').open(mode='w') as f:  # DEBUG
+            f.write(f'cycle,{",".join(sorted(a.name for a in self._variable_agents))}\n')
+
         self._logger.info('CoBOpti setup finished.')
 
-    def suggest_new_point(self, variables_values: typ.Dict[str, float], objectives_values: typ.Dict[str, float]) \
-            -> typ.Dict[str, typ.List[agents.VariationSuggestion]]:
-        """Suggests the next value for each one of the declared variables.
+    def minimize(self) -> OptimizationResult:
+        """Runs the optimizer.
 
-        :param variables_values: Current variable values.
-        :param objectives_values: Current objectives values.
+        :return: An object containing the found solution and various metrics.
+        """
+        self._setup()
+        self._cycle = 0
+        solution_found = False
+        start_time = time.time()
+        error_message = ''
+
+        for _ in range(self.config.max_cycles):
+            self._logger.debug(f'Cycle {self._cycle}')
+
+            try:
+                # Execute one minimization step
+                suggestions = self._step()
+            except BaseException as e:
+                self._logger.exception(e)
+                error_message = str(e)
+                break
+            self._logger.debug(suggestions)
+
+            for param_name, suggestion in suggestions.items():
+                if not suggestion:
+                    error_message = 'no suggestions for parameter ' + param_name
+                    break
+                if isinstance(suggestion, agents.GlobalMinimumFound):
+                    # Global minimum detection
+                    solution_found = True
+                else:
+                    if self.config.output_directory:
+                        self._params_files[param_name].write(
+                            f'{self._cycle},{self._variables[param_name]},'
+                            f'{suggestion.criticality},{suggestion.agent.variable_value},'
+                            f'{int(suggestion.agent.is_local_minimum)},{suggestion.step},{suggestion.decision}\n'
+                        )
+                        self._params_files[param_name].flush()
+                    # Update variables
+                    self._variables[param_name] = suggestion.next_point
+                    # Global minimum detection
+                    if suggestion.local_min_found:
+                        threshold = agents.PointAgent.SAME_POINT_THRESHOLD
+                        solution_found = any(
+                            all(abs(expected_solution[pname] - self._variables[pname]) < threshold for pname in
+                                expected_solution)
+                            for expected_solution in self.config.expected_solutions
+                        )
+
+            if solution_found or error_message:
+                break
+            if self.config.step_by_step:
+                input('Paused')
+            self._cycle += 1
+
+        total_time = time.time() - start_time
+        # All objective agents are called for the exact same points, no need to check more than one
+        points = len(self._objective_agents[0].points)
+        unique_points = len([])  # TODO
+
+        return OptimizationResult(
+            solution=self._best_solution,
+            cycles=self._cycle,
+            obj_evals=sum(obj.evaluations for obj in self._objective_agents),
+            chains=sum(len(var.chains) for var in self._variable_agents),
+            time=total_time if not self.config.step_by_step else math.nan,
+            points=points,
+            unique_points=unique_points,
+            error=error_message != '',
+            error_message=error_message,
+        )
+
+    def _step(self) -> typ.Dict[str, agents.VariationSuggestion]:
+        """Executes a single minimization cycle.
+
         :return: A dictionary that associates a list of suggestions for each declared variable.
         """
-        self._logger.debug(f'Cycle {self._cycle}')
-
-        # Update criticalities
+        # Update objectives
         crits = {}
         for objective in self._objective_agents:
-            objective.perceive(self._cycle, objectives_values[objective.name], dump_dir=self.config.dump_directory)
+            objective.evaluate_function(**self._variables, update=True)
             crits[objective.name] = objective.criticality
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
+            if self.config.output_directory:
+                self._objs_files[objective.name] \
+                    .write(f'{self._cycle},{objective.objective_value},{objective.criticality}\n')
+                self._objs_files[objective.name].flush()
 
-        # Update parameters, current points, and directions
-        suggestions: typ.Dict[str, typ.List[agents.VariationSuggestion]] = {}
-        with (self._config.dump_directory / 'feedback.csv').open(mode='a') as f:
+        # Update best solution
+        if max(crits.values()) < max(self._best_crits.values()):
+            self._best_solution = dict(self._variables)
+            self._best_crits = dict(crits)
+
+        self._logger.debug(self._variables, crits)
+
+        # Update variable agents, current points, and directions
+        suggestions: typ.Dict[str, agents.VariationSuggestion] = {}
+        with (self._config.output_directory / 'feedback.csv').open(mode='a') as f:  # DEBUG
             line = []
-            for parameter in self._parameter_agents:
+            for parameter in self._variable_agents:
                 p_name = parameter.name
-                suggestions[p_name] = []
-                diff = variables_values[p_name] - parameter.value
+                diff = self._variables[p_name] - parameter.value
                 last_step = abs(diff) if not math.isnan(diff) else parameter.default_step
                 if diff > 0:
                     last_direction = agents.DIR_INCREASE
@@ -153,7 +268,7 @@ class CoBOpti:
                 else:
                     last_direction = agents.DIR_NONE
                 new_chain = p_name in self._create_new_chain_for_params
-                parameter.perceive(variables_values[p_name], new_chain, crits, last_step, last_direction,
+                parameter.perceive(self._variables[p_name], new_chain, crits, last_step, last_direction,
                                    self._search_phases[p_name])
                 line.append(f'{last_direction}/{diff}')
             f.write(f'{self._cycle},' + ','.join(map(str, line)) + '\n')
@@ -176,10 +291,13 @@ class CoBOpti:
             elif suggestion:
                 if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.variable_name)
-                suggestions[point.variable_name].append(suggestion)
+                if suggestions[point.variable_name]:
+                    raise ValueError(f'several suggestions for variable {point.variable_name}: '
+                                     f'{suggestions[point.variable_name]} / {suggestion}')
+                suggestions[point.variable_name] = suggestion
 
-        for parameter in self._parameter_agents:
-            self._search_phases[parameter.name] = suggestions[parameter.name][0].search_phase
+        for parameter in self._variable_agents:
+            self._search_phases[parameter.name] = suggestions[parameter.name].search_phase
 
         self._cycle += 1
 
@@ -188,5 +306,4 @@ class CoBOpti:
 
 __all__ = [
     'CoBOpti',
-    'CoBOptiConfig',
 ]

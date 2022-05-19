@@ -17,7 +17,6 @@ class VariationSuggestion:
     search_phase: SearchPhase
     next_point: float
     decision: str
-    selected_objective: str
     criticality: float
     local_min_found: bool
     new_chain_next: bool = False

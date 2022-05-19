@@ -22,7 +22,7 @@ import pymoo.optimize as pymoo_opti
 from jmetal.core.problem import S
 
 import cobopti
-import cobopti.objectives
+import cobopti.config
 import experiments_utils as exp_utils
 import models
 import test_utils
@@ -253,9 +253,17 @@ def main():
 
 def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         -> exp_utils.RunResult:
-    class SimpleObjectiveFunction(cobopti.objectives.ObjectiveFunction):
+    class VariableWrapper(cobopti.config.Variable):
+        def __init__(self, name: str, bounds: typ.Tuple[float, float]):
+            super().__init__(name, bounds[0], bounds[1])
+
+    class ObjectiveFunctionWrapper(cobopti.config.ObjectiveFunction):
+        def __init__(self, name: str, bounds: typ.Tuple[float, float], model_output: str):
+            super().__init__(name, bounds[0], bounds[1])
+            self.model_output = model_output
+
         def __call__(self, **outputs_values: float):
-            return (outputs_values[self.outputs_names[0]]
+            return (outputs_values[self.model_output]
                     + (test_utils.gaussian_noise(mean=config.noise_mean,
                                                  stdev=config.noise_stdev) if config.noisy else 0))
 
@@ -264,122 +272,41 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
 
     logger.info(f'Starting from {test_utils.map_to_string(config.p_init)}')
 
-    model.reset()
-    system = cobopti.CoBOpti(cobopti.CoBOptiConfig(
-        dump_directory=config.output_dir,
+    model.reset()  # Just in case
+
+    result = cobopti.minimize(cobopti.config.CoBOptiConfig(
+        variables_metadata=[
+            VariableWrapper(var_name, model.get_parameter_domain(var_name))
+            for var_name in model.parameters_names
+        ],
+        objective_functions=[
+            ObjectiveFunctionWrapper(output_name, model.get_output_domain(output_name=output_name), output_name)
+            for output_name in model.outputs_names
+        ],
+        max_cycles=config.max_steps,
+        step_by_step=config.step_by_step,
+        expected_solutions=config.target_parameters,
+        output_directory=config.output_dir,
         seed=config.seed,
         logging_level=config.logging_level,
     ))
-
-    param_files = {}
-    for param_name in model.parameters_names:
-        if config.output_dir:
-            param_files[param_name] = (config.output_dir / (param_name + '.csv')).open(mode='w', encoding='utf8')
-            param_files[param_name].write('cycle,value,objective,criticality,decider,is min,step,decision\n')
-        model.set_parameter(param_name, config.p_init[param_name])
-        inf, sup = model.get_parameter_domain(param_name)
-        if not config.free_parameter or config.free_parameter == param_name:
-            system.add_parameter(param_name, inf, sup)
-
-    obj_functions = {}
-    for output_name in model.outputs_names:
-        inf, sup = model.get_output_domain(output_name)
-        objective_name = 'obj_' + output_name
-        obj_functions[objective_name] = SimpleObjectiveFunction(output_name)
-        system.add_objective(objective_name, inf, sup)
-
-    system.setup()
-    solution_found = False
-    cycles_number = 0
-    start_time = time.time()
-    points = []
-    unique_points = []
-    created_chains = 0
-    error_message = ''
-    solution_cycle = -1
-    for i in range(config.max_steps):
-        cycles_number = i + 1
-        model.update()
-
-        # Parameters
-        params = {p_name: model.get_parameter(p_name) for p_name in model.parameters_names}
-        p = sorted(params.items())
-        points.append(p)
-        if p not in unique_points:
-            unique_points.append(p)
-        # Objectives
-        objs = {
-            obj_name: obj_function(**{
-                out_name: model.get_output(out_name)
-                for out_name in obj_function.outputs_names
-            })
-            for obj_name, obj_function in obj_functions.items()
-        }
-
-        logger.debug('Objectives: ' + str(objs.items()))
-
-        try:
-            logger.debug(params, objs)
-            # Execute one optimization step
-            suggestions = system.suggest_new_point(params, objs)
-        except BaseException as e:
-            logger.exception(e)
-            error_message = str(e)
-            break
-        logger.debug(suggestions)
-
-        for param_name, suggestion in suggestions.items():
-            if not suggestion:
-                error_message = 'no suggestions for parameter ' + param_name
-                break
-            s = suggestion[0]
-            if isinstance(s, cobopti.agents.GlobalMinimumFound):
-                # Global minimum detection
-                solution_found = True
-                solution_cycle = i + 1
-            else:
-                if param_files:
-                    param_files[param_name].write(
-                        f'{i},{model.get_parameter(param_name)},{s.selected_objective},'
-                        f'{s.criticality},{s.agent.variable_value},{int(s.agent.is_local_minimum)},'
-                        f'{s.step},{s.decision}\n'
-                    )
-                if 'chain' in s.decision:
-                    created_chains += 1
-                # Update model parameters
-                model.set_parameter(param_name, s.next_point)
-                # Global minimum detection
-                if s.local_min_found:
-                    threshold = cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
-                    solution_found = any(
-                        all(abs(expected_solution[pname] - params[pname]) < threshold for pname in expected_solution)
-                        for expected_solution in config.target_parameters
-                    )
-                    if solution_found:
-                        solution_cycle = i + 1
-
-        if solution_found or error_message:
-            break
-
-        if config.step_by_step:
-            input('Paused')
-
-    total_time = time.time() - start_time
-
-    # for param_name in model.parameters_names:
-    #     param_files[param_name].write(
-    #         f'{cycles_number + 1},{model.get_parameter(param_name)},,,,1,,,\n')
+    threshold = cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
+    solution_found = any(
+        all(abs(expected_solution[pname] - result.solution[pname]) < threshold for pname in
+            expected_solution)
+        for expected_solution in config.target_parameters
+    )
 
     return exp_utils.RunResult(
         solution_found=solution_found,
-        error=error_message != '',
-        cycles_number=cycles_number,
-        solution_cycle=solution_cycle,
-        time=total_time,
-        points_number=len(points),
-        unique_points_number=len(unique_points),
-        created_chains=created_chains,
-        error_message=error_message,
+        error=result.error,
+        cycles_number=result.cycles,
+        solution_cycle=-1,
+        time=result.time,
+        points_number=result.points,
+        unique_points_number=result.unique_points,
+        created_chains=result.chains,
+        error_message=result.error_message,
     )
 
 

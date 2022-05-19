@@ -3,11 +3,10 @@ from __future__ import annotations
 import abc
 import logging
 import math
-import pathlib
 import typing as typ
 
 from . import _normalizers, _internal_classes as ic, _suggestions
-from .. import utils
+from .. import utils, config
 
 DIR_INCREASE = 1
 DIR_DECREASE = -1
@@ -118,42 +117,50 @@ class ObjectiveAgent(Agent):
     of the objective function it represents.
     """
 
-    def __init__(self, name: str, lower_bound: float, upper_bound: float):
-        """Creates an objective agents.
-        
-        :param name: Objective’s name.
-        :param lower_bound: Objective’s lower bound.
-        :param upper_bound: Objective’s upper bound.
+    def __init__(self, function: config.ObjectiveFunction):
+        """Creates an objective agent.
+
+        :param function: The function to wrap.
         """
-        super().__init__(name)
-        self._criticality = 0
-        self._normalizer = _normalizers.BoundNormalizer(lower_bound, upper_bound)
-        self._file = None
+        super().__init__(function.name)
+        self._evaluations = 0
+        self._points = []
+        self._function = function
+        self._objective_value = math.nan
+        self._criticality = math.nan
+        self._normalizer = _normalizers.BoundNormalizer(function.lower_bound, function.upper_bound)
+
+    @property
+    def objective_value(self) -> float:
+        """Returns the value of the objective function for the current cycle."""
+        return self._objective_value
 
     @property
     def criticality(self) -> float:
-        """The criticality of this objective."""
+        """The criticality of this objective for the current cycle."""
         return self._criticality
 
-    def perceive(self, cycle: int, objective_value: float, *, dump_dir: pathlib.Path = None):
-        """Updates the objective value and criticality of this objective agent.
+    @property
+    def evaluations(self) -> int:
+        return self._evaluations
 
-        :param cycle: Current optimization cycle.
-        :param objective_value: New value of the associated objective.
-        :param dump_dir: Directory where to dump data to. May be null.
+    @property
+    def points(self) -> typ.List[typ.Dict[str, float]]:
+        return self._points
+
+    def evaluate_function(self, *, update: bool = True, **args: float):
+        """Evaluates the objective function wrapped by this agent.
+
+        :param update: Whether to update this agent after function evaluation.
+        :param args: Arguments to pass to the objective function.
         """
-        self._criticality = self._normalizer(objective_value)
-
-        if dump_dir:  # TODO move outside
-            if not self._file:
-                self._file = (dump_dir / (self.name + '.csv')).open(mode='w', encoding='UTF-8')
-                self._file.write('cycle,raw value,criticality\n')
-            self._file.write(f'{cycle},{objective_value},{self._criticality}\n')
-            self._file.flush()
-
-    def __del__(self):
-        if self._file:
-            self._file.close()
+        self._evaluations += 1
+        self._points.append(args)
+        objective_value = self._function(**args)
+        criticality = self._normalizer(objective_value)
+        if update:
+            self._objective_value = objective_value
+            self._criticality = criticality
 
     def __repr__(self):
         return f'ObjectiveAgent{{name={self.name},criticality={self._criticality}}}'
@@ -162,19 +169,17 @@ class ObjectiveAgent(Agent):
 class VariableAgent(Agent):
     """A variable agent represents a model variable to optimize."""
 
-    def __init__(self, name: str, lower_bound: float, upper_bound: float, *, logger: logging.Logger = None):
+    def __init__(self, metadata: config.Variable, *, logger: logging.Logger = None):
         """Creates a variable agent.
 
-        :param name: Variable’s name.
-        :param lower_bound: Variable’s lower bound.
-        :param upper_bound: Variable’s upper bound.
+        :param metadata: Variable’s metadata.
         :param logger: The logger instance to use to log things.
         """
-        super().__init__(name, logger=logger)
-        self._lower_bound = lower_bound
-        self._upper_bound = upper_bound
+        super().__init__(metadata.name, logger=logger)
+        self._lower_bound = metadata.lower_bound
+        self._upper_bound = metadata.upper_bound
         self._max_step_number = 2
-        self._default_step = (upper_bound - lower_bound) / 100
+        self._default_step = (self._upper_bound - self._lower_bound) / 100
         self.last_local_step = 0
         self.last_local_direction = DIR_NONE
         self.last_semi_local_step = 0
@@ -213,8 +218,13 @@ class VariableAgent(Agent):
         return self._max_step_number
 
     @property
+    def chains(self) -> typ.List[ChainAgent]:
+        """The list of all chains managed by this agent. Returns a new list."""
+        return list(self._chains)
+
+    @property
     def minima(self) -> typ.Sequence[PointAgent]:
-        """The list of all point agents that represent a local minimum."""
+        """The list of all point agents that represent a local minimum. Returns a new list."""
         return list(self._minima)
 
     def add_minimum(self, point: PointAgent):
@@ -655,7 +665,6 @@ class PointAgent(Agent):
                 search_phase=search_phase,
                 next_point=min(self.variable.upper_bound, max(self.variable.lower_bound, suggested_point)),
                 decision=decision,
-                selected_objective='',
                 criticality=self.criticality,
                 local_min_found=self.chain.local_min_found,
                 direction=suggested_direction,
