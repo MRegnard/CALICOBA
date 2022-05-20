@@ -10,8 +10,12 @@ class CSVIO(abc.ABC):
     def __init__(self, file_name: pathlib.Path, mode: str, encoding: str = 'utf8', separator: str = ',',
                  line_comment: str = '#', strip: bool = True, disable_escape_char: bool = False,
                  allow_columns_nb_mismatch: bool = False):
-        if len(separator) != 1 or separator == '"':
+        if line_comment == '"':
+            raise ValueError(f'illegal line comment character {line_comment}')
+        if len(separator) != 1 or (separator == '"' and not disable_escape_char):
             raise ValueError(f'illegal separator character {separator}')
+        if separator == line_comment:
+            raise ValueError('separator and line comment characters cannot be identical')
         # noinspection PyTypeChecker
         self._file = file_name.open(mode=mode, encoding=encoding)
         self._separator = separator
@@ -23,7 +27,7 @@ class CSVIO(abc.ABC):
         self._default_values = {}
 
     @property
-    def header(self) -> typ.List[str]:
+    def column_names(self) -> typ.List[str]:
         return list(self._columns)
 
     def set_column_default(self, column: str, default):
@@ -46,6 +50,8 @@ class CSVIO(abc.ABC):
 
 
 class CSVWriter(CSVIO):
+    """Wrapper that makes it easier to write CSV files."""
+
     def __init__(self, file_name: pathlib.Path, *columns: str, append: bool = False, write_header: bool = True,
                  **kwargs):
         super().__init__(file_name, mode='a' if append else 'w', **kwargs)
@@ -90,17 +96,23 @@ class CSVWriter(CSVIO):
 
 
 class CSVReader(CSVIO):
+    """Wrapper that makes it easier to read CSV files."""
+
     def __init__(self, file_name: pathlib.Path, **kwargs):
         super().__init__(file_name, mode='r', **kwargs)
         self._columns = self._parse_line(self._file.readline())
+        ws = set(' \t')
+        if self._separator in ws:
+            ws.remove(self._separator)
+        self._spaces = '[' + ''.join(ws) + ']'
         self._parser = lark.Lark(fr"""
-        line: value ("," value)*
+        line: value ("{self._separator}" value)*
         ?value: VALUE
               | QUOTED_VALUE -> quoted_value
               | empty
         empty:
-        VALUE: /[^",]+/
-        QUOTED_VALUE: /\s*"([^"]|"")+"\s*/
+        VALUE: /[^"{re.escape(self._separator)}]+/
+        QUOTED_VALUE: /{self._spaces}*"([^"]|"")*"{self._spaces}*/
         """.strip(), start='line')
 
     def read_line(self, missing_column_prefix: str = '_c') -> typ.Optional[typ.Dict[str, str]]:
@@ -119,13 +131,12 @@ class CSVReader(CSVIO):
                 yield self._line_to_dict(*values, missing_column_prefix)
 
     def _parse_line(self, line: str) -> typ.Optional[typ.List[str]]:
-        # TODO commentaires -> attention si séparateur est un \s
         if line[-1] in '\r\n':
             line = line[:-1]
         elif line[-2:] == '\r\n':
             line = line[:-2]
 
-        if re.match(r'^\s*' + re.escape(self._separator), line):
+        if re.match('^' + self._spaces + '*' + re.escape(self._line_comment), line):
             return None
 
         if self._disable_escape:
@@ -157,4 +168,4 @@ class _Transformer(lark.Transformer):
 
     # noinspection PyMethodMayBeStatic
     def empty(self, _):
-        return ''
+        return None
