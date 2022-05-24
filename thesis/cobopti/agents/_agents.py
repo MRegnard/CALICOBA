@@ -154,7 +154,7 @@ class ObjectiveAgent(Agent):
         """Evaluates the objective function wrapped by this agent.
 
         :param update: Whether to update this agent after function evaluation.
-        :param args: Arguments to pass to the objective function.
+        :param kwargs: Arguments to pass to the objective function.
         """
         self._evaluations += 1
         self._points.append(kwargs)
@@ -268,7 +268,7 @@ class VariableAgent(Agent):
             self.world.add_agent(new_point)
             self._last_point_id += 1
             if self._chains and not new_chain:
-                if prev_point.create_new_chain_from_me:
+                if prev_point and prev_point.create_new_chain_from_me:
                     self._chains[-1].remove_last_point()
                     prev_point.create_new_chain_from_me = False
                     self.__create_new_chain(prev_point)
@@ -277,7 +277,8 @@ class VariableAgent(Agent):
                 self.__create_new_chain(new_point)
 
     def __create_new_chain(self, first_point: PointAgent):
-        self._chains[-1].is_active = False
+        if self._chains:
+            self._chains[-1].is_active = False
         self._chains.append(ChainAgent(f'c{self._last_chain_id}', self, first_point, logger=self._logger))
         self.world.add_agent(self._chains[-1])
         self._last_chain_id += 1
@@ -356,6 +357,7 @@ class ChainAgent(Agent):
         p.next_point = None
         p.previous_point = prev_point
         p.chain = self
+        self._current_point = p
         self._points.append(p)
 
     def remove_last_point(self):
@@ -545,6 +547,7 @@ class PointAgent(Agent):
     def perceive(self):
         """Updates this point agent."""
         all_points = self.chain.points
+        print(self.name, self.chain.minimum)  # DEBUG
         self._is_current_min_of_chain = self.chain.minimum is self
 
         self.update_neighbors(all_points)
@@ -616,7 +619,7 @@ class PointAgent(Agent):
                 direction=DIR_NONE,
                 next_point=self.variable_value,
             )
-        if not self.chain.is_active or not self.best_local_minimum:
+        if not self.chain.is_active and not self.best_local_minimum:
             return None
 
         decision = ''
@@ -630,6 +633,8 @@ class PointAgent(Agent):
 
         if self.is_extremum and self.chain.go_up_mode:
             suggestion = self._hill_climb()
+            if not suggestion:
+                return None
             decision = suggestion.decision
             suggested_direction = suggestion.direction
             suggested_step = suggestion.step
@@ -950,6 +955,7 @@ class PointAgent(Agent):
             decision='opposite slope found -> stop climbing; create new chain; explore',
             direction=direction,
             step=self.variable.default_step,
+            from_value=self.variable_value,
             new_chain_next=new_chain_next,
         )
 
@@ -985,7 +991,7 @@ class PointAgent(Agent):
 
     def __repr__(self):
         return (
-            f'Point{{{self.name}={self.variable_value},minimum={self.is_local_minimum},extremum={self.is_extremum},'
+            f'Point{{{self.name}={self.variable_value},local minimum={self.is_local_minimum},extremum={self.is_extremum},'
             f'min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )
 

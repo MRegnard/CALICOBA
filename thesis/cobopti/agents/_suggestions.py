@@ -1,8 +1,6 @@
 import dataclasses
 import enum
 
-from cobopti.agents import PointAgent
-
 
 class SearchPhase(enum.Enum):
     LOCAL = 1
@@ -13,7 +11,7 @@ class SearchPhase(enum.Enum):
 @dataclasses.dataclass(frozen=True)
 class VariationSuggestion:
     """Object containing an action suggestion for a model variable."""
-    agent: PointAgent
+    agent: 'cobopti.PointAgent'
     search_phase: SearchPhase
     next_point: float
     decision: str

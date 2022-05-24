@@ -54,6 +54,7 @@ class CoBOpti:
         self._variable_agents: typ.List[agents.VariableAgent] = []
         self._create_new_chain_for_params = set()
         self._search_phases: typ.Dict[str, agents.SearchPhase] = {}
+        self._x0 = {var.name: config.x0[var.name] for var in config.variables_metadata}
         self._best_solution = {}
         self._best_crits = {}
 
@@ -150,6 +151,10 @@ class CoBOpti:
         self._variable_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
 
+        self._variables = {var.name: self._x0[var.name] for var in self._variable_agents}
+        self._search_phases = {var.name: agents.SearchPhase.LOCAL for var in self._variable_agents}
+        self._cycle = 0
+
         # TODO use CSVWriter
         with (self._config.output_directory / 'feedback.csv').open(mode='w') as f:  # DEBUG
             f.write(f'cycle,{",".join(sorted(a.name for a in self._variable_agents))}\n')
@@ -162,7 +167,6 @@ class CoBOpti:
         :return: An object containing the found solution and various metrics.
         """
         self._setup()
-        self._cycle = 0
         solution_found = False
         start_time = time.time()
         error_message = ''
@@ -214,6 +218,10 @@ class CoBOpti:
         total_time = time.time() - start_time
         # All objective agents are called for the exact same points, no need to check more than one
         all_points = self._objective_agents[0].points
+        unique_points = []
+        for p in all_points:
+            if p not in unique_points:
+                unique_points.append(p)
 
         return OptimizationResult(
             solution=self._best_solution,
@@ -222,7 +230,7 @@ class CoBOpti:
             chains=sum(len(var.chains) for var in self._variable_agents),
             time=total_time if not self.config.step_by_step else math.nan,
             points=len(all_points),
-            unique_points=len(dict.fromkeys(all_points)),
+            unique_points=len(unique_points),
             error=error_message != '',
             error_message=error_message,
         )
@@ -244,14 +252,13 @@ class CoBOpti:
                 self._objs_files[objective.name].flush()
 
         # Update best solution
-        if max(crits.values()) < max(self._best_crits.values()):
+        if not self._best_crits or max(crits.values()) < max(self._best_crits.values()):
             self._best_solution = dict(self._variables)
             self._best_crits = dict(crits)
 
         self._logger.debug(self._variables, crits)
 
         # Update variable agents, current points, and directions
-        suggestions: typ.Dict[str, agents.VariationSuggestion] = {}
         # TODO use CSVWriter
         with (self._config.output_directory / 'feedback.csv').open(mode='a') as f:  # DEBUG
             line = []
@@ -282,22 +289,24 @@ class CoBOpti:
             point.perceive()
 
         # Let point agents decide where to go next
+        suggestions = {}
         for point in point_agents:
             suggestion = point.decide()
+            print(point, suggestion)  # DEBUG
             if point.dead:
                 self.remove_agent(point)
             elif suggestion:
                 if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.variable_name)
-                if suggestions[point.variable_name]:
+                if point.variable_name in suggestions and suggestions[point.variable_name]:
                     raise ValueError(f'several suggestions for variable {point.variable_name}: '
                                      f'{suggestions[point.variable_name]} / {suggestion}')
                 suggestions[point.variable_name] = suggestion
 
         for parameter in self._variable_agents:
+            if parameter.name not in suggestions:
+                raise ValueError(f'no suggestion for variable {parameter.name}')
             self._search_phases[parameter.name] = suggestions[parameter.name].search_phase
-
-        self._cycle += 1
 
         return suggestions
 

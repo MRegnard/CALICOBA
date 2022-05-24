@@ -55,6 +55,7 @@ class CoBOptiConfig:
     """Configuration object for CoBOpti."""
     variables_metadata: typ.List[Variable]
     objective_functions: typ.List[ObjectiveFunction]
+    x0: typ.Dict[str, float]
     max_cycles: int
     step_by_step: bool = False
     expected_solutions: typ.Sequence[typ.Dict[str, float]] = None

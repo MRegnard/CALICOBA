@@ -262,8 +262,8 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
             super().__init__(name, bounds[0], bounds[1])
             self.model_output = model_output
 
-        def __call__(self, **outputs_values: float):
-            return (outputs_values[self.model_output]
+        def __call__(self, **model_inputs: float):
+            return (model.evaluate(**model_inputs)[self.model_output]
                     + (test_utils.gaussian_noise(mean=config.noise_mean,
                                                  stdev=config.noise_stdev) if config.noisy else 0))
 
@@ -283,6 +283,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
             ObjectiveFunctionWrapper(output_name, model.get_output_domain(output_name=output_name), output_name)
             for output_name in model.outputs_names
         ],
+        x0=config.p_init,
         max_cycles=config.max_steps,
         step_by_step=config.step_by_step,
         expected_solutions=config.target_parameters,
