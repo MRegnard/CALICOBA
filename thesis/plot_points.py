@@ -42,7 +42,7 @@ normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(ou
 new_chain_indices = []
 with (path / f'{param_name}.csv').open(encoding='utf8') as f:
     for line in f.readlines()[1:]:
-        cycle, param_value, _, _, listened_point_value, _, _, _, message = line.strip().split(',')
+        cycle, param_value, _, listened_point_value, _, _, message = line.strip().split(',')
         param_value = float(param_value)
         if 'chain' in message:
             new_chain_indices.append(int(cycle))

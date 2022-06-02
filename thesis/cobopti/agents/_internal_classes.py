@@ -10,6 +10,10 @@ class Suggestion:
     direction: typ.Optional[float] = None
     step: typ.Optional[float] = None
     from_value: typ.Optional[float] = None
+    distance_to_neighbor: typ.Optional[float] = None
+    # Used to prioritize some suggestions over others in rare cases
+    # when several point agents make a suggestion at the same time
+    priority: int = 0
 
 
 @dataclasses.dataclass(frozen=True)

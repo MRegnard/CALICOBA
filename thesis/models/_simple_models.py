@@ -101,7 +101,7 @@ class Model5(_model.Model):
 class ModelGramacyAndLee2012(_model.Model):
     def __init__(self):
         super().__init__(
-            'gc',
+            'gl',
             {'p1': (0.5, 2.5)},
             {'o1': (-0.87, 5.1)}
         )
@@ -471,7 +471,7 @@ class SimpleModelsFactory(_model.ModelFactory):
         # Mono-objective mono-variable
         'model_1': Model1,
         'model_5': Model5,
-        'gc': ModelGramacyAndLee2012,
+        'gl': ModelGramacyAndLee2012,
         'ackley': AckleyFunction,
         'levy': LevyFunction,
         'rastrigin': RastriginFunction,

@@ -194,8 +194,6 @@ class CoBOpti:
                         f'{int(suggestion.agent.is_local_minimum)},{suggestion.step},{suggestion.decision}\n'
                     )
                     self._params_files[param_name].flush()
-                # Update variables
-                self._variables[param_name] = suggestion.next_point
                 if suggestion.local_min_found:
                     # Global minimum detection
                     if suggestion.step == 0:
@@ -208,6 +206,8 @@ class CoBOpti:
                                 expected_solution)
                             for expected_solution in self.config.expected_solutions
                         )
+                # Update variables
+                self._variables[param_name] = suggestion.next_point
 
             self._cycle += 1
             if solution_found or error_message:
@@ -292,15 +292,18 @@ class CoBOpti:
         suggestions = {}
         for point in point_agents:
             suggestion = point.decide()
-            print(point, suggestion)  # DEBUG
             if point.dead:
                 self.remove_agent(point)
             elif suggestion:
                 if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
                     self._create_new_chain_for_params.add(point.variable_name)
                 if point.variable_name in suggestions and suggestions[point.variable_name]:
-                    raise ValueError(f'several suggestions for variable {point.variable_name}: '
-                                     f'{suggestions[point.variable_name]} / {suggestion}')
+                    if suggestion.priority > suggestions[point.variable_name].priority:
+                        self._logger.debug('found suggestion with higher priority')
+                        suggestions[point.variable_name] = suggestion
+                    else:
+                        raise ValueError(f'several suggestions with same priority for variable {point.variable_name}: '
+                                         f'{suggestions[point.variable_name]} / {suggestion}')
                 suggestions[point.variable_name] = suggestion
 
         for parameter in self._variable_agents:

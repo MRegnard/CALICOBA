@@ -33,7 +33,7 @@ MODEL_SOLUTIONS = {
     # Partial solutions
     'model_4': [desired_parameters(-21, 20), desired_parameters(-19, 20)],
     'model_5': [desired_parameters(math.sqrt(3 - math.sqrt(3)))],
-    'gc': [desired_parameters(0.548563)],
+    'gl': [desired_parameters(0.548563)],
     'ackley': [desired_parameters(0)],
     'levy': [desired_parameters(1)],
     'rastrigin': [desired_parameters(0)],
