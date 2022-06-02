@@ -1,11 +1,14 @@
 #!/usr/bin/python3
 import dataclasses
+import json
 import math
 import pathlib
 import sys
 import typing as typ
 
 import numpy as np
+
+import test_utils
 
 
 @dataclasses.dataclass(frozen=True)
@@ -32,23 +35,24 @@ class DataSet:
         self.error_messages = {}
 
         with file.open(encoding='utf8') as f:
-            for line in f.readlines()[1:]:
-                (p0, solution_found, error, cycles_number, solution_cycle,
-                 speed, nb_points, unique_points, chains, error_message) = line.split(',', maxsplit=9)
-                if int(solution_found):
+            for item in json.load(f):
+                x0 = dict(item['x0'])
+                solution_found = bool(item['solution_found'])
+                error = bool(item['error'])
+                if solution_found:
                     self.successes_number += 1
-                if int(error):
+                if error:
                     self.errors_number += 1
                 self.total_runs += 1
-                self.cycles_numbers.append(int(cycles_number))
-                self.soluction_cycles.append(int(solution_cycle))
-                self.speeds.append(float(speed))
-                self.visited_points_numbers.append(int(nb_points))
-                self.unique_visited_points_number.append(int(unique_points))
-                self.created_chains.append(int(chains))
+                self.cycles_numbers.append(int(item['cycles']))
+                self.soluction_cycles.append(int(item['solution_cycle']))
+                self.speeds.append(float(item['speed']))
+                self.visited_points_numbers.append(int(item['points_number']))
+                self.unique_visited_points_number.append(int(item['unique_points_number']))
+                self.created_chains.append(int(item['chains_number']))
 
-                if error_message:
-                    self.error_messages[p0] = error_message
+                if error_message := item['error_message']:
+                    self.error_messages[test_utils.map_to_string(x0)] = str(error_message)
 
     @property
     def failures_number(self) -> int:
@@ -120,7 +124,7 @@ def main():
     if path.is_file():
         print(DataSet(path))
     elif path.is_dir():
-        for file in sorted(path.glob('*.csv')):
+        for file in sorted(path.glob('*.json')):
             if file.is_file():
                 print(f'{file.stem}:')
                 print(DataSet(file))

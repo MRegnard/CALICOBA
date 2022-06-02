@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import configparser
+import json
 import logging
 import pathlib
 import random
@@ -240,15 +241,23 @@ def main():
 
         if config.dump_data and output_dir and config.runs_number > 1:
             logger.info('Saving results')
-            with (output_dir / (model.id + '.csv')).open(mode='w', encoding='utf8') as f:
-                f.write('P(0),solution found,error,cycles_number,solution_cycle,speed,# of visited points,'
-                        '# of unique visited points,# of created chains,error message\n')
+            with (output_dir / (model.id + '.json')).open(mode='w', encoding='utf8') as f:
+                data = []
                 for result in global_results[model.id]:
                     exp_res: exp_utils.RunResult = result['result']
-                    f.write(f'{test_utils.map_to_string(result["p_init"])},{int(exp_res.solution_found)},'
-                            f'{int(exp_res.error)},{exp_res.cycles_number},{exp_res.solution_cycle},{exp_res.time},'
-                            f'{exp_res.points_number},{exp_res.unique_points_number},{exp_res.created_chains},'
-                            f'"{exp_res.error_message or ""}"\n')
+                    data.append({
+                        'x0': result["p_init"],
+                        'solution_found': exp_res.solution_found,
+                        'error': exp_res.error,
+                        'cycles': exp_res.cycles_number,
+                        'solution_cycle': exp_res.solution_cycle,
+                        'speed': exp_res.time,
+                        'points_number': exp_res.points_number,
+                        'unique_points_number': exp_res.unique_points_number,
+                        'chains_number': exp_res.created_chains,
+                        'error_message': exp_res.error_message,
+                    })
+                json.dump(data, f)
 
 
 def evaluate_model_calicoba(config: exp_utils.RunConfig) \

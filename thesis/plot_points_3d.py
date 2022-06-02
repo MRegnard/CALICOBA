@@ -1,4 +1,5 @@
 import argparse
+import json
 import pathlib
 import typing as typ
 
@@ -44,10 +45,9 @@ normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(ou
 def load_data(param_name):
     xs = []
 
-    with (path / f'{param_name}.csv').open(encoding='utf8') as f:
-        for line in f.readlines()[1:]:
-            _, param_value, _, _, _, _, _, _ = line.strip().split(',', maxsplit=7)
-            xs.append(float(param_value))
+    with (path / f'{param_name}.json').open(encoding='utf8') as f:
+        for item in json.load(f):
+            xs.append(float(item['value']))
 
     return xs
 

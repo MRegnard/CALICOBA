@@ -1,4 +1,5 @@
 import argparse
+import json
 import pathlib
 import typing as typ
 
@@ -24,10 +25,9 @@ def load_data(directory: pathlib.Path, model: models.Model, param_name: str, out
             continue
         xs = []
         ys = {out_name: [] for out_name in out_names}
-        with (dir_name / f'{param_name}.csv').open(encoding='utf8') as f:
-            for line in f.readlines()[1:]:
-                _, param_value, *_ = line.strip().split(',')
-                param_value = float(param_value)
+        with (dir_name / f'{param_name}.json').open(encoding='utf8') as f:
+            for item in json.load(f):
+                param_value = float(item['value'])
                 xs.append(param_value)
                 for out_name, out_value in model.evaluate(**{param_name: param_value}).items():
                     ys[out_name].append(normalizers[out_name](out_value))

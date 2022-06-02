@@ -1,6 +1,7 @@
 import argparse
 import pathlib
 import typing as typ
+import json
 
 import matplotlib.pyplot as plt
 
@@ -40,14 +41,15 @@ p_ys = {out_name: [] for out_name in out_names}
 normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
                for output_name in model.outputs_names}
 new_chain_indices = []
-with (path / f'{param_name}.csv').open(encoding='utf8') as f:
-    for line in f.readlines()[1:]:
-        cycle, param_value, _, listened_point_value, _, _, message = line.strip().split(',')
-        param_value = float(param_value)
+with (path / f'{param_name}.json').open(encoding='utf8') as f:
+    for item in json.load(f):
+        cycle = int(item['cycle'])
+        param_value = float(item['value'])
+        listened_point_value = float(item['decider'])
+        message = str(item['decision'])
         if 'chain' in message:
-            new_chain_indices.append(int(cycle))
+            new_chain_indices.append(cycle)
         if listened_point_value != '':
-            listened_point_value = float(listened_point_value)
             listened_points_xs.append(listened_point_value)
         else:
             listened_points_xs.append(None)
@@ -59,8 +61,8 @@ with (path / f'{param_name}.csv').open(encoding='utf8') as f:
 if p_xs:
     colors = []
     with open('xkcd_rgb.txt', encoding='utf8') as f:
-        for line in f.readlines():
-            colors.append('xkcd:' + line.split('\t')[0])
+        for item in f.readlines():
+            colors.append('xkcd:' + item.split('\t')[0])
 
     if split_figures:
         dest_path = path / 'figures'

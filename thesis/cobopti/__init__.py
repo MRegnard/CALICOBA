@@ -1,4 +1,5 @@
 import dataclasses
+import json
 import logging
 import math
 import random
@@ -58,9 +59,8 @@ class CoBOpti:
         self._best_solution = {}
         self._best_crits = {}
 
-        # TODO use CSVWriter
-        self._params_files: typ.Dict[str, typ.TextIO] = {}
-        self._objs_files: typ.Dict[str, typ.TextIO] = {}
+        self._variables_data = {}
+        self._objectives_data = {}
 
     @property
     def config(self) -> cfg.CoBOptiConfig:
@@ -135,18 +135,12 @@ class CoBOpti:
         for variable in self.config.variables_metadata:
             self._add_variable(variable)
             if self.config.output_directory:
-                self._params_files[variable.name] = (self.config.output_directory / (variable.name + '.csv')) \
-                    .open(mode='w', encoding='utf8')
-                self._params_files[variable.name] \
-                    .write('cycle,value,criticality,decider,is min,step,decision\n')
+                self._variables_data[variable.name] = []
 
         for obj in self.config.objective_functions:
             self._add_objective(obj)
             if self.config.output_directory:
-                self._objs_files[obj.name] = (self.config.output_directory / (obj.name + '.csv')) \
-                    .open(mode='w', encoding='utf8')
-                self._objs_files[obj.name] \
-                    .write('cycle,raw value,criticality\n')
+                self._objectives_data[obj.name] = []
 
         self._variable_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
@@ -154,10 +148,6 @@ class CoBOpti:
         self._variables = {var.name: self._x0[var.name] for var in self._variable_agents}
         self._search_phases = {var.name: agents.SearchPhase.LOCAL for var in self._variable_agents}
         self._cycle = 0
-
-        # TODO use CSVWriter
-        with (self._config.output_directory / 'feedback.csv').open(mode='w') as f:  # DEBUG
-            f.write(f'cycle,{",".join(sorted(a.name for a in self._variable_agents))}\n')
 
         self._logger.info('CoBOpti setup finished.')
 
@@ -183,17 +173,20 @@ class CoBOpti:
                 break
             self._logger.debug(suggestions)
 
-            for param_name, suggestion in suggestions.items():
+            for var_name, suggestion in suggestions.items():
                 if not suggestion:
-                    error_message = 'no suggestions for parameter ' + param_name
+                    error_message = 'no suggestions for parameter ' + var_name
                     break
                 if self.config.output_directory:
-                    self._params_files[param_name].write(
-                        f'{self._cycle},{self._variables[param_name]},'
-                        f'{suggestion.criticality},{suggestion.agent.variable_value},'
-                        f'{int(suggestion.agent.is_local_minimum)},{suggestion.step},{suggestion.decision}\n'
-                    )
-                    self._params_files[param_name].flush()
+                    self._variables_data[var_name].append({
+                        'cycle': self._cycle,
+                        'value': self._variables[var_name],
+                        'criticality': suggestion.criticality,
+                        'decider': suggestion.agent.variable_value,
+                        'is_local_min': suggestion.agent.is_local_minimum,
+                        'step': suggestion.step,
+                        'decision': suggestion.decision,
+                    })
                 if suggestion.local_min_found:
                     # Global minimum detection
                     if suggestion.step == 0:
@@ -202,12 +195,12 @@ class CoBOpti:
                         # TEMP until a better criterion has been defined
                         threshold = agents.PointAgent.SAME_POINT_THRESHOLD
                         solution_found = any(
-                            all(abs(expected_solution[pname] - self._variables[pname]) < threshold for pname in
+                            all(abs(expected_solution[vname] - self._variables[vname]) < threshold for vname in
                                 expected_solution)
                             for expected_solution in self.config.expected_solutions
                         )
                 # Update variables
-                self._variables[param_name] = suggestion.next_point
+                self._variables[var_name] = suggestion.next_point
 
             self._cycle += 1
             if solution_found or error_message:
@@ -222,6 +215,14 @@ class CoBOpti:
         for p in all_points:
             if p not in unique_points:
                 unique_points.append(p)
+
+        if self.config.output_directory:
+            for var_name in self._variables:
+                with (self.config.output_directory / (var_name + '.json')).open(mode='w', encoding='utf8') as f:
+                    json.dump(self._variables_data[var_name], f)
+            for obj in self._objectives:
+                with (self.config.output_directory / (obj.name + '.json')).open(mode='w', encoding='utf8') as f:
+                    json.dump(self._objectives_data[obj.name], f)
 
         return OptimizationResult(
             solution=self._best_solution,
@@ -247,9 +248,11 @@ class CoBOpti:
             crits[objective.name] = objective.criticality
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
             if self.config.output_directory:
-                self._objs_files[objective.name] \
-                    .write(f'{self._cycle},{objective.objective_value},{objective.criticality}\n')
-                self._objs_files[objective.name].flush()
+                self._objectives_data[objective.name].append({
+                    'cycle': self._cycle,
+                    'raw_value': objective.objective_value,
+                    'criticality': objective.criticality,
+                })
 
         # Update best solution
         if not self._best_crits or max(crits.values()) < max(self._best_crits.values()):
@@ -259,24 +262,19 @@ class CoBOpti:
         self._logger.debug(self._variables, crits)
 
         # Update variable agents, current points, and directions
-        # TODO use CSVWriter
-        with (self._config.output_directory / 'feedback.csv').open(mode='a') as f:  # DEBUG
-            line = []
-            for parameter in self._variable_agents:
-                p_name = parameter.name
-                diff = self._variables[p_name] - parameter.value
-                last_step = abs(diff) if not math.isnan(diff) else parameter.default_step
-                if diff > 0:
-                    last_direction = agents.DIR_INCREASE
-                elif diff < 0:
-                    last_direction = agents.DIR_DECREASE
-                else:
-                    last_direction = agents.DIR_NONE
-                new_chain = p_name in self._create_new_chain_for_params
-                parameter.perceive(self._variables[p_name], new_chain, crits, last_step, last_direction,
-                                   self._search_phases[p_name])
-                line.append(f'{last_direction}/{diff}')
-            f.write(f'{self._cycle},' + ','.join(map(str, line)) + '\n')
+        for parameter in self._variable_agents:
+            p_name = parameter.name
+            diff = self._variables[p_name] - parameter.value
+            last_step = abs(diff) if not math.isnan(diff) else parameter.default_step
+            if diff > 0:
+                last_direction = agents.DIR_INCREASE
+            elif diff < 0:
+                last_direction = agents.DIR_DECREASE
+            else:
+                last_direction = agents.DIR_NONE
+            new_chain = p_name in self._create_new_chain_for_params
+            parameter.perceive(self._variables[p_name], new_chain, crits, last_step, last_direction,
+                               self._search_phases[p_name])
         self._create_new_chain_for_params.clear()
 
         # Update chain agents
