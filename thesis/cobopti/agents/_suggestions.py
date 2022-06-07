@@ -6,6 +6,7 @@ class SearchPhase(enum.Enum):
     LOCAL = 1
     HILL_CLIMBING = 2
     SEMI_LOCAL = 3
+    SAMPLING = 4
 
 
 @dataclasses.dataclass(frozen=True)

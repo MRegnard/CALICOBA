@@ -17,8 +17,8 @@ class Agent(abc.ABC):
     """Base class for agents."""
 
     def __init__(self, name: str, *, logger: logging.Logger = None):
-        self.__name = name
-        self.__dead = False
+        self._name = name
+        self._dead = False
         self._logger = logger
         self._world = None
 
@@ -43,16 +43,16 @@ class Agent(abc.ABC):
     @property
     def name(self) -> str:
         """The name of this agent."""
-        return self.__name
+        return self._name
 
     def die(self):
         """Flags this agent for deletion at the end of the current cycle."""
-        self.__dead = True
+        self._dead = True
 
     @property
     def dead(self) -> bool:
         """Whether this agent has been removed from the environment."""
-        return self.__dead
+        return self._dead
 
     def log_exception(self, exception):
         """Logs an exception.
@@ -263,6 +263,7 @@ class VariableAgent(Agent):
                 f'point_{self._last_point_id}',
                 self,
                 criticalities,
+                sampled=previous_search_phase == _suggestions.SearchPhase.SAMPLING,
                 logger=self._logger
             )
             self.world.add_agent(new_point)
@@ -420,7 +421,7 @@ class PointAgent(Agent):
     NULL_THRESHOLD = 5e-5
 
     def __init__(self, name: str, variable_agent: VariableAgent, objective_criticalities: typ.Dict[str, float],
-                 *, value: float = None, logger: logging.Logger = None):
+                 *, value: float = None, sampled: bool = False, logger: logging.Logger = None):
         """Creates a point agent.
 
         :param name: Point’s name.
@@ -468,8 +469,14 @@ class PointAgent(Agent):
 
         self.create_new_chain_from_me = False
 
-    def _get_logging_name(self):
-        return f'{self.variable.name}:{self.name}'
+        self._should_sample = not sampled
+        self._samples_nb = 0
+        self._sample_step = 0
+        self._sampled = sampled
+
+    @property
+    def name(self) -> str:
+        return f'{self.variable_name}.{self._name}'
 
     @property
     def chain(self) -> ChainAgent:
@@ -554,115 +561,121 @@ class PointAgent(Agent):
         all_points = self.chain.points
         self._is_current_min_of_chain = self.chain.minimum is self
 
-        self.update_neighbors(all_points)
+        if self._should_sample and self._samples_nb == 2:
+            self._should_sample = False
 
-        # TODO remonter à un niveau plus global pour vérifier sur l’ensemble des dimensions en même temps,
-        #  pas une par une (distance euclidienne entre points)
-        if (self._is_current_min_of_chain and not self.is_local_minimum and (self._left_point or self._right_point)
-                and (not self._left_point
-                     or (self._left_point and abs(self._left_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD))
-                and (not self._right_point
-                     or self._right_point and abs(
-                            self._right_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD)):
-            self.log_debug('local min found')
-            self.chain.local_min_found = True
-            self.is_local_minimum = True
-            if self.criticality < self.NULL_THRESHOLD:
-                self.is_global_minimum = True
-                return
-            similar_minima = [other_min for other_min in self.variable.minima
-                              if abs(other_min.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
-            already_went_up = any(other_min.already_went_up for other_min in similar_minima)
-            max_steps_mult = max((other_min.steps_mult for other_min in similar_minima), default=1)
-            other_minima = set(self.variable.minima) - set(similar_minima)
+        if self._should_sample:
+            if self._samples_nb > 2:
+                self._samples_nb = 0
+                self._sample_step = 0
+        else:
+            self.update_neighbors(all_points)
 
-            if similar_minima:
-                self.log_debug('local min already visited')
-                self.local_min_already_visited = True
-                # Update all other similar minima
-                for sim_min in similar_minima:
-                    sim_min.steps_mult = max_steps_mult
+            # TODO remonter à un niveau plus global pour vérifier sur l’ensemble des dimensions en même temps,
+            #  pas une par une (distance euclidienne entre points)
+            if (self._is_current_min_of_chain and not self.is_local_minimum and (self._left_point or self._right_point)
+                    and (not self._left_point
+                         or (self._left_point and abs(
+                                self._left_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD))
+                    and (not self._right_point
+                         or self._right_point and abs(
+                                self._right_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD)):
+                self.log_debug('local min found')
+                self.chain.local_min_found = True
+                self.is_local_minimum = True
+                if self.criticality < self.NULL_THRESHOLD:
+                    self.is_global_minimum = True
+                    return
+                similar_minima = [other_min for other_min in self.variable.minima
+                                  if abs(other_min.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
+                already_went_up = any(other_min.already_went_up for other_min in similar_minima)
+                max_steps_mult = max((other_min.steps_mult for other_min in similar_minima), default=1)
+                other_minima = set(self.variable.minima) - set(similar_minima)
+
+                if similar_minima:
+                    self.log_debug('local min already visited')
+                    self.local_min_already_visited = True
+                    # Update all other similar minima
+                    for sim_min in similar_minima:
+                        sim_min.steps_mult = max_steps_mult
+                        if already_went_up:
+                            sim_min.already_went_up = True
                     if already_went_up:
-                        sim_min.already_went_up = True
-                if already_went_up:
-                    self.log_debug('already went up')
+                        self.log_debug('already went up')
 
-            self.steps_mult = max_steps_mult
-            # Toggle go up mode if this minimum is alone or has already been visited before
-            self.chain.go_up_mode = (len(self.variable.minima) == 0
-                                     or similar_minima and (not already_went_up or not other_minima))
-            self.variable.add_minimum(self)
+                self.steps_mult = max_steps_mult
+                # Toggle go up mode if this minimum is alone or has already been visited before
+                self.chain.go_up_mode = (len(self.variable.minima) == 0
+                                         or similar_minima and (not already_went_up or not other_minima))
+                self.variable.add_minimum(self)
 
-            if self.chain.go_up_mode:
-                self.log_debug('-> go up slope')
+                if self.chain.go_up_mode:
+                    self.log_debug('-> go up slope')
 
-        if self.is_local_minimum and not self.chain.go_up_mode:
-            self.update_neighbors(self.variable.minima, min_distance=self.SAME_POINT_THRESHOLD)
-            if self.variable.minima:
-                filtered = filter(lambda mini: mini is self or abs(
-                    mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self.variable.minima)
-                self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
-                    mini.variable_value - self.chain.current_point.variable_value))
-            else:
-                self._sorted_minima = []
-            if self.chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
-                self.best_local_minimum = True
+            if self.is_local_minimum and not self.chain.go_up_mode:
+                self.update_neighbors(self.variable.minima, min_distance=self.SAME_POINT_THRESHOLD)
+                if self.variable.minima:
+                    filtered = filter(lambda mini: mini is self or abs(
+                        mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self.variable.minima)
+                    self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
+                        mini.variable_value - self.chain.current_point.variable_value))
+                else:
+                    self._sorted_minima = []
+                if self.chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
+                    self.best_local_minimum = True
 
     def decide(self) -> typ.Optional[_suggestions.VariationSuggestion]:
         """Makes this point agent decide what to do.
 
         :return: A suggestion or None if this agent decided to suggest nothing.
         """
-        if self.is_global_minimum:
-            return _suggestions.VariationSuggestion(
-                agent=self,
-                search_phase=_suggestions.SearchPhase.LOCAL,
-                decision='global min found -> do nothing',
-                criticality=self.criticality,
-                local_min_found=True,
-                step=0,
-                direction=DIR_NONE,
-                next_point=self.variable_value,
-            )
-        if not self.chain.is_active and not self.best_local_minimum:
-            return None
-
         decision = ''
+        from_value = self.variable_value
+        distance_to_neighbor = None
+        check_for_out_of_bounds = False
         search_phase = None
         suggested_direction = DIR_NONE
         suggested_step = None
-        from_value = self.variable_value
-        distance_to_neighbor = None
         suggested_point = None
         new_chain_next = False
-        check_for_out_of_bounds = False
         priority = 0
 
-        if self.is_extremum and self.chain.go_up_mode:
-            suggestion = self._hill_climb()
-            if not suggestion:
+        print(self.name, self.previous_point)
+        print(self.name, self._should_sample, self._sampled)
+        if self.previous_point:
+            print('prev', self.previous_point._should_sample, self.previous_point._sampled)
+
+        if self._should_sample:
+            self._samples_nb += 1
+            decision = f'sample nearby point ({self._samples_nb})'
+            search_phase = _suggestions.SearchPhase.SAMPLING
+            first_sample = self._samples_nb == 1
+            if first_sample:
+                self._sample_step = self.variable.last_local_step / 2
+            suggested_step = self._sample_step
+            suggested_direction = DIR_INCREASE if first_sample else DIR_DECREASE
+
+        # Wait for the point that sampled us to have finished all its samples;
+        # or the previous point is itself a sampled point
+        elif not self.previous_point or not self.previous_point._should_sample or self.previous_point._sampled:
+            if self.is_global_minimum:
+                return _suggestions.VariationSuggestion(
+                    agent=self,
+                    search_phase=_suggestions.SearchPhase.LOCAL,
+                    decision='global min found -> do nothing',
+                    criticality=self.criticality,
+                    local_min_found=True,
+                    step=0,
+                    direction=DIR_NONE,
+                    next_point=self.variable_value,
+                )
+            if not self.chain.is_active and not self.best_local_minimum:
                 return None
-            decision = suggestion.decision
-            suggested_direction = suggestion.direction
-            suggested_step = suggestion.step
-            from_value = suggestion.from_value
-            distance_to_neighbor = suggestion.distance_to_neighbor
-            suggested_point = suggestion.next_point
-            new_chain_next = suggestion.new_chain_next
-            search_phase = _suggestions.SearchPhase.HILL_CLIMBING
-            priority = suggestion.priority
-        elif self._is_current_min_of_chain:
-            if not self.is_local_minimum:
-                suggestion = self._local_search()
-                decision = suggestion.decision
-                suggested_direction = suggestion.direction
-                suggested_step = suggestion.step
-                from_value = suggestion.from_value
-                distance_to_neighbor = suggestion.distance_to_neighbor
-                suggested_point = suggestion.next_point
-                search_phase = _suggestions.SearchPhase.LOCAL
-            elif self.best_local_minimum:
-                suggestion = self._semi_local_search()
+
+            if self.is_extremum and self.chain.go_up_mode:
+                suggestion = self._hill_climb()
+                if not suggestion:
+                    return None
                 decision = suggestion.decision
                 suggested_direction = suggestion.direction
                 suggested_step = suggestion.step
@@ -670,20 +683,40 @@ class PointAgent(Agent):
                 distance_to_neighbor = suggestion.distance_to_neighbor
                 suggested_point = suggestion.next_point
                 new_chain_next = suggestion.new_chain_next
-                check_for_out_of_bounds = suggestion.check_for_out_of_bounds
-                search_phase = _suggestions.SearchPhase.SEMI_LOCAL
+                search_phase = _suggestions.SearchPhase.HILL_CLIMBING
+                priority = suggestion.priority
+            elif self._is_current_min_of_chain:
+                if not self.is_local_minimum:
+                    suggestion = self._local_search()
+                    decision = suggestion.decision
+                    suggested_direction = suggestion.direction
+                    suggested_step = suggestion.step
+                    from_value = suggestion.from_value
+                    distance_to_neighbor = suggestion.distance_to_neighbor
+                    suggested_point = suggestion.next_point
+                    search_phase = _suggestions.SearchPhase.LOCAL
+                elif self.best_local_minimum:
+                    suggestion = self._semi_local_search()
+                    decision = suggestion.decision
+                    suggested_direction = suggestion.direction
+                    suggested_step = suggestion.step
+                    from_value = suggestion.from_value
+                    distance_to_neighbor = suggestion.distance_to_neighbor
+                    suggested_point = suggestion.next_point
+                    new_chain_next = suggestion.new_chain_next
+                    check_for_out_of_bounds = suggestion.check_for_out_of_bounds
+                    search_phase = _suggestions.SearchPhase.SEMI_LOCAL
 
-        if decision:
-            self.log_debug('Decision: ' + decision)
+            if decision:
+                self.log_debug('Decision: ' + decision)
 
         if suggested_step is not None:
             # Cap jump length
             if from_value is not None and distance_to_neighbor is not None:
                 suggested_step = min(2 * distance_to_neighbor, suggested_step)
             suggested_point = from_value + suggested_step * suggested_direction
-            if (check_for_out_of_bounds
-                    and (suggested_point < self.variable.lower_bound
-                         or suggested_point > self.variable.upper_bound)):
+            if (check_for_out_of_bounds and (suggested_point < self.variable.lower_bound
+                                             or suggested_point > self.variable.upper_bound)):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
