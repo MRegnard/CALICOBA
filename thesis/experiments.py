@@ -411,7 +411,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
 
     elif method == 'NSGA-III':
         # Reference directions taken from doc’s example at https://pymoo.org/algorithms/moo/nsga3.html#Example
-        ref_dirs = pymoo_f.get_reference_directions('das-dennis', 3, n_partitions=12)
+        ref_dirs = pymoo_f.get_reference_directions('das-dennis', len(model.outputs_names), n_partitions=12)
         pymoo_algorithm = pymoo_nsga3.NSGA3(ref_dirs=ref_dirs)
 
     def is_expected_solution(solution: typ.Sequence[float]) -> bool:
@@ -473,7 +473,7 @@ class ProblemWrapper:
 
     def on_solution_evaluation(self, solution):
         self.points.append(solution)
-        if solution not in self.unique_points:
+        if np.all([solution != s for s in self.unique_points]):
             self.unique_points.append(solution)
 
 

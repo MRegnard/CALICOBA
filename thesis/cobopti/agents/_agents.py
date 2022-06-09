@@ -640,6 +640,7 @@ class PointAgent(Agent):
         new_chain_next = False
         priority = 0
 
+        # DEBUG
         print(self.name, self.previous_point)
         print(self.name, self._should_sample, self._sampled)
         if self.previous_point:
