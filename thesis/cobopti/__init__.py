@@ -6,7 +6,7 @@ import random
 import time
 import typing as typ
 
-from . import agents, config as cfg
+from . import agents, config as cfg, _data_types as dt
 
 _T = typ.TypeVar('_T', bound=agents.Agent)
 
@@ -42,22 +42,24 @@ class CoBOpti:
         :param config: The configuration object.
         """
         self._config = config
-        self._objectives = list(config.objective_functions)  # Copy value for easier access
+        self._objectives = list(config.objective_functions)
         self._logger = logging.getLogger('CoBOpti')
         self._logger.setLevel(self._config.logging_level)
         self._rng = random.Random(self._config.seed)
         if self._config.output_directory and not self._config.output_directory.exists():
             self._config.output_directory.mkdir(parents=True)
         self._cycle = 0
-        self._variables = {}
         self._agents_registry: typ.List[agents.Agent] = []
+        # noinspection PyTypeChecker
+        self._registry_agent: agents.RegistryAgent = None
         self._objective_agents: typ.List[agents.ObjectiveAgent] = []
-        self._variable_agents: typ.List[agents.VariableAgent] = []
-        self._create_new_chain_for_params = set()
-        self._search_phases: typ.Dict[str, agents.SearchPhase] = {}
-        self._x0 = {var.name: config.x0[var.name] for var in config.variables_metadata}
-        self._best_solution = {}
-        self._best_crits = {}
+        self._create_new_chain_next = False
+        self._search_phase: agents.SearchPhase = agents.SearchPhase.LOCAL
+        self._x0 = dt.Vector(**{var.name: config.x0[var.name] for var in config.variables_metadata})
+        self._expected_solutions = [dt.Vector(**s) for s in config.expected_solutions]
+        self._variables = self._x0
+        self._best_solution = None
+        self._best_crits = None
 
         self._variables_data = {}
         self._objectives_data = {}
@@ -112,14 +114,6 @@ class CoBOpti:
         """
         self._agents_registry.remove(agent)
 
-    def _add_variable(self, metadata: cfg.Variable):
-        """Declares a variable to optimize.
-
-        :param metadata: Variable’s metadata.
-        """
-        self._logger.info(f'Creating variable "{metadata.name}".')
-        self.add_agent(agents.VariableAgent(metadata, logger=self._logger))
-
     def _add_objective(self, function: cfg.ObjectiveFunction):
         """Declares an objective function.
 
@@ -133,20 +127,18 @@ class CoBOpti:
         self._logger.info('Setting up CoBOpti…')
 
         for variable in self.config.variables_metadata:
-            self._add_variable(variable)
             if self.config.output_directory:
                 self._variables_data[variable.name] = []
+
+        self._registry_agent = agents.RegistryAgent(*self.config.variables_metadata, logger=self._logger)
 
         for obj in self.config.objective_functions:
             self._add_objective(obj)
             if self.config.output_directory:
                 self._objectives_data[obj.name] = []
 
-        self._variable_agents = self.get_agents_for_type(agents.VariableAgent)
         self._objective_agents = self.get_agents_for_type(agents.ObjectiveAgent)
 
-        self._variables = {var.name: self._x0[var.name] for var in self._variable_agents}
-        self._search_phases = {var.name: agents.SearchPhase.LOCAL for var in self._variable_agents}
         self._cycle = 0
 
         self._logger.info('CoBOpti setup finished.')
@@ -166,41 +158,38 @@ class CoBOpti:
 
             try:
                 # Execute one minimization step
-                suggestions = self._step()
+                suggestion = self._step()
             except BaseException as e:
                 self._logger.exception(e)
                 error_message = str(e)
                 break
-            self._logger.debug(suggestions)
+            self._logger.debug(suggestion)
 
-            for var_name, suggestion in suggestions.items():
-                if not suggestion:
-                    error_message = 'no suggestions for parameter ' + var_name
-                    break
-                if self.config.output_directory:
+            if self.config.output_directory:
+                for var_name, v in suggestion.steps:
                     self._variables_data[var_name].append({
                         'cycle': self._cycle,
                         'value': self._variables[var_name],
                         'criticality': suggestion.criticality,
-                        'decider': suggestion.agent.variable_value,
+                        'decider': suggestion.agent.name,
                         'is_local_min': suggestion.agent.is_local_minimum,
-                        'step': suggestion.step,
+                        'steps': suggestion.steps,
                         'decision': suggestion.decision,
                     })
-                if suggestion.local_min_found:
-                    # Global minimum detection
-                    if suggestion.step == 0:
-                        solution_found = True
-                    else:
-                        # TEMP until a better criterion has been defined
-                        threshold = agents.PointAgent.SAME_POINT_THRESHOLD
-                        solution_found = any(
-                            all(abs(expected_solution[vname] - self._variables[vname]) < threshold for vname in
-                                expected_solution)
-                            for expected_solution in self.config.expected_solutions
-                        )
-                # Update variables
-                self._variables[var_name] = suggestion.next_point
+
+            if suggestion.local_min_found:
+                # Global minimum detection
+                if suggestion.steps.is_zero():
+                    solution_found = True
+                else:
+                    # TEMP until a better criterion has been defined
+                    solution_found = any(
+                        self._variables.distance(expected_solution) < agents.PointAgent.SAME_POINT_THRESHOLD
+                        for expected_solution in self._expected_solutions
+                    )
+
+            # Update variables
+            self._variables = suggestion.next_point
 
             self._cycle += 1
             if solution_found or error_message:
@@ -217,7 +206,7 @@ class CoBOpti:
                 unique_points.append(p)
 
         if self.config.output_directory:
-            for var_name in self._variables:
+            for var_name in self._variables.names():
                 with (self.config.output_directory / (var_name + '.json')).open(mode='w', encoding='utf8') as f:
                     json.dump(self._variables_data[var_name], f)
             for obj in self._objectives:
@@ -228,7 +217,7 @@ class CoBOpti:
             solution=self._best_solution,
             cycles=self._cycle,
             obj_evals=sum(obj.evaluations for obj in self._objective_agents),
-            chains=sum(len(var.chains) for var in self._variable_agents),
+            chains=len(self._registry_agent.chains),
             time=total_time if not self.config.step_by_step else math.nan,
             points=len(all_points),
             unique_points=len(unique_points),
@@ -236,15 +225,15 @@ class CoBOpti:
             error_message=error_message,
         )
 
-    def _step(self) -> typ.Dict[str, agents.VariationSuggestion]:
+    def _step(self) -> agents.VariationSuggestion:
         """Executes a single minimization cycle.
 
-        :return: A dictionary that associates a list of suggestions for each declared variable.
+        :return: A single variation suggestion.
         """
         # Update objectives
         crits = {}
         for objective in self._objective_agents:
-            objective.evaluate_function(**self._variables, update=True)
+            objective.evaluate_function(**self._variables.as_dict(), update=True)
             crits[objective.name] = objective.criticality
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
             if self.config.output_directory:
@@ -254,28 +243,37 @@ class CoBOpti:
                     'criticality': objective.criticality,
                 })
 
+        crits = dt.Vector(**crits)
         # Update best solution
         if not self._best_crits or max(crits.values()) < max(self._best_crits.values()):
-            self._best_solution = dict(self._variables)
-            self._best_crits = dict(crits)
+            self._best_solution = self._variables
+            self._best_crits = crits
 
         self._logger.debug(self._variables, crits)
 
-        # Update variable agents, current points, and directions
-        for parameter in self._variable_agents:
-            p_name = parameter.name
-            diff = self._variables[p_name] - parameter.value
-            last_step = abs(diff) if not math.isnan(diff) else parameter.default_step
-            if diff > 0:
-                last_direction = agents.DIR_INCREASE
-            elif diff < 0:
-                last_direction = agents.DIR_DECREASE
-            else:
-                last_direction = agents.DIR_NONE
-            new_chain = p_name in self._create_new_chain_for_params
-            parameter.perceive(self._variables[p_name], new_chain, crits, last_step, last_direction,
-                               self._search_phases[p_name])
-        self._create_new_chain_for_params.clear()
+        # Update registry agent, current point, and directions
+        if (previous_values := self._registry_agent.variables_values) is not None:
+            diff = self._variables - previous_values
+            last_steps = abs(diff)
+
+            def m(v):
+                if v > 0:
+                    return agents.DIR_INCREASE
+                elif v < 0:
+                    return agents.DIR_DECREASE
+                else:
+                    return agents.DIR_NONE
+
+            last_directions = diff.map(lambda _, v: m(v))
+        else:
+            last_steps = dt.Vector(**{
+                vname: self._registry_agent.get_variable_default_step(vname)
+                for vname in self._variables.names()
+            })
+            last_directions = dt.Vector.filled(agents.DIR_NONE, *self._variables.names())
+        self._registry_agent.perceive(self._variables, self._create_new_chain_next, crits, last_steps,
+                                      last_directions, self._search_phase)
+        self._create_new_chain_next = False
 
         # Update chain agents
         for chain in self.get_agents_for_type(agents.ChainAgent):
@@ -287,29 +285,27 @@ class CoBOpti:
             point.perceive()
 
         # Let point agents decide where to go next
-        suggestions = {}
+        # noinspection PyTypeChecker
+        suggestion: agents.VariationSuggestion = None
         for point in point_agents:
-            suggestion = point.decide()
+            point_suggestion = point.decide()
             if point.dead:
                 self.remove_agent(point)
-            elif suggestion:
-                if isinstance(suggestion, agents.VariationSuggestion) and suggestion.new_chain_next:
-                    self._create_new_chain_for_params.add(point.variable_name)
-                if point.variable_name in suggestions and suggestions[point.variable_name]:
-                    if suggestion.priority > suggestions[point.variable_name].priority:
+            elif point_suggestion:
+                if suggestion:
+                    if point_suggestion.priority > suggestion.priority:
                         self._logger.debug('found suggestion with higher priority')
-                        suggestions[point.variable_name] = suggestion
                     else:
-                        raise ValueError(f'several suggestions with same priority for variable {point.variable_name}: '
-                                         f'{suggestions[point.variable_name]} / {suggestion}')
-                suggestions[point.variable_name] = suggestion
+                        raise ValueError(f'several suggestions with same priority: {suggestion} vs {point_suggestion}')
+                self._create_new_chain_next = point_suggestion.new_chain_next
+                suggestion = point_suggestion
 
-        for parameter in self._variable_agents:
-            if parameter.name not in suggestions:
-                raise ValueError(f'no suggestion for variable {parameter.name}')
-            self._search_phases[parameter.name] = suggestions[parameter.name].search_phase
+        if suggestion:
+            self._search_phase = suggestion.search_phase
+        else:
+            raise ValueError(f'no suggestions')
 
-        return suggestions
+        return suggestion
 
 
 __all__ = [

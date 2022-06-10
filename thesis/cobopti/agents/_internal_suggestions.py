@@ -1,16 +1,18 @@
 import dataclasses
 import typing as typ
 
+from .. import _data_types as dt
+
 
 @dataclasses.dataclass(frozen=True)
 class Suggestion:
     """Base class for action suggestions during the various search phases."""
     decision: str
-    next_point: typ.Optional[float] = None
-    direction: typ.Optional[float] = None
-    step: typ.Optional[float] = None
-    from_value: typ.Optional[float] = None
-    distance_to_neighbor: typ.Optional[float] = None
+    next_point: typ.Optional[dt.Vector[float]] = None
+    directions: typ.Optional[dt.Vector[int]] = None
+    steps: typ.Optional[dt.Vector[float]] = None
+    from_point: typ.Optional[dt.Vector[float]] = None
+    distances_to_neighbor: typ.Optional[dt.Vector[float]] = None
     # Used to prioritize some suggestions over others in rare cases
     # when several point agents make a suggestion at the same time
     priority: int = 0

@@ -5,8 +5,8 @@ import logging
 import math
 import typing as typ
 
-from . import _normalizers, _internal_classes as ic, _suggestions
-from .. import utils, config
+from . import _normalizers, _internal_suggestions as ig, _suggestions
+from .. import utils, config, _data_types as dt
 
 DIR_INCREASE = 1
 DIR_DECREASE = -1
@@ -168,56 +168,70 @@ class ObjectiveAgent(Agent):
         return f'ObjectiveAgent{{name={self.name},criticality={self._criticality}}}'
 
 
-class VariableAgent(Agent):
-    """A variable agent represents a model variable to optimize."""
+class RegistryAgent(Agent):
+    """A dummy “agent” used to gather global data."""
+    MAX_STEPS_NUMBER = 2
 
-    def __init__(self, metadata: config.Variable, *, logger: logging.Logger = None):
+    def __init__(self, *variables_metadata: config.Variable, logger: logging.Logger = None):
         """Creates a variable agent.
 
-        :param metadata: Variable’s metadata.
+        :param variables_metadata: Metadata of variables to optimize.
         :param logger: The logger instance to use to log things.
         """
-        super().__init__(metadata.name, logger=logger)
-        self._lower_bound = metadata.lower_bound
-        self._upper_bound = metadata.upper_bound
-        self._max_step_number = 2
-        self._default_step = (self._upper_bound - self._lower_bound) / 100
-        self.last_local_step = 0
-        self.last_local_direction = DIR_NONE
-        self.last_semi_local_step = 0
-        self.last_semi_local_direction = DIR_NONE
+        super().__init__('registry', logger=logger)
+        self._variables: typ.Dict[str, config.Variable] = {v.name: v for v in variables_metadata}
+        self._variables_default_steps = dt.Vector(**{v.name: (v.upper_bound - v.lower_bound) / 100
+                                                     for v in variables_metadata})
+        self._variables_values = None
+        self.last_local_steps = dt.Vector.zero(*variables_metadata)
+        self.last_local_directions = dt.Vector.filled(DIR_NONE, *variables_metadata)
+        self.last_semi_local_steps = dt.Vector.zero(*variables_metadata)
+        self.last_semi_local_directions = dt.Vector.filled(DIR_NONE, *variables_metadata)
 
         self._chains: typ.List[ChainAgent] = []
         self._minima: typ.List[PointAgent] = []
         self._last_point_id = 0
         self._last_chain_id = 0
 
-        self._value = math.nan
+    def get_variable_lower_bound(self, var_name: str) -> float:
+        """The lower bound of a variable.
 
-    @property
-    def lower_bound(self) -> float:
-        """The variable’s lower bound."""
-        return self._lower_bound
+        :param var_name: Variable’s name.
+        """
+        return self._variables[var_name].lower_bound
 
-    @property
-    def upper_bound(self) -> float:
-        """The variable’s upper bound."""
-        return self._upper_bound
+    def get_variable_upper_bound(self, var_name: str) -> float:
+        """The upper bound of a variable.
 
-    @property
-    def value(self) -> float:
-        """The variable’s current value."""
-        return self._value
+        :param var_name: Variable’s name.
+        """
+        return self._variables[var_name].upper_bound
 
-    @property
-    def default_step(self) -> float:
+    def is_within_bounds(self, var_name: str, value: float) -> bool:
+        """Checks whether the given value is within the specified variable’s bounds.
+
+        :param var_name: Variable’s name.
+        :param value: A value.
+        :returns: True if value is within bounds, False otherwise.
+        """
+        return self.get_variable_lower_bound(var_name) <= value <= self.get_variable_upper_bound(var_name)
+
+    def clamp_value(self, var_name: str, value: float) -> float:
+        """Clamps the given value within the bound of the specified variable.
+
+        :param var_name: Variable’s name.
+        :param value: A value to clamp.
+        :returns: The clamped value.
+        """
+        return min(self.get_variable_upper_bound(var_name), max(self.get_variable_lower_bound(var_name), value))
+
+    def get_variable_default_step(self, var_name: str) -> float:
         """The default variation step."""
-        return self._default_step
+        return self._variables_default_steps[var_name]
 
     @property
-    def max_step(self) -> int:
-        """The maximum variation step."""
-        return self._max_step_number
+    def variables_values(self) -> typ.Optional[dt.Vector[float]]:
+        return self._variables_values
 
     @property
     def chains(self) -> typ.List[ChainAgent]:
@@ -236,34 +250,36 @@ class VariableAgent(Agent):
         """
         self._minima.append(point)
 
-    def perceive(self, value: float, new_chain: bool, criticalities: typ.Dict[str, float],
-                 previous_step: float, previous_direction: float, previous_search_phase: _suggestions.SearchPhase):
+    def perceive(self, values: dt.Vector[float], new_chain: bool, criticalities: dt.Vector[float],
+                 previous_steps: dt.Vector[float], previous_directions: dt.Vector[int],
+                 previous_search_phase: _suggestions.SearchPhase):
         """Updates this variable agent.
 
-        :param value: The variable’s new value.
+        :param values: Values of each variable.
         :param new_chain: Whether to create a new chain agent.
         :param criticalities: The criticalities of each objective.
-        :param previous_step: The previous variation amount.
-        :param previous_direction: The previous variation direction.
+        :param previous_steps: The previous variation amount of each variable.
+        :param previous_directions: The previous variation direction of each variable.
         :param previous_search_phase: The previous search phase.
         """
-        self._value = value
         if previous_search_phase != _suggestions.SearchPhase.SEMI_LOCAL:
-            self.last_local_step = previous_step
-            self.last_local_direction = previous_direction
+            self.last_local_steps = previous_steps
+            self.last_local_directions = previous_directions
         else:
-            self.last_local_step = self.default_step
-            self.last_local_direction = previous_direction
-            self.last_semi_local_step = previous_step
-            self.last_semi_local_direction = previous_direction
+            self.last_local_steps = dt.Vector(**{v.name: self.get_variable_default_step(v.name)
+                                                 for v in self._variables.values()})
+            self.last_local_directions = previous_directions
+            self.last_semi_local_steps = previous_steps
+            self.last_semi_local_directions = previous_directions
         prev_point = self._chains[-1].current_point if self._chains else None
 
-        if not prev_point or prev_point.variable_value != value or prev_point.criticalities != criticalities:
+        if not prev_point or prev_point.variable_values != values or prev_point.criticalities != criticalities:
             new_point = PointAgent(
                 f'point_{self._last_point_id}',
                 self,
+                values,
                 criticalities,
-                sampled=previous_search_phase == _suggestions.SearchPhase.SAMPLING,
+                sampled=previous_search_phase == _suggestions.SearchPhase.LOCAL_SAMPLING,
                 logger=self._logger
             )
             self.world.add_agent(new_point)
@@ -277,8 +293,8 @@ class VariableAgent(Agent):
                     duplicate = PointAgent(
                         p.name + '_dup',
                         self,
+                        p.variable_values,
                         p.criticalities,
-                        value=p.variable_value,
                         logger=self._logger
                     )
                     self.world.add_agent(duplicate)
@@ -295,13 +311,13 @@ class VariableAgent(Agent):
         self._last_chain_id += 1
 
     def __repr__(self):
-        return f'VariableAgent{{{self.name},value={self.value},lb={self.lower_bound},ub={self.upper_bound}}}'
+        return f'RegistryAgent{{{self.name}}}'
 
 
 class ChainAgent(Agent):
     """A chain agent manages a set of point agents and is managed by a variable agent."""
 
-    def __init__(self, name: str, variable_agent: VariableAgent, first_point: PointAgent,
+    def __init__(self, name: str, variable_agent: RegistryAgent, first_point: PointAgent,
                  *, logger: logging.Logger = None):
         """Creates a chain agent.
 
@@ -316,14 +332,14 @@ class ChainAgent(Agent):
         self._minimum = first_point
         self._lower_extremum = first_point
         self._upper_extremum = first_point
-        self._current_point = None  # Set by add_point
+        self._current_point = None  # Set by add_point below
         self.add_point(first_point)
         self.is_active = True
         self.local_min_found = False
         self.go_up_mode = False
 
     @property
-    def variable(self) -> VariableAgent:
+    def variable(self) -> RegistryAgent:
         return self._var_agent
 
     @property
@@ -414,26 +430,26 @@ class ChainAgent(Agent):
 
 
 class PointAgent(Agent):
-    """A point agent represents the value of a variable at a given time along with the states of all objectives."""
+    """A point agent represents the values of all variables at a given time along with the states of all objectives."""
     LOCAL_MIN_THRESHOLD = 1e-4
     STUCK_THRESHOLD = 1e-4
     SAME_POINT_THRESHOLD = 0.01
     NULL_THRESHOLD = 5e-5
 
-    def __init__(self, name: str, variable_agent: VariableAgent, objective_criticalities: typ.Dict[str, float],
-                 *, value: float = None, sampled: bool = False, logger: logging.Logger = None):
+    def __init__(self, name: str, registry: RegistryAgent, values: dt.Vector[float],
+                 objective_criticalities: dt.Vector[float],
+                 *, sampled: bool = False, logger: logging.Logger = None):
         """Creates a point agent.
 
         :param name: Point’s name.
-        :param variable_agent: Variable agent this point is be associated with.
-         Used to gather the current variable value.
+        :param registry: The global registry.
+        :param values: The current values of each variable.
         :param objective_criticalities: The current objectives criticalities.
-        :param value: If specified, will be used as the variable value instead of the variable agent’s.
         :param logger: The logger to use to log things.
         """
         super().__init__(name, logger=logger)
-        self._var_agent = variable_agent
-        self._var_value = variable_agent.value if value is None else value
+        self._registry = registry
+        self._var_values = values
         self._criticalities = objective_criticalities
         # noinspection PyTypeChecker
         self._chain: ChainAgent = None
@@ -450,13 +466,7 @@ class PointAgent(Agent):
 
         self.is_current = False
 
-        self._left_point = None
-        self._left_value = None
-        self._left_crit = None
-
-        self._right_point = None
-        self._right_value = None
-        self._right_crit = None
+        self._neighbors = []
 
         self._sorted_minima = []
         self._is_current_min_of_chain = False
@@ -471,12 +481,8 @@ class PointAgent(Agent):
 
         self._should_sample = not sampled
         self._samples_nb = 0
-        self._sample_step = 0
+        self._sample_steps = dt.Vector.zero(*self._var_values.names())
         self._sampled = sampled
-
-    @property
-    def name(self) -> str:
-        return f'{self.variable_name}.{self._name}'
 
     @property
     def chain(self) -> ChainAgent:
@@ -489,72 +495,51 @@ class PointAgent(Agent):
         self._chain = chain
 
     @property
-    def variable(self) -> VariableAgent:
-        """The variable agent this chain is managed by."""
-        return self._var_agent
+    def variable_values(self) -> dt.Vector[float]:
+        """Values of all variables when this agent was created."""
+        return self._var_values
 
     @property
-    def variable_name(self) -> str:
-        """Name of the associated variable."""
-        return self.variable.name
-
-    @property
-    def variable_value(self) -> float:
-        """Value of the associated variable when this agent was created."""
-        return self._var_value
-
-    @property
-    def criticalities(self) -> typ.Dict[str, float]:
+    def criticalities(self) -> dt.Vector[float]:
         """Objectives’ criticalities when this agent was created.
         The returned object is a copy of the internal data.
         """
-        return dict(self._criticalities)
+        return self._criticalities
 
     @property
     def criticality(self) -> float:
         """Criticality of this agent."""
-        return max(self.criticalities.values())
+        return max(self.criticalities)
 
-    def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0):
+    # TODO normalize distances along each dimension?
+    def distance_sq(self, p: PointAgent):
+        """Returns the squared euclidian distance between this point and the specified one.
+
+        :param p: Another point agent.
+        :returns: The squared euclidian distance.
+        """
+        return sum((value - p._var_values[vname]) ** 2 for vname, value in self._var_values)
+
+    def distance(self, p: PointAgent):
+        """Returns the euclidian distance between this point and the specified one.
+
+        :param p: Another point agent.
+        :returns: The euclidian distance.
+        """
+        return math.sqrt(self.distance_sq(p))
+
+    # TODO min/max distances along each dimension?
+    def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0, max_distance: float = 0.01):
         """Updates the neighbors of this point from the given list of point agents.
 
         :param points: The point agents to gather the neighbors from.
         :param min_distance: The minimum distance between this point and its potential neighbors.
+        :param max_distance: The maximum distance between this point and its potential neighbors.
         """
-
-        def value_in_list(v, vs):
-            return any(abs(v - e) <= min_distance for e in vs)
-
-        sorted_points = sorted(points, key=lambda p: p.variable_value)
-        # Remove duplicates
-        values = set()
-        sorted_points_ = []
-        for point in sorted_points:
-            if not value_in_list(point.variable_value, values) or point is self:  # Keep self in list
-                # If another point with the same value as self is in the list, remove it and append self instead
-                if (point is self and sorted_points_
-                        and abs(sorted_points_[-1].variable_value - self.variable_value) <= min_distance):
-                    del sorted_points_[-1]
-                sorted_points_.append(point)
-                values.add(point.variable_value)
-        sorted_points = sorted_points_
-        i = sorted_points.index(self)
-        if i > 0:
-            self._left_point = sorted_points[i - 1]
-            self._left_value = self._left_point.variable_value
-            self._left_crit = self._left_point.criticality
-        else:
-            self._left_point = None
-            self._left_value = None
-            self._left_crit = None
-        if i < len(sorted_points) - 1:
-            self._right_point = sorted_points[i + 1]
-            self._right_value = self._right_point.variable_value
-            self._right_crit = self._right_point.criticality
-        else:
-            self._right_point = None
-            self._right_value = None
-            self._right_crit = None
+        self._neighbors = sorted(
+            (p for p in points if p is not self),
+            key=lambda p: min_distance <= self.distance_sq(p) <= max_distance
+        )
 
     def perceive(self):
         """Updates this point agent."""
@@ -567,30 +552,24 @@ class PointAgent(Agent):
         if self._should_sample:
             if self._samples_nb > 2:
                 self._samples_nb = 0
-                self._sample_step = 0
+                self._sample_steps = dt.Vector.zero(*self._var_values.names())
         else:
             self.update_neighbors(all_points)
 
-            # TODO remonter à un niveau plus global pour vérifier sur l’ensemble des dimensions en même temps,
-            #  pas une par une (distance euclidienne entre points)
-            if (self._is_current_min_of_chain and not self.is_local_minimum and (self._left_point or self._right_point)
-                    and (not self._left_point
-                         or (self._left_point and abs(
-                                self._left_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD))
-                    and (not self._right_point
-                         or self._right_point and abs(
-                                self._right_value - self.variable_value) < self.LOCAL_MIN_THRESHOLD)):
+            if (self._is_current_min_of_chain and not self.is_local_minimum and self._neighbors
+                    # TODO any or all?
+                    and any(self.distance(other) < self.LOCAL_MIN_THRESHOLD for other in self._neighbors)):
                 self.log_debug('local min found')
                 self.chain.local_min_found = True
                 self.is_local_minimum = True
                 if self.criticality < self.NULL_THRESHOLD:
                     self.is_global_minimum = True
                     return
-                similar_minima = [other_min for other_min in self.variable.minima
-                                  if abs(other_min.variable_value - self.variable_value) <= self.SAME_POINT_THRESHOLD]
+                similar_minima = [other_min for other_min in self._registry.minima
+                                  if self.distance(other_min) <= self.SAME_POINT_THRESHOLD]
                 already_went_up = any(other_min.already_went_up for other_min in similar_minima)
                 max_steps_mult = max((other_min.steps_mult for other_min in similar_minima), default=1)
-                other_minima = set(self.variable.minima) - set(similar_minima)
+                other_minima = set(self._registry.minima) - set(similar_minima)
 
                 if similar_minima:
                     self.log_debug('local min already visited')
@@ -605,20 +584,24 @@ class PointAgent(Agent):
 
                 self.steps_mult = max_steps_mult
                 # Toggle go up mode if this minimum is alone or has already been visited before
-                self.chain.go_up_mode = (len(self.variable.minima) == 0
+                self.chain.go_up_mode = (len(self._registry.minima) == 0
                                          or similar_minima and (not already_went_up or not other_minima))
-                self.variable.add_minimum(self)
+                self._registry.add_minimum(self)
 
                 if self.chain.go_up_mode:
                     self.log_debug('-> go up slope')
 
             if self.is_local_minimum and not self.chain.go_up_mode:
-                self.update_neighbors(self.variable.minima, min_distance=self.SAME_POINT_THRESHOLD)
-                if self.variable.minima:
-                    filtered = filter(lambda mini: mini is self or abs(
-                        mini.variable_value - self.variable_value) > self.SAME_POINT_THRESHOLD, self.variable.minima)
-                    self._sorted_minima: typ.List[PointAgent] = sorted(filtered, key=lambda mini: abs(
-                        mini.variable_value - self.chain.current_point.variable_value))
+                self.update_neighbors(self._registry.minima, min_distance=self.SAME_POINT_THRESHOLD)
+                if self._registry.minima:
+                    filtered_minima = filter(
+                        lambda mini: mini is self or self.distance(mini) > self.SAME_POINT_THRESHOLD,
+                        self._registry.minima
+                    )
+                    self._sorted_minima: typ.List[PointAgent] = sorted(
+                        filtered_minima,
+                        key=lambda mini: self.chain.current_point.distance(mini)
+                    )
                 else:
                     self._sorted_minima = []
                 if self.chain.is_active and len(self._sorted_minima) > 1 and self is self._sorted_minima[0]:
@@ -630,31 +613,29 @@ class PointAgent(Agent):
         :return: A suggestion or None if this agent decided to suggest nothing.
         """
         decision = ''
-        from_value = self.variable_value
-        distance_to_neighbor = None
+        from_point: typ.Optional[dt.Vector[float]] = self._var_values
+        distances_to_neighbor: typ.Optional[dt.Vector[float]] = None
         check_for_out_of_bounds = False
         search_phase = None
-        suggested_direction = DIR_NONE
-        suggested_step = None
-        suggested_point = None
+        suggested_directions: typ.Optional[dt.Vector[int]] = None
+        suggested_steps: typ.Optional[dt.Vector[float]] = None
+        suggested_point: typ.Optional[dt.Vector[float]] = None
         new_chain_next = False
         priority = 0
 
-        # DEBUG
-        print(self.name, self.previous_point)
-        print(self.name, self._should_sample, self._sampled)
-        if self.previous_point:
-            print('prev', self.previous_point._should_sample, self.previous_point._sampled)
+        if not self.chain.is_active:
+            return None
 
-        if self._should_sample:
+        if self._should_sample:  # TODO move only along most sensitive dimensions when sampling second point
             self._samples_nb += 1
             decision = f'sample nearby point ({self._samples_nb})'
-            search_phase = _suggestions.SearchPhase.SAMPLING
+            search_phase = _suggestions.SearchPhase.LOCAL_SAMPLING
             first_sample = self._samples_nb == 1
             if first_sample:
-                self._sample_step = self.variable.last_local_step / 2
-            suggested_step = self._sample_step
-            suggested_direction = DIR_INCREASE if first_sample else DIR_DECREASE
+                self._sample_steps = self._var_values.map(lambda vname, _: self._registry.last_local_steps[vname] / 2)
+            suggested_steps = self._sample_steps
+            suggested_directions = dt.Vector.filled(DIR_INCREASE if first_sample else DIR_DECREASE,
+                                                    *self._var_values.names())
 
         # Wait for the point that sampled us to have finished all its samples;
         # or the previous point is itself a sampled point
@@ -666,22 +647,20 @@ class PointAgent(Agent):
                     decision='global min found -> do nothing',
                     criticality=self.criticality,
                     local_min_found=True,
-                    step=0,
-                    direction=DIR_NONE,
-                    next_point=self.variable_value,
+                    steps=dt.Vector.zero(*self._var_values.names()),
+                    directions=dt.Vector.filled(DIR_NONE, *self._var_values.names()),
+                    next_point=self._var_values,
                 )
-            if not self.chain.is_active and not self.best_local_minimum:
-                return None
 
             if self.is_extremum and self.chain.go_up_mode:
                 suggestion = self._hill_climb()
                 if not suggestion:
                     return None
                 decision = suggestion.decision
-                suggested_direction = suggestion.direction
-                suggested_step = suggestion.step
-                from_value = suggestion.from_value
-                distance_to_neighbor = suggestion.distance_to_neighbor
+                suggested_directions = suggestion.directions
+                suggested_steps = suggestion.steps
+                from_point = suggestion.from_point
+                distances_to_neighbor = suggestion.distances_to_neighbor
                 suggested_point = suggestion.next_point
                 new_chain_next = suggestion.new_chain_next
                 search_phase = _suggestions.SearchPhase.HILL_CLIMBING
@@ -690,19 +669,19 @@ class PointAgent(Agent):
                 if not self.is_local_minimum:
                     suggestion = self._local_search()
                     decision = suggestion.decision
-                    suggested_direction = suggestion.direction
-                    suggested_step = suggestion.step
-                    from_value = suggestion.from_value
-                    distance_to_neighbor = suggestion.distance_to_neighbor
+                    suggested_directions = suggestion.directions
+                    suggested_steps = suggestion.steps
+                    from_point = suggestion.from_point
+                    distances_to_neighbor = suggestion.distances_to_neighbor
                     suggested_point = suggestion.next_point
                     search_phase = _suggestions.SearchPhase.LOCAL
                 elif self.best_local_minimum:
                     suggestion = self._semi_local_search()
                     decision = suggestion.decision
-                    suggested_direction = suggestion.direction
-                    suggested_step = suggestion.step
-                    from_value = suggestion.from_value
-                    distance_to_neighbor = suggestion.distance_to_neighbor
+                    suggested_directions = suggestion.directions
+                    suggested_steps = suggestion.steps
+                    from_point = suggestion.from_point
+                    distances_to_neighbor = suggestion.distances_to_neighbor
                     suggested_point = suggestion.next_point
                     new_chain_next = suggestion.new_chain_next
                     check_for_out_of_bounds = suggestion.check_for_out_of_bounds
@@ -711,102 +690,69 @@ class PointAgent(Agent):
             if decision:
                 self.log_debug('Decision: ' + decision)
 
-        if suggested_step is not None:
-            # Cap jump length
-            if from_value is not None and distance_to_neighbor is not None:
-                suggested_step = min(2 * distance_to_neighbor, suggested_step)
-            suggested_point = from_value + suggested_step * suggested_direction
-            if (check_for_out_of_bounds and (suggested_point < self.variable.lower_bound
-                                             or suggested_point > self.variable.upper_bound)):
+        if suggested_steps is not None:
+            # Cap jump lengths
+            if distances_to_neighbor is not None:
+                suggested_steps = suggested_steps.map(lambda vname, v: min(2 * distances_to_neighbor[vname], v))
+            suggested_point = from_point + suggested_steps @ suggested_directions
+            if (check_for_out_of_bounds and any(not self._registry.is_within_bounds(vname, value)
+                                                for vname, value in suggested_point)):
                 self.prev_suggestion_out_of_bounds = True
 
         if suggested_point is not None:
             return _suggestions.VariationSuggestion(
                 agent=self,
                 search_phase=search_phase,
-                next_point=min(self.variable.upper_bound, max(self.variable.lower_bound, suggested_point)),
+                next_point=suggested_point.map(lambda vname, v: self._registry.clamp_value(vname, v)),
                 decision=decision,
                 criticality=self.criticality,
                 local_min_found=self.chain.local_min_found,
-                direction=suggested_direction,
-                step=suggested_step,
+                directions=suggested_directions,
+                steps=suggested_steps,
                 new_chain_next=new_chain_next,
                 priority=priority,
             )
         return None
 
-    def _local_search(self) -> ic.LocalSearchSuggestion:
-        if self.previous_point is None and self.next_point is None:
+    def _local_search(self) -> ig.LocalSearchSuggestion:
+        if not self._neighbors:
             return self._local_search__explore_from_first_point()
-        elif self.variable_value in (self.variable.lower_bound, self.variable.upper_bound):
-            return self._local_search__go_to_middle_from_bound()
-        elif (self._left_point is not None) != (self._right_point is not None):
+        else:
             return self._local_search__follow_slope()
-        else:
-            return self._local_search__go_to_middle()
 
-    def _local_search__explore_from_first_point(self) -> ic.LocalSearchSuggestion:
-        if self.variable_value == self.variable.lower_bound:
-            direction = DIR_INCREASE
-        elif self.variable_value == self.variable.upper_bound:
-            direction = DIR_DECREASE
-        else:
-            direction = self.variable.last_local_direction or self.world.rng.choice([DIR_DECREASE, DIR_INCREASE])
-        return ic.LocalSearchSuggestion(
+    def _local_search__explore_from_first_point(self) -> ig.LocalSearchSuggestion:
+        def get_direction(var_name: str, value: float) -> int:
+            if value == self._registry.get_variable_lower_bound(var_name):
+                return DIR_INCREASE
+            elif value == self._registry.get_variable_upper_bound(var_name):
+                return DIR_DECREASE
+            else:
+                return (self._registry.last_local_directions[var_name]
+                        or self.world.rng.choice([DIR_DECREASE, DIR_INCREASE]))
+
+        return ig.LocalSearchSuggestion(
             decision='first point in chain -> explore',
-            direction=direction,
-            step=self.variable.last_local_step,
-            from_value=self.variable_value,
+            directions=self._var_values.map(get_direction),
+            steps=self._registry.last_local_steps,
+            from_point=self._var_values,
         )
 
-    def _local_search__go_to_middle_from_bound(self) -> ic.LocalSearchSuggestion:
-        if self.variable_value == self.variable.lower_bound:
-            other_value = self._right_value
-        else:
-            other_value = self._left_value
-        suggested_point = (self.variable_value + other_value) / 2
-        return ic.LocalSearchSuggestion(
-            decision='point on bound -> go to middle',
-            next_point=suggested_point,
-        )
-
-    def _local_search__follow_slope(self) -> ic.LocalSearchSuggestion:
+    def _local_search__follow_slope(self) -> ig.LocalSearchSuggestion:
         if self._left_point:
             top_point = (self._left_value, self._left_crit)
         else:
             top_point = (self._right_value, self._right_crit)
         x = utils.get_xc(top_point, intermediate_point=(self.variable_value, self.criticality), yc=0)
         direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
-        return ic.LocalSearchSuggestion(
+        return ig.LocalSearchSuggestion(
             decision='1 neighbor -> follow slope',
             direction=direction,
             step=abs(x - self.variable_value),
-            from_value=self.variable_value,
+            from_value=self._var_values,
             distance_to_neighbor=abs(self.variable_value - top_point[0]),
         )
 
-    def _local_search__go_to_middle(self) -> ic.LocalSearchSuggestion:
-        if self._last_checked_direction == DIR_INCREASE and self._right_crit > self.criticality:
-            other_value = self._left_value
-            self._last_checked_direction = DIR_DECREASE
-        elif self._last_checked_direction == DIR_DECREASE and self._left_crit > self.criticality:
-            other_value = self._right_value
-            self._last_checked_direction = DIR_INCREASE
-        elif self.next_point and self.next_point.is_current:
-            other_value = self.previous_point.variable_value
-        elif self._right_crit < self._left_crit:
-            other_value = self._right_value
-            self._last_checked_direction = DIR_INCREASE
-        else:
-            other_value = self._left_value
-            self._last_checked_direction = DIR_DECREASE
-        suggested_point = (self.variable_value + other_value) / 2
-        return ic.LocalSearchSuggestion(
-            decision='2 neighbors -> go to middle point',
-            next_point=suggested_point,
-        )
-
-    def _semi_local_search(self) -> ic.SemiLocalSearchSuggestion:
+    def _semi_local_search(self) -> ig.SemiLocalSearchSuggestion:
         self.best_local_minimum = False
         self_value = self.variable_value
         self_crit = self.criticality
@@ -833,7 +779,7 @@ class PointAgent(Agent):
         decision = suggestion.decision
         direction = suggestion.direction
         suggested_step = suggestion.step
-        distance_to_neighbor = suggestion.distance_to_neighbor
+        distance_to_neighbor = suggestion.distances_to_neighbor
         from_value = suggestion.from_value
         suggested_point = suggestion.next_point
         check_for_out_of_bounds = suggestion.check_for_out_of_bounds
@@ -854,7 +800,7 @@ class PointAgent(Agent):
                 suggested_step *= self.steps_mult
                 distance_to_neighbor = None  # Disable capping
 
-        return ic.SemiLocalSearchSuggestion(
+        return ig.SemiLocalSearchSuggestion(
             decision=decision,
             direction=direction,
             step=suggested_step,
@@ -865,7 +811,7 @@ class PointAgent(Agent):
             new_chain_next=True,
         )
 
-    def _semi_local_search__follow_only_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_only_slope(self) -> typ.Tuple[PointAgent, ig.SemiLocalSearchSuggestion]:
         # FIXME div by 0 if both points have the same criticality
         if self._left_point:
             top_point = (self._left_value, self._left_crit)
@@ -882,7 +828,7 @@ class PointAgent(Agent):
             from_value = self.variable_value
         x = utils.get_xc(top_point, intermediate_point=interm_point, yc=0)
         direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
-        return other_min, ic.SemiLocalSearchSuggestion(
+        return other_min, ig.SemiLocalSearchSuggestion(
             decision='1 minimum neighbor -> follow slope',
             direction=direction,
             step=abs(x - interm_point[0]),
@@ -891,10 +837,10 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True,
         )
 
-    def _semi_local_search__follow_left_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_left_slope(self) -> typ.Tuple[PointAgent, ig.SemiLocalSearchSuggestion]:
         x = utils.get_xc(top_point=(self.variable_value, self.criticality),
                          intermediate_point=(self._left_value, self._left_crit), yc=0)
-        return self._left_point, ic.SemiLocalSearchSuggestion(
+        return self._left_point, ig.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: left lower, right higher -> follow left slope',
             direction=DIR_DECREASE,
             step=abs(x - self._left_value),
@@ -903,10 +849,10 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True,
         )
 
-    def _semi_local_search__follow_right_slope(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_right_slope(self) -> typ.Tuple[PointAgent, ig.SemiLocalSearchSuggestion]:
         x = utils.get_xc(top_point=(self.variable_value, self.criticality),
                          intermediate_point=(self._right_value, self._right_crit), yc=0)
-        return self._right_point, ic.SemiLocalSearchSuggestion(
+        return self._right_point, ig.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: left higher, right lower -> follow right slope',
             direction=DIR_INCREASE,
             step=abs(x - self._right_value),
@@ -915,7 +861,7 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True,
         )
 
-    def _semi_local_search__follow_slope_on_lowest_side(self) -> typ.Tuple[PointAgent, ic.SemiLocalSearchSuggestion]:
+    def _semi_local_search__follow_slope_on_lowest_side(self) -> typ.Tuple[PointAgent, ig.SemiLocalSearchSuggestion]:
         if self._right_crit < self._left_crit:
             from_value = self._right_value
             crit = self._right_crit
@@ -927,7 +873,7 @@ class PointAgent(Agent):
         x = utils.get_xc(top_point=(self.variable_value, self.criticality),
                          intermediate_point=(from_value, crit), yc=0)
         direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
-        return other_min, ic.SemiLocalSearchSuggestion(
+        return other_min, ig.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: both lower -> follow slope on lowest’s side',
             direction=direction,
             step=abs(x - from_value),
@@ -936,7 +882,7 @@ class PointAgent(Agent):
             check_for_out_of_bounds=True,
         )
 
-    def _semi_local_search__go_to_middle(self) -> ic.SemiLocalSearchSuggestion:
+    def _semi_local_search__go_to_middle(self) -> ig.SemiLocalSearchSuggestion:
         if self._last_checked_direction == DIR_INCREASE and self._right_crit > self.criticality:
             other_value = self._left_value
             self._last_checked_direction = DIR_DECREASE
@@ -952,12 +898,12 @@ class PointAgent(Agent):
             other_value = self._left_value
             self._last_checked_direction = DIR_DECREASE
         suggested_point = (self.variable_value + other_value) / 2
-        return ic.SemiLocalSearchSuggestion(
+        return ig.SemiLocalSearchSuggestion(
             decision='2 minima neighbors: both higher -> go to middle point',
             next_point=suggested_point
         )
 
-    def _hill_climb(self) -> ic.HillClimbSuggestion:
+    def _hill_climb(self) -> ig.HillClimbSuggestion:
         lower_extremum = self.chain.lower_extremum
         upper_extremum = self.chain.upper_extremum
         other_extremum = lower_extremum if self is upper_extremum else upper_extremum
@@ -990,7 +936,7 @@ class PointAgent(Agent):
         return suggestion
 
     def _hill_climb__new_slope_found_stop_climbing(self, prev_point: PointAgent, self_on_bound: bool) \
-            -> ic.HillClimbSuggestion:
+            -> ig.HillClimbSuggestion:
         if prev_point is self._left_point or self.variable_value == self.variable.lower_bound:
             direction = DIR_INCREASE
         elif prev_point is self._right_point or self.variable_value == self.variable.upper_bound:
@@ -1002,7 +948,7 @@ class PointAgent(Agent):
         new_chain_next = self is self.chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
-        return ic.HillClimbSuggestion(
+        return ig.HillClimbSuggestion(
             decision='opposite slope found -> stop climbing; create new chain; explore',
             direction=direction,
             step=self.variable.default_step,
@@ -1011,14 +957,14 @@ class PointAgent(Agent):
             priority=2
         )
 
-    def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ic.HillClimbSuggestion:
+    def _hill_climbing__both_extrema_on_bounds_stop_climbing(self, self_on_bound: bool) -> ig.HillClimbSuggestion:
         suggested_point = (self.variable.lower_bound + self.variable.upper_bound) / 2
         self.chain.go_up_mode = False
         self.chain.minimum.already_went_up = True
         new_chain_next = self is self.chain.minimum or self_on_bound
         if not new_chain_next:
             self.create_new_chain_from_me = True
-        return ic.HillClimbSuggestion(
+        return ig.HillClimbSuggestion(
             decision='both extrema on bounds -> go to middle; create new chain; explore',
             next_point=suggested_point,
             new_chain_next=new_chain_next,
@@ -1026,7 +972,7 @@ class PointAgent(Agent):
         )
 
     def _hill_climbing__climb(self, prev_value: float, prev_crit: float, other_extremum_criticality: float,
-                              other_on_bound: bool) -> ic.HillClimbSuggestion:
+                              other_on_bound: bool) -> ig.HillClimbSuggestion:
         direction = DIR_DECREASE if self.variable_value < prev_value else DIR_INCREASE
         if (abs(self.variable_value - prev_value) <= self.STUCK_THRESHOLD
                 or self.criticality == other_extremum_criticality or other_on_bound):
@@ -1037,7 +983,7 @@ class PointAgent(Agent):
             suggested_point = utils.get_xc(top_point=(prev_value, prev_crit),
                                            intermediate_point=(self.variable_value, self.criticality),
                                            yc=other_extremum_criticality)
-        return ic.HillClimbSuggestion(
+        return ig.HillClimbSuggestion(
             decision=decision,
             next_point=suggested_point,
             priority=0
