@@ -74,6 +74,9 @@ def get_config() -> exp_utils.ExperimentsConfig:
     arg_parser.add_argument('--mean', metavar='MEAN', dest='noise_mean', type=float, help='mean of gaussian noise')
     arg_parser.add_argument('--stdev', metavar='STDEV', dest='noise_stdev', type=float,
                             help='standard deviation of gaussian noise')
+    arg_parser.add_argument('-S', '--sampling', metavar='VALUE', dest='sampling_mode', type=str, choices=(
+        'weighted', 'n_bests',
+    ), default='weighted', help='how the second sampled point should be determined during each sampling phase')
     args = arg_parser.parse_args()
 
     default_method = None
@@ -91,6 +94,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
     default_noisy = False
     default_noise_mean = DEFAULT_NOISE_MEAN
     default_noise_stdev = DEFAULT_NOISE_STDEV
+    default_sampling_mode = cobopti.config.SamplingMode.WEIGHTED
 
     if args.config_file:
         config_parser = configparser.ConfigParser()
@@ -116,6 +120,8 @@ def get_config() -> exp_utils.ExperimentsConfig:
         default_max_steps = config_parser.getint('Run', 'max_steps', fallback=default_max_steps)
         default_step_by_step = config_parser.getboolean('Run', 'step_by_step', fallback=default_step_by_step)
         default_output_dir = config_parser.get('Output', 'output_directory', fallback=default_output_dir)
+        default_sampling_mode = cobopti.config.SamplingMode[
+            config_parser.get('Run', 'sampling_mode', fallback=default_sampling_mode).upper()]
         if isinstance(default_output_dir, str):
             default_output_dir = pathlib.Path(default_output_dir)
         default_dump_data = config_parser.getboolean('Output', 'dump_data', fallback=default_dump_data)
@@ -146,6 +152,7 @@ def get_config() -> exp_utils.ExperimentsConfig:
         noisy_functions=noisy,
         noise_mean=get_or_default(args.noise_mean, default_noise_mean) if noisy else None,
         noise_stdev=get_or_default(args.noise_stdev, default_noise_stdev) if noisy else None,
+        sampling_mode=get_or_default(cobopti.config.SamplingMode[args.sampling_mode.upper()], default_sampling_mode),
     )
 
 
@@ -225,7 +232,8 @@ def main():
                 noise_stdev=config.noise_stdev,
                 output_dir=output_dir / model.id / test_utils.map_to_string(p_init) if output_dir else None,
                 logger=logger,
-                logging_level=config.log_level
+                logging_level=config.log_level,
+                sampling_mode=config.sampling_mode,
             )
             if config.method == 'calicoba':
                 result = evaluate_model_calicoba(run_config)
@@ -299,6 +307,7 @@ def evaluate_model_calicoba(config: exp_utils.RunConfig) \
         output_directory=config.output_dir,
         seed=config.seed,
         logging_level=config.logging_level,
+        sampling_mode=config.sampling_mode,
     ))
     threshold = cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
     solution_found = any(

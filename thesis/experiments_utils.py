@@ -3,6 +3,7 @@ import logging
 import pathlib
 import typing as typ
 
+import cobopti.config
 import models
 import test_utils
 
@@ -24,6 +25,7 @@ class ExperimentsConfig:
     seed: typ.Optional[int] = None
     parameters_values: typ.Sequence[str] = ()
     free_parameter: typ.Optional[str] = None
+    sampling_mode: cobopti.config.SamplingMode = cobopti.config.SamplingMode.WEIGHTED
 
 
 @dataclasses.dataclass(frozen=True)
@@ -42,6 +44,7 @@ class RunConfig:
     output_dir: pathlib.Path = None
     logger: logging.Logger = None
     logging_level: int = logging.INFO
+    sampling_mode: cobopti.config.SamplingMode = cobopti.config.SamplingMode.WEIGHTED
 
 
 @dataclasses.dataclass(frozen=True)

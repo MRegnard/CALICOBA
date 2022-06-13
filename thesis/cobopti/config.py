@@ -1,5 +1,6 @@
 import abc
 import dataclasses
+import enum
 import logging
 import pathlib
 import typing as typ
@@ -53,6 +54,11 @@ class ObjectiveFunction(Metadata):
         """
 
 
+class SamplingMode(enum.Enum):
+    WEIGHTED = 'weighted'
+    N_BESTS = 'n_bests'
+
+
 @dataclasses.dataclass(frozen=True)
 class CoBOptiConfig:
     """Configuration object for CoBOpti."""
@@ -65,3 +71,4 @@ class CoBOptiConfig:
     output_directory: typ.Optional[pathlib.Path] = None
     seed: typ.Optional[int] = None
     logging_level: int = logging.INFO
+    sampling_mode: SamplingMode = SamplingMode.WEIGHTED

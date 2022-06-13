@@ -670,11 +670,11 @@ class PointAgent(Agent):
                 # S[i] = crit_diff / diff[i] for all i
                 sensitivities = (diffs ** -1) * crit_diff  # TODO normalize diffs?
                 print('sensitivities', sensitivities)  # DEBUG
-                if True:
+                if self.world.config.sampling_mode == config.SamplingMode.WEIGHTED:
                     # Weight step using sensitivities
                     self._sample_steps = -self._registry.last_local_steps @ sensitivities
                     print(self._sample_steps)  # DEBUG
-                else:
+                elif self.world.config.sampling_mode == config.SamplingMode.N_BESTS:
                     # Take only best half variables
                     nb = math.ceil(len(self._var_values) / 2)
                     best_entries = {k for k, _ in sorted(sensitivities.entries(), key=lambda e: e[1])[:nb]}
@@ -682,6 +682,8 @@ class PointAgent(Agent):
                         vname: self._registry.last_local_steps[vname] if vname in best_entries else 0
                         for vname, v in dt.Vector.zero(*self._registry.variables_names)
                     })
+                else:
+                    raise ValueError(f'invalid sensitivity mode {self.world.config.sampling_mode}')
             suggested_steps = self._sample_steps
             suggested_directions = dt.Vector.filled(DIR_INCREASE if first_sample else DIR_DECREASE,
                                                     *self._registry.variables_names)
