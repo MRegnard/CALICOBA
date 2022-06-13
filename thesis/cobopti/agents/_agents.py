@@ -668,11 +668,12 @@ class PointAgent(Agent):
                 diffs = self.sampled_points[0]._var_values - self._var_values
                 crit_diff = self.sampled_points[0].criticality - self.criticality
                 # S[i] = crit_diff / diff[i] for all i
-                sensitivities = (diffs ** -1) * crit_diff  # TODO normalize diffs?
+                sensitivities = (diffs ** -1) * crit_diff
                 print('sensitivities', sensitivities)  # DEBUG
                 if self.world.config.sampling_mode == config.SamplingMode.WEIGHTED:
                     # Weight step using sensitivities
-                    self._sample_steps = -self._registry.last_local_steps @ sensitivities
+                    # FIXME devient trop petit après quelques itérations
+                    self._sample_steps = self._registry.last_local_steps @ sensitivities
                     print(self._sample_steps)  # DEBUG
                 elif self.world.config.sampling_mode == config.SamplingMode.N_BESTS:
                     # Take only best half variables
@@ -701,6 +702,7 @@ class PointAgent(Agent):
                     next_point=self._var_values,
                 )
             elif self.is_extremum and self.chain.go_up_mode:
+                raise NotImplementedError('hill climbing not implemented yet')  # TEMP
                 suggestion = self._hill_climb()
                 if not suggestion:
                     return None
@@ -756,7 +758,9 @@ class PointAgent(Agent):
         if suggested_steps is not None:
             # Cap jump lengths
             if distances_to_neighbor is not None:
+                print(from_point, suggested_steps)  # DEBUG
                 suggested_steps = suggested_steps.map(lambda vname, v: min(2 * distances_to_neighbor[vname], v))
+                print(suggested_steps)  # DEBUG
             suggested_point = from_point + suggested_steps @ suggested_directions
             if (check_for_out_of_bounds and any(not self._registry.is_within_bounds(vname, value)
                                                 for vname, value in suggested_point)):
@@ -783,18 +787,21 @@ class PointAgent(Agent):
         else:
             cluster_neighbors = self.sampled_points
         best_neighbor = min(cluster_neighbors, key=lambda p: p.criticality)
-        x_values = {}
-        dir_values = {}
+        print(self, best_neighbor)  # DEBUG
+        steps = {}
+        directions = {}
         for vname in self._registry.variables_names:
             top_point = (best_neighbor._var_values[vname], best_neighbor.criticality)
             x = utils.get_xc(top_point, intermediate_point=(self._var_values[vname], self.criticality), yc=0)
-            x_values[vname] = abs(x - self._var_values[vname])
-            dir_values[vname] = DIR_INCREASE if x > self._var_values[vname] else DIR_DECREASE
+            steps[vname] = abs(x - self._var_values[vname])
+            directions[vname] = DIR_INCREASE if x > self._var_values[vname] else DIR_DECREASE
+        # noinspection PyTypeChecker
+        print(steps)  # DEBUG
         # noinspection PyTypeChecker
         return ig.LocalSearchSuggestion(
             decision='sampling done -> follow slope',
-            directions=dt.Vector(**dir_values),
-            steps=dt.Vector(**x_values),
+            directions=dt.Vector(**directions),
+            steps=dt.Vector(**steps),
             from_point=self._var_values,
             distances_to_neighbor=abs(self._var_values - best_neighbor._var_values),
         )
