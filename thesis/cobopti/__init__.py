@@ -58,6 +58,7 @@ class CoBOpti:
         self._x0 = dt.Vector(**{var.name: config.x0[var.name] for var in config.variables_metadata})
         self._expected_solutions = [dt.Vector(**s) for s in config.expected_solutions]
         self._variables = self._x0
+        self._previous_suggestion = None
         self._best_solution = None
         self._best_crits = None
 
@@ -131,6 +132,7 @@ class CoBOpti:
                 self._variables_data[variable.name] = []
 
         self._registry_agent = agents.RegistryAgent(*self.config.variables_metadata, logger=self._logger)
+        self.add_agent(self._registry_agent)
 
         for obj in self.config.objective_functions:
             self._add_objective(obj)
@@ -167,13 +169,14 @@ class CoBOpti:
 
             if self.config.output_directory:
                 for var_name, v in suggestion.steps:
+                    # noinspection PyTypeChecker
                     self._variables_data[var_name].append({
                         'cycle': self._cycle,
                         'value': self._variables[var_name],
                         'criticality': suggestion.criticality,
                         'decider': suggestion.agent.name,
                         'is_local_min': suggestion.agent.is_local_minimum,
-                        'steps': suggestion.steps,
+                        'steps': dict(suggestion.steps),
                         'decision': suggestion.decision,
                     })
 
@@ -183,13 +186,15 @@ class CoBOpti:
                     solution_found = True
                 else:
                     # TEMP until a better criterion has been defined
+                    coefs = self._registry_agent.variables_coefficients
                     solution_found = any(
-                        self._variables.distance(expected_solution) < agents.PointAgent.SAME_POINT_THRESHOLD
+                        self._variables.distance(expected_solution, coefs) < agents.PointAgent.SAME_POINT_THRESHOLD
                         for expected_solution in self._expected_solutions
                     )
 
             # Update variables
             self._variables = suggestion.next_point
+            self._previous_suggestion = suggestion
 
             self._cycle += 1
             if solution_found or error_message:
@@ -233,7 +238,7 @@ class CoBOpti:
         # Update objectives
         crits = {}
         for objective in self._objective_agents:
-            objective.evaluate_function(**self._variables.as_dict(), update=True)
+            objective.evaluate_function(**dict(self._variables), update=True)
             crits[objective.name] = objective.criticality
             self._logger.debug(f'Obj {objective.name}: {objective.criticality}')
             if self.config.output_directory:
@@ -249,30 +254,11 @@ class CoBOpti:
             self._best_solution = self._variables
             self._best_crits = crits
 
-        self._logger.debug(self._variables, crits)
+        self._logger.debug(self._variables)
+        self._logger.debug(crits)
 
         # Update registry agent, current point, and directions
-        if (previous_values := self._registry_agent.variables_values) is not None:
-            diff = self._variables - previous_values
-            last_steps = abs(diff)
-
-            def m(v):
-                if v > 0:
-                    return agents.DIR_INCREASE
-                elif v < 0:
-                    return agents.DIR_DECREASE
-                else:
-                    return agents.DIR_NONE
-
-            last_directions = diff.map(lambda _, v: m(v))
-        else:
-            last_steps = dt.Vector(**{
-                vname: self._registry_agent.get_variable_default_step(vname)
-                for vname in self._variables.names()
-            })
-            last_directions = dt.Vector.filled(agents.DIR_NONE, *self._variables.names())
-        self._registry_agent.perceive(self._variables, self._create_new_chain_next, crits, last_steps,
-                                      last_directions, self._search_phase)
+        self._registry_agent.perceive(self._variables, self._create_new_chain_next, crits, self._previous_suggestion)
         self._create_new_chain_next = False
 
         # Update chain agents

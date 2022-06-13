@@ -33,6 +33,9 @@ class Metadata(abc.ABC):
     def upper_bound(self) -> float:
         return self._upper_bound
 
+    def __repr__(self):
+        return f'{self.name}(min={self.lower_bound},max={self.upper_bound})'
+
 
 class Variable(Metadata):
     """This class represents all relevent metadata about a decision variable."""

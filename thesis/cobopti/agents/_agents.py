@@ -180,13 +180,18 @@ class RegistryAgent(Agent):
         """
         super().__init__('registry', logger=logger)
         self._variables: typ.Dict[str, config.Variable] = {v.name: v for v in variables_metadata}
-        self._variables_default_steps = dt.Vector(**{v.name: (v.upper_bound - v.lower_bound) / 100
-                                                     for v in variables_metadata})
+        self._variables_default_steps = dt.Vector(**{
+            v.name: (v.upper_bound - v.lower_bound) / 100
+            for v in variables_metadata
+        })
+        self._variables_names = sorted(self._variables.keys())
         self._variables_values = None
-        self.last_local_steps = dt.Vector.zero(*variables_metadata)
-        self.last_local_directions = dt.Vector.filled(DIR_NONE, *variables_metadata)
-        self.last_semi_local_steps = dt.Vector.zero(*variables_metadata)
-        self.last_semi_local_directions = dt.Vector.filled(DIR_NONE, *variables_metadata)
+        self._variables_coefs = dt.Vector(**{v.name: abs(v.upper_bound - v.lower_bound) for v in variables_metadata})
+
+        self.last_local_steps = dt.Vector.zero(*[var.name for var in variables_metadata])
+        self.last_local_directions = dt.Vector.filled(DIR_NONE, *[var.name for var in variables_metadata])
+        self.last_semi_local_steps = dt.Vector.zero(*[var.name for var in variables_metadata])
+        self.last_semi_local_directions = dt.Vector.filled(DIR_NONE, *[var.name for var in variables_metadata])
 
         self._chains: typ.List[ChainAgent] = []
         self._minima: typ.List[PointAgent] = []
@@ -230,8 +235,16 @@ class RegistryAgent(Agent):
         return self._variables_default_steps[var_name]
 
     @property
+    def variables_names(self) -> typ.List[str]:
+        return self._variables_names
+
+    @property
     def variables_values(self) -> typ.Optional[dt.Vector[float]]:
         return self._variables_values
+
+    @property
+    def variables_coefficients(self) -> dt.Vector[float]:
+        return self._variables_coefs
 
     @property
     def chains(self) -> typ.List[ChainAgent]:
@@ -251,26 +264,30 @@ class RegistryAgent(Agent):
         self._minima.append(point)
 
     def perceive(self, values: dt.Vector[float], new_chain: bool, criticalities: dt.Vector[float],
-                 previous_steps: dt.Vector[float], previous_directions: dt.Vector[int],
-                 previous_search_phase: _suggestions.SearchPhase):
+                 previous_suggestion: _suggestions.VariationSuggestion = None):
         """Updates this variable agent.
 
         :param values: Values of each variable.
         :param new_chain: Whether to create a new chain agent.
         :param criticalities: The criticalities of each objective.
-        :param previous_steps: The previous variation amount of each variable.
-        :param previous_directions: The previous variation direction of each variable.
-        :param previous_search_phase: The previous search phase.
+        :param previous_suggestion: The variation suggestion accepted during the last cycle. May be null.
         """
-        if previous_search_phase != _suggestions.SearchPhase.SEMI_LOCAL:
-            self.last_local_steps = previous_steps
-            self.last_local_directions = previous_directions
+        sampler = None
+        if previous_suggestion is not None:
+            if previous_suggestion.search_phase != _suggestions.SearchPhase.SEMI_LOCAL:
+                self.last_local_steps = previous_suggestion.steps
+                self.last_local_directions = previous_suggestion.directions
+                if previous_suggestion.search_phase == _suggestions.SearchPhase.LOCAL_SAMPLING:
+                    sampler = previous_suggestion.agent
+            else:
+                self.last_local_steps = dt.Vector(**{v.name: self.get_variable_default_step(v.name)
+                                                     for v in self._variables.values()})
+                self.last_semi_local_steps = previous_suggestion.steps
+                self.last_local_directions = previous_suggestion.directions
+                self.last_semi_local_directions = previous_suggestion.directions
         else:
-            self.last_local_steps = dt.Vector(**{v.name: self.get_variable_default_step(v.name)
-                                                 for v in self._variables.values()})
-            self.last_local_directions = previous_directions
-            self.last_semi_local_steps = previous_steps
-            self.last_semi_local_directions = previous_directions
+            self.last_local_steps = dt.Vector.zero(*self._variables.keys())
+            self.last_local_directions = dt.Vector.filled(DIR_NONE, *self._variables.keys())
         prev_point = self._chains[-1].current_point if self._chains else None
 
         if not prev_point or prev_point.variable_values != values or prev_point.criticalities != criticalities:
@@ -279,9 +296,11 @@ class RegistryAgent(Agent):
                 self,
                 values,
                 criticalities,
-                sampled=previous_search_phase == _suggestions.SearchPhase.LOCAL_SAMPLING,
+                sampler=sampler,
                 logger=self._logger
             )
+            if sampler:
+                sampler.sampled_points.append(new_point)
             self.world.add_agent(new_point)
             self._last_point_id += 1
             if self._chains and not new_chain:
@@ -401,7 +420,7 @@ class ChainAgent(Agent):
         if not self.is_active:
             return
         self._detect_minimum()
-        self._detect_extrema()
+        # self._detect_extrema()  # TEMP disabled until hill-climbing is updated
 
     def _detect_minimum(self):
         """Detects the point agent with the lowest criticality of this chain."""
@@ -438,7 +457,7 @@ class PointAgent(Agent):
 
     def __init__(self, name: str, registry: RegistryAgent, values: dt.Vector[float],
                  objective_criticalities: dt.Vector[float],
-                 *, sampled: bool = False, logger: logging.Logger = None):
+                 *, sampler: PointAgent = None, logger: logging.Logger = None):
         """Creates a point agent.
 
         :param name: Point’s name.
@@ -479,10 +498,14 @@ class PointAgent(Agent):
 
         self.create_new_chain_from_me = False
 
-        self._should_sample = not sampled
-        self._samples_nb = 0
-        self._sample_steps = dt.Vector.zero(*self._var_values.names())
-        self._sampled = sampled
+        self._should_sample = sampler is None
+        self.sampled_points: typ.List[PointAgent] = []
+        self._sample_steps = dt.Vector.zero(*self._registry.variables_names)
+        self.finished_sampling = False
+        self.sampling_cluster_acted = False
+        self.selected_from_sampling = False
+        self._sampled = sampler is not None
+        self._sampler = sampler
 
     @property
     def chain(self) -> ChainAgent:
@@ -509,16 +532,7 @@ class PointAgent(Agent):
     @property
     def criticality(self) -> float:
         """Criticality of this agent."""
-        return max(self.criticalities)
-
-    # TODO normalize distances along each dimension?
-    def distance_sq(self, p: PointAgent):
-        """Returns the squared euclidian distance between this point and the specified one.
-
-        :param p: Another point agent.
-        :returns: The squared euclidian distance.
-        """
-        return sum((value - p._var_values[vname]) ** 2 for vname, value in self._var_values)
+        return max(self.criticalities.values())
 
     def distance(self, p: PointAgent):
         """Returns the euclidian distance between this point and the specified one.
@@ -526,9 +540,8 @@ class PointAgent(Agent):
         :param p: Another point agent.
         :returns: The euclidian distance.
         """
-        return math.sqrt(self.distance_sq(p))
+        return self._var_values.distance(p._var_values, self._registry.variables_coefficients)
 
-    # TODO min/max distances along each dimension?
     def update_neighbors(self, points: typ.Iterable[PointAgent], min_distance: float = 0, max_distance: float = 0.01):
         """Updates the neighbors of this point from the given list of point agents.
 
@@ -538,7 +551,7 @@ class PointAgent(Agent):
         """
         self._neighbors = sorted(
             (p for p in points if p is not self),
-            key=lambda p: min_distance <= self.distance_sq(p) <= max_distance
+            key=lambda p: min_distance <= self.distance(p) <= max_distance
         )
 
     def perceive(self):
@@ -546,18 +559,22 @@ class PointAgent(Agent):
         all_points = self.chain.points
         self._is_current_min_of_chain = self.chain.minimum is self
 
-        if self._should_sample and self._samples_nb == 2:
-            self._should_sample = False
-
+        # Only the current chain minimum should be set to sampler when local search phase just happened
         if self._should_sample:
-            if self._samples_nb > 2:
-                self._samples_nb = 0
-                self._sample_steps = dt.Vector.zero(*self._var_values.names())
-        else:
+            if len(self.sampled_points) == 0 and not self._is_current_min_of_chain:
+                # Disable current sampler if not the chain minimum and has not yet sampled
+                self._should_sample = False
+            else:
+                self.finished_sampling = len(self.sampled_points) >= 2
+                if self.finished_sampling:
+                    self._sample_steps = dt.Vector.zero(*self._registry.variables_names)
+                    self._should_sample = False
+
+        if self.finished_sampling or self._sampled and self._sampler.finished_sampling:
             self.update_neighbors(all_points)
 
             if (self._is_current_min_of_chain and not self.is_local_minimum and self._neighbors
-                    # TODO any or all?
+                    # TODO all or a certain proportion?
                     and any(self.distance(other) < self.LOCAL_MIN_THRESHOLD for other in self._neighbors)):
                 self.log_debug('local min found')
                 self.chain.local_min_found = True
@@ -626,20 +643,50 @@ class PointAgent(Agent):
         if not self.chain.is_active:
             return None
 
-        if self._should_sample:  # TODO move only along most sensitive dimensions when sampling second point
-            self._samples_nb += 1
-            decision = f'sample nearby point ({self._samples_nb})'
+        # Detection must be done here as requiered data may not be updated yet in perceive() method
+        if (not self._should_sample
+                and ((self.finished_sampling or self._sampled and self._sampler.finished_sampling)
+                     and (self.sampling_cluster_acted or self._sampled and self._sampler.sampling_cluster_acted)
+                     and self._is_current_min_of_chain)):
+            # Set current chain minimum as the sampler
+            self._should_sample = True
+
+        if self._should_sample:
+            decision = f'sample nearby point ({len(self.sampled_points) + 1})'
             search_phase = _suggestions.SearchPhase.LOCAL_SAMPLING
-            first_sample = self._samples_nb == 1
+            first_sample = len(self.sampled_points) == 0
             if first_sample:
-                self._sample_steps = self._var_values.map(lambda vname, _: self._registry.last_local_steps[vname] / 2)
+                if self._registry.last_local_steps.is_zero():
+                    self._sample_steps = self._var_values.map(
+                        lambda vname, _: self._registry.get_variable_default_step(vname) / 2)
+                else:
+                    step = max(self._registry.last_local_steps.values()) / 2
+                    self._sample_steps = dt.Vector.filled(step, *self._registry.variables_names)
+            else:
+                # Move only along N most sensitive dimensions between self
+                # and first sampled point when sampling second point
+                diffs = self.sampled_points[0]._var_values - self._var_values
+                crit_diff = self.sampled_points[0].criticality - self.criticality
+                # S[i] = crit_diff / diff[i] for all i
+                sensitivities = (diffs ** -1) * crit_diff  # TODO normalize diffs?
+                print('sensitivities', sensitivities)  # DEBUG
+                if True:
+                    # Weight step using sensitivities
+                    self._sample_steps = -self._registry.last_local_steps @ sensitivities
+                    print(self._sample_steps)  # DEBUG
+                else:
+                    # Take only best half variables
+                    nb = math.ceil(len(self._var_values) / 2)
+                    best_entries = {k for k, _ in sorted(sensitivities.entries(), key=lambda e: e[1])[:nb]}
+                    self._sample_steps = dt.Vector(**{
+                        vname: self._registry.last_local_steps[vname] if vname in best_entries else 0
+                        for vname, v in dt.Vector.zero(*self._registry.variables_names)
+                    })
             suggested_steps = self._sample_steps
             suggested_directions = dt.Vector.filled(DIR_INCREASE if first_sample else DIR_DECREASE,
-                                                    *self._var_values.names())
+                                                    *self._registry.variables_names)
 
-        # Wait for the point that sampled us to have finished all its samples;
-        # or the previous point is itself a sampled point
-        elif not self.previous_point or not self.previous_point._should_sample or self.previous_point._sampled:
+        else:
             if self.is_global_minimum:
                 return _suggestions.VariationSuggestion(
                     agent=self,
@@ -647,12 +694,11 @@ class PointAgent(Agent):
                     decision='global min found -> do nothing',
                     criticality=self.criticality,
                     local_min_found=True,
-                    steps=dt.Vector.zero(*self._var_values.names()),
-                    directions=dt.Vector.filled(DIR_NONE, *self._var_values.names()),
+                    steps=dt.Vector.zero(*self._registry.variables_names),
+                    directions=dt.Vector.filled(DIR_NONE, *self._registry.variables_names),
                     next_point=self._var_values,
                 )
-
-            if self.is_extremum and self.chain.go_up_mode:
+            elif self.is_extremum and self.chain.go_up_mode:
                 suggestion = self._hill_climb()
                 if not suggestion:
                     return None
@@ -665,27 +711,42 @@ class PointAgent(Agent):
                 new_chain_next = suggestion.new_chain_next
                 search_phase = _suggestions.SearchPhase.HILL_CLIMBING
                 priority = suggestion.priority
-            elif self._is_current_min_of_chain:
-                if not self.is_local_minimum:
-                    suggestion = self._local_search()
-                    decision = suggestion.decision
-                    suggested_directions = suggestion.directions
-                    suggested_steps = suggestion.steps
-                    from_point = suggestion.from_point
-                    distances_to_neighbor = suggestion.distances_to_neighbor
-                    suggested_point = suggestion.next_point
-                    search_phase = _suggestions.SearchPhase.LOCAL
-                elif self.best_local_minimum:
-                    suggestion = self._semi_local_search()
-                    decision = suggestion.decision
-                    suggested_directions = suggestion.directions
-                    suggested_steps = suggestion.steps
-                    from_point = suggestion.from_point
-                    distances_to_neighbor = suggestion.distances_to_neighbor
-                    suggested_point = suggestion.next_point
-                    new_chain_next = suggestion.new_chain_next
-                    check_for_out_of_bounds = suggestion.check_for_out_of_bounds
-                    search_phase = _suggestions.SearchPhase.SEMI_LOCAL
+            elif not self.is_local_minimum:
+                # Detection must be done here as sampling_cluster_acted property
+                # might not be updated yet in perceive() method
+                if ((self.finished_sampling or self._sampled and self._sampler.finished_sampling)
+                        and not self.sampling_cluster_acted
+                        and (not self._sampled or not self._sampler.sampling_cluster_acted)):
+                    # Select lowest point from sampling cluster
+                    if not self._sampled:
+                        points = [self] + self.sampled_points
+                    else:
+                        points = [self._sampler] + self._sampler.sampled_points
+                    if self is min(points, key=lambda p: p.criticality):
+                        # Only the minimum from the cluster should act
+                        suggestion = self._local_search()
+                        decision = suggestion.decision
+                        suggested_directions = suggestion.directions
+                        suggested_steps = suggestion.steps
+                        from_point = suggestion.from_point
+                        distances_to_neighbor = suggestion.distances_to_neighbor
+                        suggested_point = suggestion.next_point
+                        search_phase = _suggestions.SearchPhase.LOCAL
+                        if self._sampled:
+                            self._sampler.sampling_cluster_acted = True
+                        else:
+                            self.sampling_cluster_acted = True
+            elif self.best_local_minimum:
+                suggestion = self._semi_local_search()
+                decision = suggestion.decision
+                suggested_directions = suggestion.directions
+                suggested_steps = suggestion.steps
+                from_point = suggestion.from_point
+                distances_to_neighbor = suggestion.distances_to_neighbor
+                suggested_point = suggestion.next_point
+                new_chain_next = suggestion.new_chain_next
+                check_for_out_of_bounds = suggestion.check_for_out_of_bounds
+                search_phase = _suggestions.SearchPhase.SEMI_LOCAL
 
             if decision:
                 self.log_debug('Decision: ' + decision)
@@ -715,41 +776,25 @@ class PointAgent(Agent):
         return None
 
     def _local_search(self) -> ig.LocalSearchSuggestion:
-        if not self._neighbors:
-            return self._local_search__explore_from_first_point()
+        if self._sampled:
+            cluster_neighbors = [self._sampler] + [p for p in self._sampler.sampled_points if p is not self]
         else:
-            return self._local_search__follow_slope()
-
-    def _local_search__explore_from_first_point(self) -> ig.LocalSearchSuggestion:
-        def get_direction(var_name: str, value: float) -> int:
-            if value == self._registry.get_variable_lower_bound(var_name):
-                return DIR_INCREASE
-            elif value == self._registry.get_variable_upper_bound(var_name):
-                return DIR_DECREASE
-            else:
-                return (self._registry.last_local_directions[var_name]
-                        or self.world.rng.choice([DIR_DECREASE, DIR_INCREASE]))
-
+            cluster_neighbors = self.sampled_points
+        best_neighbor = min(cluster_neighbors, key=lambda p: p.criticality)
+        x_values = {}
+        dir_values = {}
+        for vname in self._registry.variables_names:
+            top_point = (best_neighbor._var_values[vname], best_neighbor.criticality)
+            x = utils.get_xc(top_point, intermediate_point=(self._var_values[vname], self.criticality), yc=0)
+            x_values[vname] = abs(x - self._var_values[vname])
+            dir_values[vname] = DIR_INCREASE if x > self._var_values[vname] else DIR_DECREASE
+        # noinspection PyTypeChecker
         return ig.LocalSearchSuggestion(
-            decision='first point in chain -> explore',
-            directions=self._var_values.map(get_direction),
-            steps=self._registry.last_local_steps,
+            decision='sampling done -> follow slope',
+            directions=dt.Vector(**dir_values),
+            steps=dt.Vector(**x_values),
             from_point=self._var_values,
-        )
-
-    def _local_search__follow_slope(self) -> ig.LocalSearchSuggestion:
-        if self._left_point:
-            top_point = (self._left_value, self._left_crit)
-        else:
-            top_point = (self._right_value, self._right_crit)
-        x = utils.get_xc(top_point, intermediate_point=(self.variable_value, self.criticality), yc=0)
-        direction = DIR_INCREASE if x > self.variable_value else DIR_DECREASE
-        return ig.LocalSearchSuggestion(
-            decision='1 neighbor -> follow slope',
-            direction=direction,
-            step=abs(x - self.variable_value),
-            from_value=self._var_values,
-            distance_to_neighbor=abs(self.variable_value - top_point[0]),
+            distances_to_neighbor=abs(self._var_values - best_neighbor._var_values),
         )
 
     def _semi_local_search(self) -> ig.SemiLocalSearchSuggestion:
@@ -991,20 +1036,6 @@ class PointAgent(Agent):
 
     def __repr__(self):
         return (
-            f'Point{{{self.name}={self.variable_value},local minimum={self.is_local_minimum},'
+            f'Point{{values={self._var_values},sampled={self._sampled},local min={self.is_local_minimum},'
             f'extremum={self.is_extremum},min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )
-
-    @staticmethod
-    def _get_variation_step(last_direction: float, direction: float, last_step: float) -> float:
-        """Returns the suggested variation amount based on the selected and previous variation directions.
-
-        :param last_direction: The previous variation direction.
-        :param direction: The selected variation direction.
-        :param last_step: The previous variation amount.
-        :return: The suggested variation amount.
-        """
-        if last_direction == direction:
-            return last_step * 2
-        else:
-            return last_step / 3

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import typing as typ
 
 VT = typ.TypeVar('VT', int, float)
@@ -53,13 +54,17 @@ class Vector(typ.Generic[VT]):
         """Returns a set-like object providing a view on this vector’s entries."""
         return self._values_map.items()
 
-    def as_dict(self) -> typ.Dict[str, VT]:
-        """Returns this vector as a dict object."""
-        return dict(self._values_map)
+    def distance(self, other: Vector[Number], topology: Vector[Number]) -> float:
+        """Returns the distance between this vector and the provided one.
+        Distances in each dimension is normalize using the coefficient found in the second argument.
 
-    def distance(self, other: Vector[Number]) -> float:
-        """Returns the distance between this vector and the provided one."""
-        pass  # TODO
+        :param other: Other vector to get the distance to.
+        :param topology: Positive coefficients to normalize each dimension with.
+        :returns: The distance between this vector and the specified one.
+        """
+        self._ensure_same_names(other)
+        self._ensure_same_names(topology)
+        return math.sqrt(sum(((v2 - v1) / topology[vname1]) ** 2 for (vname1, v1), (vname2, v2) in zip(self, other)))
 
     def map(self, f: typ.Callable[[str, VT], VT_]) -> Vector[VT_]:
         """Returns a new vector that is the result of applying the given function to each entry of this vector.
@@ -93,7 +98,7 @@ class Vector(typ.Generic[VT]):
         return self * x
 
     def __matmul__(self, other: Vector[Number]) -> Vector[Number]:
-        """Performs an element-wise multiplication operation between this vector and the argument."""
+        """Performs an element-wise multiplication operation between two Vectors."""
         self._ensure_same_names(other)
         return self.map(lambda k, v: v * other._values_map[k])
 
@@ -115,15 +120,18 @@ class Vector(typ.Generic[VT]):
     def __getitem__(self, item: str) -> VT:
         return self._values_map[item]
 
-    def __iter__(self) -> typ.Generator[typ.Tuple[str, VT]]:
+    def __iter__(self) -> typ.Iterator[typ.Tuple[str, VT]]:
         for k, v in self._values_map.items():
             yield k, v
+
+    def __dict__(self) -> typ.Dict[str, VT]:
+        return dict(self._values_map)
 
     def __len__(self) -> int:
         return len(self._values_map)
 
     def __repr__(self):
-        return f'({",".join(f"{k}={v}" for k, v in sorted(self.entries()))})'
+        return f'Vector({", ".join(f"{k}={v}" for k, v in sorted(self.entries()))})'
 
     def _ensure_same_names(self, other: Vector[Number]):
         if self.names() != other.names():
