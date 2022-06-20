@@ -58,3 +58,4 @@ class RunResult:
     unique_points_number: int = None
     created_chains: int = None
     error_message: str = None
+    distance_with_expected: str = None # str and not float to have possibly "" if error
