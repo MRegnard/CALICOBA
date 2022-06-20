@@ -16,6 +16,7 @@ class Suggestion:
     # Used to prioritize some suggestions over others in rare cases
     # when several point agents make a suggestion at the same time
     priority: int = 0
+    custom_data: typ.Any = None
 
 
 @dataclasses.dataclass(frozen=True)

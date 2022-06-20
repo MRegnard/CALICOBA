@@ -1,5 +1,6 @@
 import dataclasses
 import enum
+import typing as typ
 
 from .. import _data_types as dt
 
@@ -27,3 +28,8 @@ class VariationSuggestion:
     priority: int = 0
     agent: '' = None  # Mandatory
     """:type: cobopti.agents.PointAgent"""
+    custom_data: typ.Any = None
+
+    def __post_init__(self):
+        if self.agent is None:
+            raise ValueError('missing agent')

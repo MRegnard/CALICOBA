@@ -640,6 +640,7 @@ class PointAgent(Agent):
         suggested_point: typ.Optional[dt.Vector[float]] = None
         new_chain_next = False
         priority = 0
+        custom_data = None
 
         if not self.chain.is_active:
             return None
@@ -714,6 +715,7 @@ class PointAgent(Agent):
                 )
             elif self.is_extremum and self.chain.go_up_mode:
                 raise NotImplementedError('hill climbing not implemented yet')  # TEMP
+                # noinspection PyUnreachableCode
                 suggestion = self._hill_climb()
                 if not suggestion:
                     return None
@@ -726,6 +728,7 @@ class PointAgent(Agent):
                 new_chain_next = suggestion.new_chain_next
                 search_phase = _suggestions.SearchPhase.HILL_CLIMBING
                 priority = suggestion.priority
+                custom_data = suggestion.custom_data
             elif not self.is_local_minimum:
                 # Detection must be done here as sampling_cluster_acted property
                 # might not be updated yet in perceive() method
@@ -743,6 +746,7 @@ class PointAgent(Agent):
                     distances_to_neighbor = suggestion.distances_to_neighbor
                     suggested_point = suggestion.next_point
                     search_phase = _suggestions.SearchPhase.LOCAL
+                    custom_data = suggestion.custom_data
                     if self._sampled:
                         self._sampler.sampling_cluster_acted = True
                     else:
@@ -758,6 +762,7 @@ class PointAgent(Agent):
                 new_chain_next = suggestion.new_chain_next
                 check_for_out_of_bounds = suggestion.check_for_out_of_bounds
                 search_phase = _suggestions.SearchPhase.SEMI_LOCAL
+                custom_data = suggestion.custom_data
 
             if decision:
                 self.log_debug('Decision: ' + decision)
@@ -785,10 +790,12 @@ class PointAgent(Agent):
                 steps=suggested_steps,
                 new_chain_next=new_chain_next,
                 priority=priority,
+                custom_data=custom_data,
             )
         return None
 
     def _local_search(self) -> typ.Optional[ig.LocalSearchSuggestion]:
+        custom_data = {}
         # Select direction from side of triangle with the highest criticality variation
         if self._sampled:
             cluster_points = [self._sampler, *self._sampler.sampled_points]
@@ -824,6 +831,7 @@ class PointAgent(Agent):
             steps=dt.Vector(**steps),
             from_point=self._var_values,
             distances_to_neighbor=abs(self._var_values - highest_agent._var_values),
+            custom_data=custom_data,
         )
 
     def _semi_local_search(self) -> ig.SemiLocalSearchSuggestion:

@@ -174,6 +174,7 @@ class CoBOpti:
                     'steps': dict(suggestion.steps),
                     'directions': dict(suggestion.directions),
                     'decision': suggestion.decision,
+                    'custom_data': suggestion.custom_data,
                 })
 
             if suggestion.local_min_found:
