@@ -501,7 +501,6 @@ class PointAgent(Agent):
 
         self._should_sample = sampler is None
         self.sampled_points: typ.List[PointAgent] = []
-        self._sample_steps = dt.Vector.zero(*self._registry.variables_names)
         self.finished_sampling = False
         self.sampling_cluster_acted = False
         self.selected_from_sampling = False
@@ -568,7 +567,6 @@ class PointAgent(Agent):
             else:
                 self.finished_sampling = len(self.sampled_points) >= 2
                 if self.finished_sampling:
-                    self._sample_steps = dt.Vector.zero(*self._registry.variables_names)
                     self._should_sample = False
 
         if self.finished_sampling or self._sampled and self._sampler.finished_sampling:
@@ -654,53 +652,17 @@ class PointAgent(Agent):
             self._should_sample = True
 
         if self._should_sample:
-            decision = f'sample nearby point ({len(self.sampled_points) + 1})'
+            suggestion = self._sample()
+            if not suggestion:
+                return None
+            decision = suggestion.decision
+            suggested_directions = suggestion.directions
+            suggested_steps = suggestion.steps
+            from_point = suggestion.from_point
+            distances_to_neighbor = suggestion.distances_to_neighbor
+            suggested_point = suggestion.next_point
+            custom_data = suggestion.custom_data
             search_phase = _suggestions.SearchPhase.LOCAL_SAMPLING
-            first_sample = len(self.sampled_points) == 0
-            if first_sample:
-                if self._registry.last_local_steps.is_zero():
-                    # Pick random steps
-                    self._sample_steps = self._var_values.map(
-                        lambda vname, _: random.random() * self._registry.get_variable_default_step(vname) / 2)
-                    # Pick random directions
-                    suggested_directions = dt.Vector(**{
-                        vname: DIR_INCREASE if utils.randbool() else DIR_DECREASE
-                        for vname in self._registry.variables_names
-                    })
-                else:
-                    # Move slightly along the previous directions to sample the first point of the cluster
-                    self._sample_steps = self._registry.last_local_steps / 2
-                    suggested_directions = self._registry.last_local_directions
-            else:
-                diffs = (self.sampled_points[0]._var_values - self._var_values) \
-                    .map(lambda vname, v: v / self._registry.variables_coefficients[vname])
-                crit_diff = self.sampled_points[0].criticality - self.criticality
-                # sensitivities[i] = crit_diff / diff[i] for all i
-                sensitivities = (diffs ** -1) * crit_diff
-                print('sensitivities', sensitivities)  # DEBUG
-                max_sensitivity = max(abs(sensitivities).values())
-                print('normalized sensitivities', sensitivities / max_sensitivity)  # DEBUG
-                if self.world.config.sampling_mode == config.SamplingMode.WEIGHTED:
-                    # Weight step using normalized sensitivities
-                    print('last steps', self._registry.last_local_steps)
-                    print(abs(sensitivities) / max_sensitivity)
-                    self._sample_steps = self._registry.last_local_steps @ (abs(sensitivities) / max_sensitivity)
-                    suggested_directions = -self._registry.last_local_directions
-                elif self.world.config.sampling_mode == config.SamplingMode.N_BESTS:
-                    # Take only best half variables
-                    nb = math.ceil(len(self._var_values) / 2)
-                    best_entries = {k for k, _ in sorted(sensitivities.entries(), key=lambda e: e[1])[:nb]}
-                    self._sample_steps = dt.Vector(**{
-                        vname: self._registry.last_local_steps[vname] if vname in best_entries else 0
-                        for vname, v in dt.Vector.zero(*self._registry.variables_names)
-                    })
-                    suggested_directions = self._sample_steps.map(lambda _, v: DIR_DECREASE if v else DIR_NONE)
-                else:
-                    raise ValueError(f'invalid sensitivity mode {self.world.config.sampling_mode}')
-                print('sample steps', self._sample_steps)  # DEBUG
-                print('directions', suggested_directions)
-            suggested_steps = self._sample_steps
-
         else:
             if self.is_global_minimum:
                 return _suggestions.VariationSuggestion(
@@ -726,9 +688,9 @@ class PointAgent(Agent):
                 distances_to_neighbor = suggestion.distances_to_neighbor
                 suggested_point = suggestion.next_point
                 new_chain_next = suggestion.new_chain_next
-                search_phase = _suggestions.SearchPhase.HILL_CLIMBING
                 priority = suggestion.priority
                 custom_data = suggestion.custom_data
+                search_phase = _suggestions.SearchPhase.HILL_CLIMBING
             elif not self.is_local_minimum:
                 # Detection must be done here as sampling_cluster_acted property
                 # might not be updated yet in perceive() method
@@ -745,8 +707,8 @@ class PointAgent(Agent):
                     from_point = suggestion.from_point
                     distances_to_neighbor = suggestion.distances_to_neighbor
                     suggested_point = suggestion.next_point
-                    search_phase = _suggestions.SearchPhase.LOCAL
                     custom_data = suggestion.custom_data
+                    search_phase = _suggestions.SearchPhase.LOCAL
                     if self._sampled:
                         self._sampler.sampling_cluster_acted = True
                     else:
@@ -761,8 +723,8 @@ class PointAgent(Agent):
                 suggested_point = suggestion.next_point
                 new_chain_next = suggestion.new_chain_next
                 check_for_out_of_bounds = suggestion.check_for_out_of_bounds
-                search_phase = _suggestions.SearchPhase.SEMI_LOCAL
                 custom_data = suggestion.custom_data
+                search_phase = _suggestions.SearchPhase.SEMI_LOCAL
 
             if decision:
                 self.log_debug('Decision: ' + decision)
@@ -793,6 +755,58 @@ class PointAgent(Agent):
                 custom_data=custom_data,
             )
         return None
+
+    def _sample(self) -> typ.Optional[ig.SamplingSuggestion]:
+        custom_data = None
+        if not self.sampled_points:
+            if self._registry.last_local_steps.is_zero():
+                # Pick random steps
+                suggested_steps = self._var_values.map(
+                    lambda vname, _: random.random() * self._registry.get_variable_default_step(vname) / 2)
+                # Pick random directions
+                suggested_directions = dt.Vector(**{
+                    vname: DIR_INCREASE if utils.randbool() else DIR_DECREASE
+                    for vname in self._registry.variables_names
+                })
+            else:
+                # Move slightly along the previous directions to sample the first point of the cluster
+                suggested_steps = self._registry.last_local_steps / 2
+                suggested_directions = self._registry.last_local_directions
+        else:
+            diffs = (self.sampled_points[0]._var_values - self._var_values) \
+                .map(lambda vname, v: v / self._registry.variables_coefficients[vname])
+            crit_diff = self.sampled_points[0].criticality - self.criticality
+            # sensitivities[i] = crit_diff / diff[i] for all i
+            sensitivities = (diffs ** -1) * crit_diff
+            print('sensitivities', sensitivities)  # DEBUG
+            max_sensitivity = max(abs(sensitivities).values())
+            print('normalized sensitivities', sensitivities / max_sensitivity)  # DEBUG
+            print('last steps', self._registry.last_local_steps)  # DEBUG
+            if self.world.config.sampling_mode == config.SamplingMode.WEIGHTED:
+                # Weight steps using normalized sensitivities
+                suggested_steps = self._registry.last_local_steps @ (abs(sensitivities) / max_sensitivity)
+                suggested_directions = -self._registry.last_local_directions
+            elif self.world.config.sampling_mode == config.SamplingMode.N_BESTS:
+                # Take only best half variables
+                nb = math.ceil(len(self._var_values) / 2)
+                best_entries = {k for k, _ in sorted(sensitivities.entries(), key=lambda e: e[1])[:nb]}
+                suggested_steps = dt.Vector(**{
+                    vname: self._registry.last_local_steps[vname] if vname in best_entries else 0
+                    for vname, v in dt.Vector.zero(*self._registry.variables_names)
+                })
+                suggested_directions = suggested_steps.map(lambda _, v: DIR_DECREASE if v else DIR_NONE)
+            else:
+                raise ValueError(f'invalid sensitivity mode {self.world.config.sampling_mode}')
+            print('sample steps', suggested_steps)  # DEBUG
+            print('directions', suggested_directions)
+
+        return ig.SamplingSuggestion(
+            decision=f'sample nearby point ({len(self.sampled_points) + 1})',
+            directions=suggested_directions,
+            steps=suggested_steps,
+            from_point=self._var_values,
+            custom_data=custom_data,
+        )
 
     def _local_search(self) -> typ.Optional[ig.LocalSearchSuggestion]:
         custom_data = {}

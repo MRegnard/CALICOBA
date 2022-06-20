@@ -20,6 +20,12 @@ class Suggestion:
 
 
 @dataclasses.dataclass(frozen=True)
+class SamplingSuggestion(Suggestion):
+    """Object containing an action suggestion for the sampling phase."""
+    pass
+
+
+@dataclasses.dataclass(frozen=True)
 class LocalSearchSuggestion(Suggestion):
     """Object containing an action suggestion for the local search phase."""
     pass
