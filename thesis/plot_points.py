@@ -41,10 +41,10 @@ p_ys = {out_name: [] for out_name in out_names}
 normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
                for output_name in model.outputs_names}
 new_chain_indices = []
-with (path / f'{param_name}.json').open(encoding='utf8') as f:
+with (path / f'points.json').open(encoding='utf8') as f:
     for item in json.load(f):
         cycle = int(item['cycle'])
-        param_value = float(item['value'])
+        param_value = float(item['values'][param_name])
         listened_point_value = float(item['decider'])
         message = str(item['decision'])
         if 'chain' in message:

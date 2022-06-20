@@ -167,7 +167,7 @@ class CoBOpti:
                 # noinspection PyTypeChecker
                 self._points_data.append({
                     'cycle': self._cycle,
-                    'value': dict(self._variables),
+                    'values': dict(self._variables),
                     'criticality': suggestion.criticality,
                     'decider': suggestion.agent.name,
                     'is_local_min': suggestion.agent.is_local_minimum,

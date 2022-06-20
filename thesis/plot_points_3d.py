@@ -41,19 +41,14 @@ ys = {out_name: [] for out_name in out_names}
 normalizers = {output_name: calicoba.BoundNormalizer(*model.get_output_domain(output_name))
                for output_name in out_names}
 
-
-def load_data(param_name):
-    xs = []
-
-    with (path / f'{param_name}.json').open(encoding='utf8') as f:
-        for item in json.load(f):
-            xs.append(float(item['value']))
-
-    return xs
-
-
-p1_xs = load_data(p1_name)
-p2_xs = load_data(p2_name)
+p1_xs = []
+p2_xs = []
+with (path / 'points.json').open(encoding='utf8') as f:
+    for item in json.load(f):
+        values_ = item['values']
+        x1, x2 = values_.values()
+        p1_xs.append(x1)
+        p2_xs.append(x2)
 for p1_v, p2_v in zip(p1_xs, p2_xs):
     for out_name, out_value in model.evaluate(**{p1_name: p1_v, p2_name: p2_v}).items():
         ys[out_name].append(normalizers[out_name](out_value))
