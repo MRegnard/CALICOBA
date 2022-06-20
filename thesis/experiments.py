@@ -3,11 +3,11 @@ import argparse
 import configparser
 import json
 import logging
+import math
 import pathlib
 import random
 import time
 import typing as typ
-import math
 
 import jmetal.algorithm.multiobjective.omopso as jm_omopso
 import jmetal.core.problem as jm_pb
@@ -428,21 +428,21 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
     def is_expected_solution(solution: typ.Sequence[float]) -> bool:
         """Checks whether the candidate solution is one of the expected solutions."""
 
-        def solution_matches(s):
-            return all(abs(s[pname] - solution[i]) < cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
-                       for i, pname in enumerate(s.keys()))
+        def solution_matches(target):
+            return all(abs(target[pname] - solution[i]) < cobopti.agents.PointAgent.SAME_POINT_THRESHOLD
+                       for i, pname in enumerate(target.keys()))
 
-        return any(solution_matches(s) for s in config.target_parameters)
+        return any(solution_matches(target) for target in config.target_parameters)
 
     if pymoo_algorithm:
         termination = pymoo_f.get_termination('n_eval', 10000)
         res = pymoo_opti.minimize(pymoo_problem, pymoo_algorithm, termination, seed=config.seed, verbose=False)
-        
-        distance = 0
-        for i in range(len(res.X)) :
-            distance += math.pow(res.X[i] - test_utils.MODEL_SOLUTIONS[model.id][0][f'p{i+1}'] , 2)    # Adding the square of the difference output-expected
-        distance = math.sqrt(distance)
-        
+
+        distance = math.sqrt(sum(
+            math.pow(res.X[i] - test_utils.MODEL_SOLUTIONS[model.id][0][f'p{i + 1}'], 2)
+            for i in range(len(res.X))
+        ))
+
         return exp_utils.RunResult(
             solution_found=any(is_expected_solution(sol) for sol in res.X),
             error=False,
@@ -452,21 +452,20 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
             points_number=len(pymoo_problem.points),
             unique_points_number=len(pymoo_problem.unique_points),
             created_chains=-1,
-            distance_with_expected=distance
+            distance_with_expected=distance,
         )
     elif jmetal_algorithm:
         jmetal_algorithm.run()
         res = jmetal_algorithm.get_result()
-        
-        best_distance = -1
-        for aSolution in res :     
-            distance = 0        
-            for i in range(len(aSolution.variables)) :
-                distance += math.pow(aSolution.variables[i] - test_utils.MODEL_SOLUTIONS[model.id][0][f'p{i+1}'] , 2)    # Adding the square of the difference output-expected
-            distance = math.sqrt(distance)            
-            if(best_distance == -1) : best_distance = distance
-            else : best_distance = min(distance,best_distance)
-        
+
+        best_distance = math.inf
+        for s in res:
+            distance = math.sqrt(sum(
+                math.pow(s.variables[i] - test_utils.MODEL_SOLUTIONS[model.id][0][f'p{i + 1}'], 2)
+                for i in range(len(s.variables))
+            ))
+            best_distance = min(distance, best_distance)
+
         return exp_utils.RunResult(
             solution_found=any(is_expected_solution(sol.variables) for sol in res),
             error=False,
@@ -476,7 +475,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
             points_number=len(jmetal_problem.points),
             unique_points_number=len(jmetal_problem.unique_points),
             created_chains=-1,
-            distance_with_expected=str(best_distance)
+            distance_with_expected=best_distance
         )
     raise ValueError(f'unknown method "{method}"')
 
