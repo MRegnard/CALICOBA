@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import logging
 import math
+import random
 import typing as typ
 
 from . import _normalizers, _internal_suggestions as ig, _suggestions
@@ -657,24 +658,33 @@ class PointAgent(Agent):
             first_sample = len(self.sampled_points) == 0
             if first_sample:
                 if self._registry.last_local_steps.is_zero():
+                    # Pick random steps
                     self._sample_steps = self._var_values.map(
-                        lambda vname, _: self._registry.get_variable_default_step(vname) / 2)
+                        lambda vname, _: random.random() * self._registry.get_variable_default_step(vname) / 2)
+                    # Pick random directions
+                    suggested_directions = dt.Vector(**{
+                        vname: DIR_INCREASE if utils.randbool() else DIR_DECREASE
+                        for vname in self._registry.variables_names
+                    })
                 else:
-                    step = max(self._registry.last_local_steps.values()) / 2
-                    self._sample_steps = dt.Vector.filled(step, *self._registry.variables_names)
+                    # Move slightly along the previous directions to sample the first point of the cluster
+                    self._sample_steps = self._registry.last_local_steps / 2
+                    suggested_directions = self._registry.last_local_directions
             else:
-                # Move only along N most sensitive dimensions between self
-                # and first sampled point when sampling second point
-                diffs = self.sampled_points[0]._var_values - self._var_values
+                diffs = (self.sampled_points[0]._var_values - self._var_values) \
+                    .map(lambda vname, v: v / self._registry.variables_coefficients[vname])
                 crit_diff = self.sampled_points[0].criticality - self.criticality
-                # S[i] = crit_diff / diff[i] for all i
+                # sensitivities[i] = crit_diff / diff[i] for all i
                 sensitivities = (diffs ** -1) * crit_diff
                 print('sensitivities', sensitivities)  # DEBUG
+                max_sensitivity = max(abs(sensitivities).values())
+                print('normalized sensitivities', sensitivities / max_sensitivity)  # DEBUG
                 if self.world.config.sampling_mode == config.SamplingMode.WEIGHTED:
-                    # Weight step using sensitivities
-                    # FIXME devient trop petit après quelques itérations
-                    self._sample_steps = self._registry.last_local_steps @ sensitivities
-                    print(self._sample_steps)  # DEBUG
+                    # Weight step using normalized sensitivities
+                    print('last steps', self._registry.last_local_steps)
+                    print(abs(sensitivities) / max_sensitivity)
+                    self._sample_steps = self._registry.last_local_steps @ (abs(sensitivities) / max_sensitivity)
+                    suggested_directions = -self._registry.last_local_directions
                 elif self.world.config.sampling_mode == config.SamplingMode.N_BESTS:
                     # Take only best half variables
                     nb = math.ceil(len(self._var_values) / 2)
@@ -683,11 +693,12 @@ class PointAgent(Agent):
                         vname: self._registry.last_local_steps[vname] if vname in best_entries else 0
                         for vname, v in dt.Vector.zero(*self._registry.variables_names)
                     })
+                    suggested_directions = self._sample_steps.map(lambda _, v: DIR_DECREASE if v else DIR_NONE)
                 else:
                     raise ValueError(f'invalid sensitivity mode {self.world.config.sampling_mode}')
+                print('sample steps', self._sample_steps)  # DEBUG
+                print('directions', suggested_directions)
             suggested_steps = self._sample_steps
-            suggested_directions = dt.Vector.filled(DIR_INCREASE if first_sample else DIR_DECREASE,
-                                                    *self._registry.variables_names)
 
         else:
             if self.is_global_minimum:
@@ -721,25 +732,21 @@ class PointAgent(Agent):
                 if ((self.finished_sampling or self._sampled and self._sampler.finished_sampling)
                         and not self.sampling_cluster_acted
                         and (not self._sampled or not self._sampler.sampling_cluster_acted)):
-                    # Select lowest point from sampling cluster
-                    if not self._sampled:
-                        points = [self] + self.sampled_points
+                    # Only the minimum from the cluster should act
+                    suggestion = self._local_search()
+                    if not suggestion:
+                        return None
+                    decision = suggestion.decision
+                    suggested_directions = suggestion.directions
+                    suggested_steps = suggestion.steps
+                    from_point = suggestion.from_point
+                    distances_to_neighbor = suggestion.distances_to_neighbor
+                    suggested_point = suggestion.next_point
+                    search_phase = _suggestions.SearchPhase.LOCAL
+                    if self._sampled:
+                        self._sampler.sampling_cluster_acted = True
                     else:
-                        points = [self._sampler] + self._sampler.sampled_points
-                    if self is min(points, key=lambda p: p.criticality):
-                        # Only the minimum from the cluster should act
-                        suggestion = self._local_search()
-                        decision = suggestion.decision
-                        suggested_directions = suggestion.directions
-                        suggested_steps = suggestion.steps
-                        from_point = suggestion.from_point
-                        distances_to_neighbor = suggestion.distances_to_neighbor
-                        suggested_point = suggestion.next_point
-                        search_phase = _suggestions.SearchPhase.LOCAL
-                        if self._sampled:
-                            self._sampler.sampling_cluster_acted = True
-                        else:
-                            self.sampling_cluster_acted = True
+                        self.sampling_cluster_acted = True
             elif self.best_local_minimum:
                 suggestion = self._semi_local_search()
                 decision = suggestion.decision
@@ -781,29 +788,42 @@ class PointAgent(Agent):
             )
         return None
 
-    def _local_search(self) -> ig.LocalSearchSuggestion:
+    def _local_search(self) -> typ.Optional[ig.LocalSearchSuggestion]:
+        # Select direction from side of triangle with the highest criticality variation
         if self._sampled:
-            cluster_neighbors = [self._sampler] + [p for p in self._sampler.sampled_points if p is not self]
+            cluster_points = [self._sampler, *self._sampler.sampled_points]
         else:
-            cluster_neighbors = self.sampled_points
-        best_neighbor = min(cluster_neighbors, key=lambda p: p.criticality)
-        print(self, best_neighbor)  # DEBUG
+            cluster_points = [self, *self.sampled_points]
+        distances = {
+            (p1, p2): abs(p1.criticality - p2.criticality)
+            for p1, p2 in zip(cluster_points, cluster_points[1:] + [cluster_points[0]])
+        }
+        print(distances)  # DEBUG
+        # Extract side with highest criticality variation
+        best_side = max(distances.items(), key=lambda e: e[1])[0]
+        print(self, best_side)  # DEBUG
+        lowest_agent, highest_agent = sorted(best_side, key=lambda p: p.criticality)
+        print(self is lowest_agent)  # DEBUG
+        # Only lowest agent of the selected side can act
+        if lowest_agent is not self:
+            return None
         steps = {}
         directions = {}
         for vname in self._registry.variables_names:
-            top_point = (best_neighbor._var_values[vname], best_neighbor.criticality)
+            # noinspection PyProtectedMember
+            top_point = (highest_agent._var_values[vname], highest_agent.criticality)
             x = utils.get_xc(top_point, intermediate_point=(self._var_values[vname], self.criticality), yc=0)
             steps[vname] = abs(x - self._var_values[vname])
             directions[vname] = DIR_INCREASE if x > self._var_values[vname] else DIR_DECREASE
         # noinspection PyTypeChecker
         print(steps)  # DEBUG
-        # noinspection PyTypeChecker
+        # noinspection PyTypeChecker,PyProtectedMember
         return ig.LocalSearchSuggestion(
             decision='sampling done -> follow slope',
             directions=dt.Vector(**directions),
             steps=dt.Vector(**steps),
             from_point=self._var_values,
-            distances_to_neighbor=abs(self._var_values - best_neighbor._var_values),
+            distances_to_neighbor=abs(self._var_values - highest_agent._var_values),
         )
 
     def _semi_local_search(self) -> ig.SemiLocalSearchSuggestion:
@@ -1045,6 +1065,7 @@ class PointAgent(Agent):
 
     def __repr__(self):
         return (
-            f'Point{{values={self._var_values},sampled={self._sampled},local min={self.is_local_minimum},'
-            f'extremum={self.is_extremum},min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
+            f'Point{{name={self.name},values={self._var_values},sampled={self._sampled},'
+            f'local min={self.is_local_minimum},extremum={self.is_extremum},'
+            f'min of chain={self._is_current_min_of_chain},current={self.is_current}}}'
         )

@@ -1,3 +1,4 @@
+import random
 import typing as typ
 
 Point = typ.Tuple[float, float]
@@ -17,3 +18,7 @@ def get_xc(top_point: Point, intermediate_point: Point, yc: float) -> float:
     xa, ya = top_point
     xe, ye = intermediate_point
     return xa + (yc - ya) * (xe - xa) / (ye - ya)
+
+
+def randbool():
+    return random.random() < 0.5
