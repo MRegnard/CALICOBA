@@ -62,7 +62,7 @@ class CoBOpti:
         self._best_solution = None
         self._best_crits = None
 
-        self._variables_data = {}
+        self._points_data = []
         self._objectives_data = {}
 
     @property
@@ -127,10 +127,6 @@ class CoBOpti:
         """Sets up this instance. Must be called before minimize method."""
         self._logger.info('Setting up CoBOpti…')
 
-        for variable in self.config.variables_metadata:
-            if self.config.output_directory:
-                self._variables_data[variable.name] = []
-
         self._registry_agent = agents.RegistryAgent(*self.config.variables_metadata, logger=self._logger)
         self.add_agent(self._registry_agent)
 
@@ -168,17 +164,17 @@ class CoBOpti:
             self._logger.debug(suggestion)
 
             if self.config.output_directory:
-                for var_name, v in suggestion.steps:
-                    # noinspection PyTypeChecker
-                    self._variables_data[var_name].append({
-                        'cycle': self._cycle,
-                        'value': self._variables[var_name],
-                        'criticality': suggestion.criticality,
-                        'decider': suggestion.agent.name,
-                        'is_local_min': suggestion.agent.is_local_minimum,
-                        'steps': dict(suggestion.steps),
-                        'decision': suggestion.decision,
-                    })
+                # noinspection PyTypeChecker
+                self._points_data.append({
+                    'cycle': self._cycle,
+                    'value': dict(self._variables),
+                    'criticality': suggestion.criticality,
+                    'decider': suggestion.agent.name,
+                    'is_local_min': suggestion.agent.is_local_minimum,
+                    'steps': dict(suggestion.steps),
+                    'directions': dict(suggestion.directions),
+                    'decision': suggestion.decision,
+                })
 
             if suggestion.local_min_found:
                 # Global minimum detection
@@ -211,9 +207,8 @@ class CoBOpti:
                 unique_points.append(p)
 
         if self.config.output_directory:
-            for var_name in self._variables.names():
-                with (self.config.output_directory / (var_name + '.json')).open(mode='w', encoding='utf8') as f:
-                    json.dump(self._variables_data[var_name], f)
+            with (self.config.output_directory / 'points.json').open(mode='w', encoding='utf8') as f:
+                json.dump(self._points_data, f)
             for obj in self._objectives:
                 with (self.config.output_directory / (obj.name + '.json')).open(mode='w', encoding='utf8') as f:
                     json.dump(self._objectives_data[obj.name], f)
