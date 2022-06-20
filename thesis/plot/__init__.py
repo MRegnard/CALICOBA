@@ -18,12 +18,12 @@ def format_name(name: str):
 
 def plot_model_outputs(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, float], precision: int = 200,
                        normalized: bool = True, regressions: bool = False, simple: bool = False,
-                       mins: typ.Sequence[float] = None):
+                       mins: typ.Sequence[float] = None, flat: bool = False):
     params_nb = len(model.parameters_names)
     if params_nb == 1:
         _plot_2d(subplot, model, bounds, precision, normalized, regressions, simple, mins=mins or [])
     elif params_nb == 2:
-        _plot_3d(subplot, model, bounds, precision, normalized, simple)
+        _plot_3d(subplot, model, bounds, precision, normalized, simple, flat)
     else:
         raise ValueError('cannot plot model with more than 2 parameters')
 
@@ -84,7 +84,7 @@ def _plot_2d(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, fl
 
 
 def _plot_3d(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, float], precision: int, normalized: bool,
-             simple: bool):
+             simple: bool, flat: bool):
     colormaps = ['jet', 'autumn', 'turbo', 'winter', 'hot', 'pink', 'bone']
     p1_name = model.parameters_names[0]
     p2_name = model.parameters_names[1]
@@ -111,16 +111,22 @@ def _plot_3d(subplot: fig.Axes, model: models.Model, bounds: typ.Tuple[float, fl
     subplot.set_xlabel(f'${format_name(p1_name)}$')
     subplot.set_ylabel(f'${format_name(p2_name)}$')
     model_id = model.id.replace('_', r'\_')
-    subplot.set_zlabel(f'${model_id}({format_name(p1_name)}, {format_name(p2_name)})$')
+    if not flat:
+        subplot.set_zlabel(f'${model_id}({format_name(p1_name)}, {format_name(p2_name)})$')
     if not simple:
         for i, output_name in enumerate(sorted(model.outputs_names)):
-            surface = subplot.plot_surface(
-                x1s, x2s, ys[output_name],
-                cmap=colormaps[i % len(colormaps)],
-                label=f'${format_name(output_name)}({format_name(p1_name)}, {format_name(p2_name)})$'
-            )
-            _fix_3d_surface(surface)
-    if simple or len(ys) > 2:
+            if flat:
+                subplot.contourf(
+                    x1s, x2s, ys[output_name],
+                    cmap=colormaps[i % len(colormaps)]
+                )
+            else:
+                surface = subplot.plot_surface(
+                    x1s, x2s, ys[output_name],
+                    cmap=colormaps[i % len(colormaps)]
+                )
+                _fix_3d_surface(surface)
+    if (simple or len(ys) > 2) and not flat:
         surface = subplot.plot_surface(x1s, x2s, ys['front'], color='k' if not simple else None,
                                        cmap='jet' if simple else None, label=r'$\max(o_i)$')
         _fix_3d_surface(surface)

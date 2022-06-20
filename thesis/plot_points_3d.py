@@ -19,6 +19,7 @@ arg_parser.add_argument('-b', '--bounds', dest='bounds', metavar='BOUND', nargs=
 arg_parser.add_argument('-s', '--split', dest='split', action='store_true', help='create one figure per step')
 arg_parser.add_argument('-p', '--precision', dest='sampling_precision', metavar='PRECISION', type=int, default=200,
                         help='sampling precision when plotting the function')
+arg_parser.add_argument('-f', '--flat', dest='flat', action='store_true', help='projects the 3D plot on a 2D plane')
 
 args = arg_parser.parse_args()
 path: pathlib.Path = args.path
@@ -26,6 +27,7 @@ model_id: str = args.model_id or path.parent.name
 bounds: typ.Tuple[float, float] = args.bounds
 split_figures: bool = args.split
 sampling_precision: int = args.sampling_precision
+flat: bool = args.flat
 
 model = models.get_model_factory(models.FACTORY_SIMPLE).generate_model(model_id)
 if len(model.parameters_names) != 2:
@@ -67,10 +69,15 @@ if p1_xs and p2_xs:
             fig = plt.figure()
             fig.suptitle(f'CoBOpti’s behavior on model {model.id}\n'
                          f'for $p(0) = ({p1_xs[0]}, {p2_xs[0]})$ (iteration {i + 1}/{len(p1_xs)})')
-            subplot = fig.add_subplot(1, 1, 1, projection='3d', computed_zorder=False)
-            subplot.view_init(90, -90)  # "Top-down" view
+            kwargs = {}
+            if not flat:
+                kwargs['computed_zorder'] = False
+                kwargs['projection'] = '3d'
+            subplot = fig.add_subplot(1, 1, 1, **kwargs)
+            if not flat:
+                subplot.view_init(90, -90)  # "Top-down" view
             print(f'Generating plot {i + 1}/{len(p1_xs)}')
-            plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision)
+            plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision, flat=flat)
             for j, out_name in enumerate(out_names):
                 subplot.scatter(p1_xs[:i], p2_xs[:i], ys[out_name][:i], marker='x', color='r', zorder=2)
             for j, out_name in enumerate(out_names):
@@ -82,8 +89,12 @@ if p1_xs and p2_xs:
     else:
         fig = plt.figure()
         fig.suptitle(f'CoBOpti’s behavior on model {model.id} for $p(0) = ({p1_xs[0]}, {p2_xs[0]})$')
-        subplot = fig.add_subplot(1, 1, 1, projection='3d', computed_zorder=False)
-        plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision)
+        kwargs = {}
+        if not flat:
+            kwargs['computed_zorder'] = False
+            kwargs['projection'] = '3d'
+        subplot = fig.add_subplot(1, 1, 1, **kwargs)
+        plot.plot_model_outputs(subplot, model, bounds, precision=sampling_precision, flat=flat)
         for i, out_name in enumerate(out_names):
             subplot.scatter(p1_xs, p2_xs, ys[out_name], marker='x', color='r',
                             label=f'$p(t)$' if i == 0 else None, zorder=2)  # Always draw points on foreground
