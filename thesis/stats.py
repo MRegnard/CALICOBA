@@ -20,7 +20,8 @@ class StatsObject:
     maximum: float
 
     def __str__(self):
-        return f'Mean: {self.mean:.4f}; Median: {self.median:.4f}; Std dev: {self.std_dev:.4f}; Min: {self.minimum:.4f}; Max: {self.maximum:.4f}'
+        return f'Mean: {self.mean:.4f}; Median: {self.median:.4f}; Std dev: {self.std_dev:.4f};' \
+               f' Min: {self.minimum:.4f}; Max: {self.maximum:.4f}'
 
 
 class DataSet:
@@ -29,22 +30,22 @@ class DataSet:
         self.successes_number = 0
         self.errors_number = 0
         self.cycles_numbers = []
-        self.soluction_cycles = []
+        self.solution_cycles = []
         self.speeds = []
         self.visited_points_numbers = []
         self.unique_visited_points_number = []
         self.created_chains = []
         self.distance_with_expected = []
         self.error_messages = {}
-        
+
         self.cycles_numbers_success = []
-        self.soluction_cycles_success = []
+        self.solution_cycles_success = []
         self.speeds_success = []
         self.visited_points_numbers_success = []
         self.unique_visited_points_number_success = []
         self.created_chains_success = []
         self.distance_with_expected_success = []
-        
+
         self.cycles_numbers_failure = []
         self.speeds_failure = []
         self.visited_points_numbers_failure = []
@@ -58,22 +59,22 @@ class DataSet:
                 if solution_found:
                     self.successes_number += 1
                     self.cycles_numbers_success.append(int(item['cycles']))
-                    self.soluction_cycles_success.append(int(item['solution_cycle']))
+                    self.solution_cycles_success.append(int(item['solution_cycle']))
                     self.speeds_success.append(float(item['speed']))
                     self.visited_points_numbers_success.append(int(item['points_number']))
                     self.unique_visited_points_number_success.append(int(item['unique_points_number']))
                     self.created_chains_success.append(int(item['chains_number']))
                     self.distance_with_expected_success.append(float(item['distance_with_expected']))
-                else :
+                else:
                     if error:
                         self.errors_number += 1
-                    else :
+                    else:
                         self.distance_with_expected_failure.append(float(item['distance_with_expected']))
                     self.speeds_failure.append(float(item['speed']))
-                    
+
                 self.total_runs += 1
                 self.cycles_numbers.append(int(item['cycles']))
-                self.soluction_cycles.append(int(item['solution_cycle']))
+                self.solution_cycles.append(int(item['solution_cycle']))
                 self.speeds.append(float(item['speed']))
                 self.visited_points_numbers.append(int(item['points_number']))
                 self.unique_visited_points_number.append(int(item['unique_points_number']))
@@ -100,33 +101,28 @@ class DataSet:
         if self.total_runs == self.successes_number:
             return math.nan
         return self.errors_number / (self.total_runs - self.successes_number)
-        
+
     @property
     def total_error_rate(self) -> float:
         if self.total_runs == self.successes_number:
             return math.nan
-        return self.errors_number / (self.total_runs)
-    
+        return self.errors_number / self.total_runs
 
     @property
     def cycles_numbers_stats(self) -> StatsObject:
         return self._get_stats(self.cycles_numbers)
-        
+
     @property
     def cycles_numbers_stats_success(self) -> StatsObject:
         return self._get_stats(self.cycles_numbers_success)
 
     @property
     def solution_cycles_stats(self) -> StatsObject:
-        return self._get_stats(self.soluction_cycles)
+        return self._get_stats(self.solution_cycles)
 
     @property
     def solution_cycles_stats_success(self) -> StatsObject:
-        return self._get_stats(self.soluction_cycles_success)
-
-    @property
-    def solution_cycles_stats_failure(self) -> StatsObject:
-        return self._get_stats(self.soluction_cycles_failure)
+        return self._get_stats(self.solution_cycles_success)
 
     @property
     def speed_stats(self) -> StatsObject:
@@ -163,15 +159,15 @@ class DataSet:
     @property
     def created_chains_stats_success(self) -> StatsObject:
         return self._get_stats(self.created_chains_success)
-        
+
     @property
     def distance_with_expected_stats(self) -> StatsObject:
         return self._get_stats(self.distance_with_expected)
-        
+
     @property
     def distance_with_expected_stats_success(self) -> StatsObject:
         return self._get_stats(self.distance_with_expected_success)
-        
+
     @property
     def distance_with_expected_stats_failure(self) -> StatsObject:
         return self._get_stats(self.distance_with_expected_failure)
@@ -189,8 +185,8 @@ class DataSet:
 
     def __str__(self):
         res = "\n" + f"""
-Successes: {self.successes_number}/{self.total_runs} ({self.success_rate * 100:.2f} %)
-Failures:  {self.failures_number}/{self.total_runs} ({self.failure_rate * 100:.2f} %)
+Successes: {self.successes_number}/{self.total_runs} ({self.success_rate * 100:.2f}%)
+Failures:  {self.failures_number}/{self.total_runs} ({self.failure_rate * 100:.2f}%)
 
 Cycles numbers stats:        {self.cycles_numbers_stats}
 Solution cycles stats:       {self.solution_cycles_stats}
@@ -199,12 +195,11 @@ Visited points stats:        {self.visited_points_stats}
 Unique visited points stats: {self.unique_points_stats}
 Created chains stats:        {self.created_chains_stats}
 Distance to expected stats : {self.distance_with_expected_stats}
-
 """.strip()
 
-        if(self.successes_number > 0) :
+        if self.successes_number > 0:
             res += "\n\n\t" + f"""
-When the solution is founded ({self.successes_number} times):
+When the solution has been found ({self.successes_number} time(s)):
 Cycles numbers stats:        {self.cycles_numbers_stats_success}
 Solution cycles stats:       {self.solution_cycles_stats_success}
 Speed stats (s):             {self.speed_stats_success}
@@ -212,16 +207,15 @@ Visited points stats:        {self.visited_points_stats_success}
 Unique visited points stats: {self.unique_points_stats_success}
 Created chains stats:        {self.created_chains_stats_success}
 Distance to expected point:  {self.distance_with_expected_stats_success}
-
 """.strip()
 
-        if(self.failures_number > 0) :
+        if self.failures_number > 0:
             res += "\n\n\t" + f"""
-When the solution is not founded ({self.failures_number} times):
-Number of errors:            {self.errors_number}/{self.failures_number} ({self.error_rate * 100:.2f} % of failures, {self.total_error_rate * 100:.2f} % of total)
+When the solution has not been found ({self.failures_number} time(s)):
+Number of errors:            {self.errors_number}/{self.failures_number} ({self.error_rate * 100:.2f}% of failures,\
+ {self.total_error_rate * 100:.2f}% of total)
 Speed stats (s):             {self.speed_stats_failure}
 Distance (when no error) :   {self.distance_with_expected_stats_failure}
-
 """.strip()
 
         return res
