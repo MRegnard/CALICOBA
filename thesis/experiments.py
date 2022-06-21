@@ -335,6 +335,7 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
     logger = config.logger
     method = config.method
     model = config.model
+    max_steps = config.max_steps
     p_init = dict(config.p_init)  # Copy to avoid eventual side effects
 
     for param_name in model.parameters_names:
@@ -402,9 +403,9 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
             epsilon=0.0075,
             uniform_mutation=jm_op.UniformMutation(probability=mutation_probability, perturbation=0.5),
             non_uniform_mutation=jm_mut.NonUniformMutation(mutation_probability, perturbation=0.5,
-                                                           max_iterations=max_steps // swarm_size),
+                                                           max_iterations=max_steps),
             leaders=jm_arch.CrowdingDistanceArchive(100),
-            termination_criterion=jm_term.StoppingByEvaluations(max_steps)
+            termination_criterion=jm_term.StoppingByEvaluations(max_steps*swarm_size)
         )
         # pymoo_algorithm = pymoo_pso.PSO()
         # res = other_methods.pso(
