@@ -395,7 +395,6 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
 
     if method == 'PSO':  # Particle Swarm Optimization
         mutation_probability = 1 / len(model.parameters_names)
-        max_evaluations = 10000
         swarm_size = 100
         jmetal_algorithm = ProbedOMOPSO(
             jmetal_problem,
@@ -403,9 +402,9 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
             epsilon=0.0075,
             uniform_mutation=jm_op.UniformMutation(probability=mutation_probability, perturbation=0.5),
             non_uniform_mutation=jm_mut.NonUniformMutation(mutation_probability, perturbation=0.5,
-                                                           max_iterations=max_evaluations // swarm_size),
+                                                           max_iterations=max_steps // swarm_size),
             leaders=jm_arch.CrowdingDistanceArchive(100),
-            termination_criterion=jm_term.StoppingByEvaluations(max_evaluations)
+            termination_criterion=jm_term.StoppingByEvaluations(max_steps)
         )
         # pymoo_algorithm = pymoo_pso.PSO()
         # res = other_methods.pso(
