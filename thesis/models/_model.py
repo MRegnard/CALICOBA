@@ -15,6 +15,10 @@ class Model(abc.ABC):
     def id(self) -> str:
         return self.__id
 
+    @property
+    def nameForPrint(self) -> str:   # Here identical to id, but can be overrided
+        return self.__id
+
     def update(self):
         self.__outputs = self.evaluate(**self.__parameters)
 
