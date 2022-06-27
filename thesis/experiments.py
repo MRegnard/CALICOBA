@@ -184,7 +184,7 @@ def main():
         tested_params = []
         for run, p in enumerate(params_iterator):
             p_init = {param_names[i]: v for i, v in enumerate(p)}
-            logger.info(f'Model "{model.id}": run {run + 1}/{config.runs_number}')
+            logger.info(f'Model "{model.nameForPrint}": run {run + 1}/{config.runs_number}')
             if p in tested_params:
                 logger.info('Already tested, skipped')
                 continue
