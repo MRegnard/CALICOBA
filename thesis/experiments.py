@@ -170,7 +170,10 @@ def main():
     else:
         log_message += ' all models'
     if config.runs_number:
-        log_message += f' for {config.runs_number} run(s)'
+        if(config.runs_number>1) :
+            log_message += f' for {config.runs_number} runs'
+        else :
+            log_message += f' for {config.runs_number} run'
         if not config.model_id:
             log_message += ' each'
     if config.parameters_values:
@@ -213,7 +216,7 @@ def main():
         tested_params = []
         for run, p in enumerate(params_iterator):
             p_init = {param_names[i]: v for i, v in enumerate(p)}
-            logger.info(f'Model "{model.id}": run {run + 1}/{config.runs_number}')
+            logger.info(f'Model "{model.nameForPrint}": run {run + 1}/{config.runs_number}')
             if p in tested_params:
                 logger.info('Already tested, skipped')
                 continue
@@ -248,7 +251,7 @@ def main():
             if result.error_message:
                 logger.info(f'Error: {result.error_message}')
 
-        if config.dump_data and output_dir and config.runs_number > 1:
+        if config.dump_data and output_dir :
             logger.info('Saving results')
             with (output_dir / (model.id + '.json')).open(mode='w', encoding='utf8') as f:
                 data = []
@@ -444,7 +447,8 @@ def evaluate_model_other(config: exp_utils.RunConfig) -> exp_utils.RunResult:
         ))
 
         return exp_utils.RunResult(
-            solution_found=any(is_expected_solution(sol) for sol in res.X),
+            #solution_found=any(is_expected_solution(sol) for sol in res.X),
+            solution_found=is_expected_solution(res.X),
             error=False,
             cycles_number=termination.n_max_evals // pymoo_algorithm.pop_size,
             solution_cycle=-1,
